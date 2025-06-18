@@ -1,22 +1,17 @@
-// Replace `import Tesseract from 'tesseract.js';` with:
-const Tesseract = require('tesseract.js');
+const { ipcRenderer } = require('electron');
 
-window.electronAPI.onTriggerScreenshot(async () => {
-  const sources = await window.electronAPI.getSources();
-  const screen = sources[0]; // Simplified: take the first screen
+ipcRenderer.on('trigger-screenshot', async () => {
+  const output = document.getElementById('output');
+  const img = document.getElementById('screenshot');
 
-  const image = screen.thumbnail.toDataURL();
-  document.getElementById('output').innerText = 'Processing OCR...';
+  output.textContent = 'Capturing screen...';
+  const image = await ipcRenderer.invoke('capture-screen');
+  img.src = image; img.style.display = 'block';
 
-  Tesseract.recognize(
-    image,
-    'eng',
-    { logger: m => console.log(m) }
-  ).then(({ data: { text } }) => {
-    document.getElementById('output').innerText = `Extracted Text:\n${text}`;
-    // TODO: Send 'text' to OpenAI for structured answer
-  }).catch(err => {
-    console.error('OCR failed:', err);
-    document.getElementById('output').innerText = 'OCR failed.';
-  });
+  output.textContent = 'Running OCR...';
+  const text = await ipcRenderer.invoke('perform-ocr', image);
+
+  output.textContent = `Extracted:\n${text}\n\nQuerying ChatGPT...`;
+  const answer = await ipcRenderer.invoke('ask-chatgpt', text);
+  output.textContent = `Q: ${text}\n\nA: ${answer}`;
 });

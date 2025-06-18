@@ -1,20 +1,20 @@
-// File: main.js
 const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer } = require('electron');
-const path = require('path');
+const axios = require('axios');
+require('dotenv').config();
 
 let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 400,
-    height: 600,
+    width: 600,
+    height: 800,
     alwaysOnTop: true,
-    transparent: true,
     frame: false,
+    transparent: true,
+    hasShadow: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
+      nodeIntegration: true,
+      contextIsolation: false,
     },
   });
 
@@ -24,8 +24,30 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  globalShortcut.register('CommandOrControl+Shift+S', () => {
+  // Capture shortcut
+  globalShortcut.register('Command+Shift+S', () => {
     mainWindow.webContents.send('trigger-screenshot');
+  });
+
+  // Movement shortcuts (Cmd + Arrow)
+  const moveStep = 20;
+  ['Left','Right','Up','Down'].forEach(dir => {
+    globalShortcut.register(`Command+${dir}`, () => {
+      const [x, y] = mainWindow.getPosition();
+      if (dir === 'Left') mainWindow.setPosition(x - moveStep, y);
+      if (dir === 'Right') mainWindow.setPosition(x + moveStep, y);
+      if (dir === 'Up') mainWindow.setPosition(x, y - moveStep);
+      if (dir === 'Down') mainWindow.setPosition(x, y + moveStep);
+    });
+  });
+
+  // Toggle visibility shortcut
+  globalShortcut.register('Command+B', () => {
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+    }
   });
 
   app.on('activate', () => {
@@ -37,10 +59,32 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Listen for screenshot request
-ipcMain.handle('get-sources', async () => {
-  const sources = await desktopCapturer.getSources({ types: ['screen'] });
-  return sources;
+// IPC: capture screenshot
+ipcMain.handle('capture-screen', async () => {
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } });
+  return sources[0].thumbnail.toDataURL();
 });
 
+// IPC: perform OCR
+ipcMain.handle('perform-ocr', async (event, image) => {
+  const Tesseract = require('tesseract.js');
+  const { data: { text } } = await Tesseract.recognize(image, 'eng');
+  return text;
+});
 
+// IPC: ChatGPT
+ipcMain.handle('ask-chatgpt', async (event, question) => {
+  try {
+    const resp = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: 'You are a coding interview tutor. Provide explanation, clean Python code, and time/space complexity.' },
+        { role: 'user', content: question }
+      ]
+    }, { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' } });
+    return resp.data.choices[0].message.content;
+  } catch (err) {
+    if (err.response && err.response.status === 429) return '⚠️ Rate limit exceeded. Please try later.';
+    return '⚠️ ChatGPT request failed: ' + err.message;
+  }
+});

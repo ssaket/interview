@@ -2,15 +2,24 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Overlay ChatGPT Helper</title>
+  <title>Overlay GPT Helper</title>
   <style>
-    body { background: rgba(0,0,0,0.3); color: white; font-family: sans-serif; }
-    #output { white-space: pre-wrap; margin-top: 20px; }
+    html, body { margin:0; padding:0; background:transparent; overflow:hidden; }
+    #container { position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.3); color:#eee; font-family:sans-serif; padding:10px; user-select:none; }
+    #output { white-space:pre-wrap; margin-top:10px; }
+    #screenshot { max-width:100%; margin-top:10px; border:1px solid #555; }
+    p { margin:0; padding:0; }
   </style>
 </head>
 <body>
-  <h2>Press Ctrl+Shift+S to Capture</h2>
-  <div id="output"></div>
+  <div id="container">
+    <h2>Overlay GPT Helper</h2>
+    <p>Press ⌘+Shift+S to capture</p>
+    <p>Use ⌘+←/→/↑/↓ to move window</p>
+    <p>Press ⌘+B to hide/show app</p>
+    <div id="output">Waiting for action...</div>
+    <img id="screenshot" style="display:none" />
+  </div>
   <script src="renderer.js"></script>
 </body>
 </html>
