@@ -91,33 +91,35 @@ ipcMain.handle("perform-ocr", async (event, image) => {
 });
 
 // IPC: ChatGPT
+const { InferenceClient } = require("@huggingface/inference");
+const hfClient = new InferenceClient(process.env.HF_TOKEN);
+
 ipcMain.handle("ask-chatgpt", async (event, question) => {
   try {
-    const resp = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a coding interview tutor. Provide explanation, clean Python code, and time/space complexity.",
-          },
-          { role: "user", content: question },
-        ],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
+    const chatCompletion = await hfClient.chatCompletion({
+      provider: process.env.HF_PROVIDER || "hyperbolic",
+      model: process.env.HF_MODEL || "deepseek-ai/DeepSeek-R1-0528",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a coding interview tutor. Provide explanation, clean Python code, and time/space complexity.",
         },
-      }
-    );
-    return resp.data.choices[0].message.content;
+        { role: "user", content: question },
+      ],
+      stream: false,
+    });
+    const choice = chatCompletion.choices[0].message;
+    // message could be string or object
+    return typeof choice === "string"
+      ? choice
+      : choice.content || JSON.stringify(choice);
   } catch (err) {
-    if (err.response && err.response.status === 429)
-      return "⚠️ Rate limit exceeded. Please try later.";
-    return "⚠️ ChatGPT request failed: " + err.message;
+    console.error("InferenceClient error:", err);
+    if (err.status === 429 || (err.response && err.response.status === 429)) {
+      return "⚠️ Rate limit exceeded. Please try again later.";
+    }
+    return "⚠️ Model inference failed: " + (err.message || err);
   }
 });
 

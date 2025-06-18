@@ -2,19 +2,47 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Overlay GPT Helper</title>
+  <title>Overlay DeepSeek Helper</title>
   <style>
-    html, body { margin:0; padding:0; background:transparent; overflow:hidden; }
-    #container { position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.3); color:#eee; font-family:sans-serif; padding:10px; user-select:none; }
-    #output { white-space:pre-wrap; margin-top:10px; }
-    #screenshot { max-width:100%; margin-top:10px; border:1px solid #555; }
-    p { margin:0; padding:0; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      overflow: hidden;
+      height: 100%;
+    }
+    #container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.3);
+      color: #eee;
+      font-family: sans-serif;
+      padding: 10px;
+      user-select: none;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    #output {
+      white-space: pre-wrap;
+      margin-top: 10px;
+    }
+    #screenshot {
+      max-width: 100%;
+      margin-top: 10px;
+      border: 1px solid #555;
+    }
+    p {
+      margin: 5px 0;
+    }
   </style>
 </head>
 <body>
   <div id="container">
-    <h2>Overlay GPT Helper</h2>
-    <p>Press ⌘+Shift+S to capture</p>
+    <h2>Overlay DeepSeek Helper</h2>
+    <p>Press ⌘+Shift+S to capture screen</p>
     <p>Use ⌘+←/→/↑/↓ to move window</p>
     <p>Press ⌘+B to hide/show app</p>
     <div id="output">Waiting for action...</div>
