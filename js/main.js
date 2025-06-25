@@ -25,7 +25,42 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
+    show: true,
+    fullscreenable: false,
+    backgroundColor: "#00000000",
+    focusable: false,
+    skipTaskbar: true,
+    type: "panel",
+    paintWhenInitiallyHidden: true,
+    titleBarStyle: "hidden",
+    enableLargerThanScreen: true,
+    movable: true,
   });
+
+  mainWindow.setContentProtection(true);
+
+  mainWindow.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+  });
+  mainWindow.setAlwaysOnTop(true, "screen-saver", 1);
+
+  // Additional screen capture resistance settings
+  if (process.platform === "darwin") {
+    // Prevent window from being captured in screenshots
+    mainWindow.setHiddenInMissionControl(true);
+    mainWindow.setWindowButtonVisibility(false);
+    mainWindow.setBackgroundColor("#00000000");
+
+    // Prevent window from being included in window switcher
+    mainWindow.setSkipTaskbar(true);
+
+    // Disable window shadow
+    mainWindow.setHasShadow(false);
+  }
+
+  // Prevent the window from being captured by screen recording
+  mainWindow.webContents.setBackgroundThrottling(false);
+  mainWindow.webContents.setFrameRate(60);
 
   mainWindow.loadFile("index.html");
 }
@@ -140,7 +175,7 @@ ipcMain.handle("capture-screen-region", async (event) => {
   // Crop the image to the region behind overlay window
   try {
     const fullImage = nativeImage.createFromDataURL(
-      sources[0].thumbnail.toDataURL(),
+      sources[0].thumbnail.toDataURL()
     );
 
     const croppedImage = fullImage.crop({
@@ -180,7 +215,7 @@ ipcMain.handle("perform-ocr", async (event, image) => {
     });
 
     console.log(
-      `OCR cleaned: ${text.length} chars -> ${finalText.length} chars`,
+      `OCR cleaned: ${text.length} chars -> ${finalText.length} chars`
     );
   } else {
     console.log(`OCR raw text: ${text.length} chars (filtering disabled)`);
@@ -273,7 +308,7 @@ ipcMain.handle("transcribe-audio", async (evt, b64) => {
         "Content-Type": "audio/webm",
       },
       params: { model: "whisper-1" },
-    },
+    }
   );
   return resp.data.text;
 });
