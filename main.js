@@ -74,10 +74,15 @@ app.on("window-all-closed", () => {
 
 // IPC: capture screenshot
 ipcMain.handle("capture-screen", async () => {
+  mainWindow.webContents.send("hide-ui");
+  await new Promise((r) => setTimeout(r, 100));
+
   const sources = await desktopCapturer.getSources({
     types: ["screen"],
     thumbnailSize: { width: 1920, height: 1080 },
   });
+
+  mainWindow.webContents.send("show-ui");
   return sources[0].thumbnail.toDataURL();
 });
 

@@ -101,6 +101,16 @@ function stopAudioCapture() {
 ipcRenderer.on("start-audio", startAudioCapture);
 ipcRenderer.on("stop-audio", stopAudioCapture);
 
+// Listen for hide/show commands
+ipcRenderer.on("hide-ui", () => {
+  document.getElementById("container").style.display = "none";
+  // document.getElementById("selLayer").style.display = "none";
+});
+ipcRenderer.on("show-ui", () => {
+  document.getElementById("container").style.display = "block";
+  // Leave selLayer hidden unless region mode is active
+});
+
 // Keyboard scrolling with Option + Arrow keys
 // Keyboard scrolling with Option (Alt) + Arrow/Page
 const SCROLL_AMOUNT = 50;
