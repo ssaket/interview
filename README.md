@@ -5,8 +5,10 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 ## Features
 
 ### Core Functionality
-- **Screenshot Capture**: Capture any part of your screen for analysis
-- **OCR Processing**: Extract text from screenshots using Tesseract.js
+- **Screenshot Capture**: Capture full screen or selected regions for analysis
+- **Region Selection**: Click and drag to capture specific areas instead of full screen
+- **OCR Processing**: Extract text from screenshots using Tesseract.js with intelligent filtering
+- **Smart Text Cleaning**: Remove UI junk and irrelevant text before sending to AI
 - **AI Integration**: Query ChatGPT/DeepSeek models for coding assistance
 - **Session Management**: Maintain conversation context across multiple questions
 - **Audio Transcription**: Record and transcribe audio using Whisper API
@@ -55,7 +57,8 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 
 | Shortcut | Action |
 |----------|--------|
-| `⌘+Shift+S` | Capture screenshot and analyze |
+| `⌘+Shift+S` | Capture full screen and analyze |
+| `⌘+Shift+A` | Select region to capture and analyze |
 | `⌘+←/→/↑/↓` | Move overlay window |
 | `⌘+B` | Hide/show application |
 | `⌘+Shift+R` | Reset session (clear context) |
@@ -67,10 +70,12 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 ### Workflow
 
 1. **Position the overlay** where you want it on screen
-2. **Capture content** using `⌘+Shift+S` when you see a coding problem
+2. **Capture content**:
+   - Use `⌘+Shift+S` for full screen capture
+   - Use `⌘+Shift+A` to select a specific region - reduces OCR noise!
 3. **Review the formatted response** with highlighted code and concise explanations
 4. **Ask follow-up questions** - the AI will remember previous context in the session
-5. **Reset session** using `⌘+Shift+R` or the reset button when starting a new topic
+5. **Reset session** using `⌘+Shift+R` when starting a new topic
 6. **Navigate** through long responses using keyboard shortcuts
 
 ## Session Management
@@ -112,6 +117,62 @@ Response: Edge cases for binary search (builds on previous context)
 
 Screenshot 4: "What is merge sort?"
 Response: Fresh explanation of merge sort (no binary search context)
+```
+
+## OCR Text Cleaning
+
+The application includes intelligent OCR text cleaning to remove junk and irrelevant content that can confuse the AI.
+
+### What Gets Filtered Out
+
+- **UI Elements**: Menu items (File, Edit, View), browser controls, system notifications
+- **System Junk**: Time stamps, battery indicators, WiFi status, app names
+- **OCR Artifacts**: Single characters, special character lines, corrupted text
+- **Short Fragments**: Very short lines that don't contain meaningful content
+- **Common Patterns**: URLs, single letters/digits, punctuation-only lines
+
+### What Gets Preserved
+
+- **Code Content**: Function definitions, class declarations, code blocks
+- **Questions**: Problem statements, interview questions, technical queries  
+- **Technical Terms**: Algorithm names, complexity analysis, programming concepts
+- **Mathematical Content**: Formulas, equations, numeric expressions
+- **Documentation**: Comments, explanations, technical descriptions
+
+### Smart Detection
+
+The cleaner uses pattern matching to identify:
+- Programming keywords and structures
+- Question indicators ("What is...", "How do...", "?")
+- Technical terminology and complexity analysis
+- Code characteristics (indentation, brackets, function calls)
+
+### Region Selection Benefits
+
+Using region selection (`⌘+Shift+A`) instead of full screen capture:
+- **Reduces noise**: Less irrelevant UI elements in OCR
+- **Improves accuracy**: Focused on specific content area
+- **Faster processing**: Smaller images process quicker
+- **Better results**: AI gets cleaner, more relevant text input
+
+### Example Cleaning
+
+**Before (Raw OCR):**
+```
+File Edit View Window Help
+What is binary search?
+def binary_search(arr, target):
+    left, right = 0, len(arr) - 1
+Chrome Safari Settings
+WiFi Battery 85% 2:34 PM
+Copy Paste Cut
+```
+
+**After (Cleaned):**
+```
+What is binary search?
+def binary_search(arr, target):
+    left, right = 0, len(arr) - 1
 ```
 
 ## Response Formatting
@@ -203,6 +264,18 @@ This will test:
 - Keyboard session reset functionality
 - Memory management for long conversations
 
+Test OCR text cleaning:
+```bash
+node test-ocr-cleaner.js
+```
+
+This will test:
+- UI junk filtering accuracy
+- Code and question preservation
+- Edge case handling
+- Different cleaning option configurations
+- Performance and reduction statistics
+
 ## Project Structure
 
 ```
@@ -214,6 +287,9 @@ interview/
 ├── preload.js        # Electron preload script
 ├── test-formatter.js # Formatter test suite
 ├── test-session.js   # Session management tests
+├── test-ocr-cleaner.js # OCR cleaning tests
+├── ocr-cleaner.js    # OCR text cleaning logic
+├── region-selector.js # Region selection functionality
 ├── package.json      # Dependencies
 └── .env             # Environment variables
 ```
@@ -254,11 +330,17 @@ Modify `formatter.js` to adjust:
 
 **OCR not working**: Ensure `eng.traineddata` is in the `assets/` directory
 
+**Poor OCR quality**: Use region selection (`⌘+Shift+A`) instead of full screen to reduce noise
+
 **API errors**: Check your `.env` file and API key validity
 
 **Window positioning**: Use `⌘+←/→/↑/↓` to reposition if overlay is off-screen
 
 **Audio recording fails**: Check microphone permissions in System Preferences
+
+**Region selection not working**: Make sure to click and drag to create a selection area
+
+**Canvas errors**: Ensure the `canvas` package is properly installed with `npm install canvas`
 
 ### Debug Mode
 Enable detailed logging by setting:

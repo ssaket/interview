@@ -3,6 +3,9 @@ const { ipcRenderer } = require("electron");
 let mediaRecorder,
   audioChunks = [];
 
+// Region selector for targeted screenshots
+let regionSelector = null;
+
 // Function to format and highlight DeepSeek responses
 function formatDeepSeekResponse(text) {
   if (!text) return "";
@@ -43,12 +46,222 @@ function formatDeepSeekResponse(text) {
   return `<div class="deepseek-response">${highlighted}</div>`;
 }
 
-ipcRenderer.on("trigger-screenshot", async () => {
+// Region selection functionality
+function initRegionSelector() {
+  if (!regionSelector) {
+    // Define RegionSelector class inline since we can't import it in renderer
+    class RegionSelector {
+      constructor() {
+        this.isSelecting = false;
+        this.startX = 0;
+        this.startY = 0;
+        this.endX = 0;
+        this.endY = 0;
+        this.overlay = null;
+        this.selectionBox = null;
+        this.callback = null;
+      }
+
+      showSelector(callback) {
+        this.callback = callback;
+        this.createOverlay();
+        this.setupEventListeners();
+      }
+
+      createOverlay() {
+        this.hideSelector();
+
+        this.overlay = document.createElement("div");
+        this.overlay.id = "region-selector-overlay";
+        this.overlay.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(0, 0, 0, 0.3);
+          cursor: crosshair;
+          z-index: 9999;
+          user-select: none;
+        `;
+
+        this.selectionBox = document.createElement("div");
+        this.selectionBox.id = "selection-box";
+        this.selectionBox.style.cssText = `
+          position: absolute;
+          border: 2px solid #0066cc;
+          background: rgba(0, 102, 204, 0.1);
+          display: none;
+          pointer-events: none;
+        `;
+
+        const instructions = document.createElement("div");
+        instructions.style.cssText = `
+          position: absolute;
+          top: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          color: white;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          font-size: 16px;
+          font-weight: 500;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+          text-align: center;
+          pointer-events: none;
+        `;
+        instructions.innerHTML = `
+          <div>Click and drag to select region</div>
+          <div style="font-size: 14px; margin-top: 5px; opacity: 0.9;">Press ESC to cancel</div>
+        `;
+
+        this.overlay.appendChild(this.selectionBox);
+        this.overlay.appendChild(instructions);
+        document.body.appendChild(this.overlay);
+      }
+
+      setupEventListeners() {
+        this.overlay.addEventListener(
+          "mousedown",
+          this.handleMouseDown.bind(this),
+        );
+        this.overlay.addEventListener(
+          "mousemove",
+          this.handleMouseMove.bind(this),
+        );
+        this.overlay.addEventListener("mouseup", this.handleMouseUp.bind(this));
+        document.addEventListener("keydown", this.handleKeyDown.bind(this));
+        this.overlay.addEventListener("contextmenu", (e) => e.preventDefault());
+      }
+
+      handleMouseDown(e) {
+        this.isSelecting = true;
+        this.startX = e.clientX;
+        this.startY = e.clientY;
+        this.endX = e.clientX;
+        this.endY = e.clientY;
+        this.selectionBox.style.display = "block";
+        this.updateSelectionBox();
+      }
+
+      handleMouseMove(e) {
+        if (!this.isSelecting) return;
+        this.endX = e.clientX;
+        this.endY = e.clientY;
+        this.updateSelectionBox();
+      }
+
+      handleMouseUp(e) {
+        if (!this.isSelecting) return;
+        this.isSelecting = false;
+        this.endX = e.clientX;
+        this.endY = e.clientY;
+
+        const bounds = this.getSelectionBounds();
+        if (bounds.width >= 20 && bounds.height >= 20) {
+          this.completeSelection(bounds);
+        } else {
+          this.showError("Selection too small. Please select a larger area.");
+        }
+      }
+
+      handleKeyDown(e) {
+        if (e.key === "Escape") {
+          this.cancelSelection();
+        }
+      }
+
+      updateSelectionBox() {
+        const bounds = this.getSelectionBounds();
+        this.selectionBox.style.left = bounds.x + "px";
+        this.selectionBox.style.top = bounds.y + "px";
+        this.selectionBox.style.width = bounds.width + "px";
+        this.selectionBox.style.height = bounds.height + "px";
+      }
+
+      getSelectionBounds() {
+        const x = Math.min(this.startX, this.endX);
+        const y = Math.min(this.startY, this.endY);
+        const width = Math.abs(this.endX - this.startX);
+        const height = Math.abs(this.endY - this.startY);
+        return { x, y, width, height };
+      }
+
+      completeSelection(bounds) {
+        this.hideSelector();
+        if (this.callback) {
+          const scale = window.devicePixelRatio || 1;
+          const scaledBounds = {
+            x: Math.round(bounds.x * scale),
+            y: Math.round(bounds.y * scale),
+            width: Math.round(bounds.width * scale),
+            height: Math.round(bounds.height * scale),
+          };
+          this.callback(scaledBounds);
+        }
+      }
+
+      cancelSelection() {
+        this.hideSelector();
+        if (this.callback) {
+          this.callback(null);
+        }
+      }
+
+      showError(message) {
+        const errorDiv = document.createElement("div");
+        errorDiv.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(255, 0, 0, 0.9);
+          color: white;
+          padding: 12px 20px;
+          border-radius: 6px;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          font-size: 14px;
+          font-weight: 500;
+          text-align: center;
+          pointer-events: none;
+          z-index: 10000;
+        `;
+        errorDiv.textContent = message;
+        this.overlay.appendChild(errorDiv);
+        setTimeout(() => {
+          if (errorDiv.parentNode) {
+            errorDiv.parentNode.removeChild(errorDiv);
+          }
+        }, 2000);
+      }
+
+      hideSelector() {
+        if (this.overlay) {
+          document.body.removeChild(this.overlay);
+          this.overlay = null;
+          this.selectionBox = null;
+        }
+        document.removeEventListener("keydown", this.handleKeyDown.bind(this));
+        this.isSelecting = false;
+      }
+
+      isActive() {
+        return this.overlay !== null;
+      }
+    }
+
+    regionSelector = new RegionSelector();
+  }
+  return regionSelector;
+}
+
+async function captureScreenshot(region = null) {
   const output = document.getElementById("output");
   const img = document.getElementById("screenshot");
 
   output.textContent = "Capturing screen...";
-  const image = await ipcRenderer.invoke("capture-screen");
+  const image = region
+    ? await ipcRenderer.invoke("capture-screen-region", region)
+    : await ipcRenderer.invoke("capture-screen");
 
   img.src = image;
   img.style.display = "block";
@@ -72,6 +285,25 @@ ipcRenderer.on("trigger-screenshot", async () => {
   output.innerHTML = formatDeepSeekResponse(answer);
   // Scroll to top when new answer arrives
   container.scrollTop = 0;
+}
+
+ipcRenderer.on("trigger-screenshot", async () => {
+  await captureScreenshot();
+});
+
+ipcRenderer.on("trigger-region-screenshot", async () => {
+  const selector = initRegionSelector();
+  const output = document.getElementById("output");
+
+  output.textContent = "Select region to capture...";
+
+  selector.showSelector(async (region) => {
+    if (region) {
+      await captureScreenshot(region);
+    } else {
+      output.textContent = "Region selection cancelled.";
+    }
+  });
 });
 
 // Call this when you want to start recording (e.g. hotkey or button)

@@ -4,6 +4,7 @@ const {
   globalShortcut,
   ipcMain,
   desktopCapturer,
+  nativeImage,
 } = require("electron");
 const axios = require("axios");
 require("dotenv").config();
@@ -33,6 +34,11 @@ app.whenReady().then(() => {
   // Capture shortcut
   globalShortcut.register("Command+Shift+S", () => {
     mainWindow.webContents.send("trigger-screenshot");
+  });
+
+  // Region capture shortcut
+  globalShortcut.register("Command+Shift+A", () => {
+    mainWindow.webContents.send("trigger-region-screenshot");
   });
 
   // Movement shortcuts (Cmd + Arrow)
@@ -93,13 +99,64 @@ ipcMain.handle("capture-screen", async () => {
   return sources[0].thumbnail.toDataURL();
 });
 
+// IPC: capture screen region
+ipcMain.handle("capture-screen-region", async (event, region) => {
+  mainWindow.webContents.send("hide-ui");
+  await new Promise((r) => setTimeout(r, 100));
+
+  const sources = await desktopCapturer.getSources({
+    types: ["screen"],
+    thumbnailSize: { width: 1920, height: 1080 },
+  });
+
+  mainWindow.webContents.send("show-ui");
+
+  if (!region) {
+    return sources[0].thumbnail.toDataURL();
+  }
+
+  // Crop the image to the specified region using Electron's nativeImage
+  try {
+    const fullImage = nativeImage.createFromDataURL(
+      sources[0].thumbnail.toDataURL(),
+    );
+    const croppedImage = fullImage.crop({
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+    });
+
+    return croppedImage.toDataURL();
+  } catch (error) {
+    console.error("Error cropping image:", error);
+    return sources[0].thumbnail.toDataURL(); // Fallback to full screenshot
+  }
+});
+
 // IPC: perform OCR
 ipcMain.handle("perform-ocr", async (event, image) => {
   const Tesseract = require("tesseract.js");
+  const OCRCleaner = require("./ocr-cleaner");
+
   const {
     data: { text },
   } = await Tesseract.recognize(image, "eng");
-  return text;
+
+  // Clean the OCR text to remove junk and irrelevant content
+  const cleaner = new OCRCleaner();
+  const cleanedText = cleaner.cleanText(text, {
+    minLineLength: 3,
+    maxLines: 30,
+    preserveCoding: true,
+    preserveQuestions: true,
+    removeCommonUI: true,
+  });
+
+  console.log(
+    `OCR cleaned: ${text.length} chars -> ${cleanedText.length} chars`,
+  );
+  return cleanedText;
 });
 
 // IPC: ChatGPT
