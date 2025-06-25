@@ -5,6 +5,7 @@ const {
   ipcMain,
   desktopCapturer,
   nativeImage,
+  screen,
 } = require("electron");
 const axios = require("axios");
 require("dotenv").config();
@@ -36,9 +37,9 @@ app.whenReady().then(() => {
     mainWindow.webContents.send("trigger-screenshot");
   });
 
-  // Region capture shortcut
+  // Capture behind overlay shortcut
   globalShortcut.register("Command+Shift+A", () => {
-    mainWindow.webContents.send("trigger-region-screenshot");
+    mainWindow.webContents.send("trigger-overlay-region-screenshot");
   });
 
   // Movement shortcuts (Cmd + Arrow)
@@ -99,27 +100,41 @@ ipcMain.handle("capture-screen", async () => {
   return sources[0].thumbnail.toDataURL();
 });
 
-// IPC: capture screen region
-ipcMain.handle("capture-screen-region", async (event, region) => {
+// IPC: capture screen region behind overlay window
+ipcMain.handle("capture-screen-region", async (event) => {
   mainWindow.webContents.send("hide-ui");
   await new Promise((r) => setTimeout(r, 100));
 
+  // Get overlay window position and size
+  const [windowX, windowY] = mainWindow.getPosition();
+  const [windowWidth, windowHeight] = mainWindow.getSize();
+
+  // Get actual screen dimensions
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
+
+  // Use screen resolution for capture to avoid scaling issues
   const sources = await desktopCapturer.getSources({
     types: ["screen"],
-    thumbnailSize: { width: 1920, height: 1080 },
+    thumbnailSize: { width: screenWidth, height: screenHeight },
   });
 
   mainWindow.webContents.send("show-ui");
 
-  if (!region) {
-    return sources[0].thumbnail.toDataURL();
-  }
+  // Define region as the area behind the overlay window
+  const region = {
+    x: windowX,
+    y: windowY,
+    width: windowWidth,
+    height: windowHeight,
+  };
 
-  // Crop the image to the specified region using Electron's nativeImage
+  // Crop the image to the region behind overlay window
   try {
     const fullImage = nativeImage.createFromDataURL(
       sources[0].thumbnail.toDataURL(),
     );
+
     const croppedImage = fullImage.crop({
       x: region.x,
       y: region.y,
