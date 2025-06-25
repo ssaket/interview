@@ -59,6 +59,14 @@ ipcRenderer.on("trigger-screenshot", async () => {
   output.textContent = `Extracted:\n${text}\n\nQuerying model...`;
   const answer = await ipcRenderer.invoke("ask-chatgpt", text);
 
+  // Hide all UI elements except the response
+  const title = document.querySelector("h2");
+  const instructions = document.querySelectorAll("p");
+
+  if (title) title.style.display = "none";
+  instructions.forEach((p) => (p.style.display = "none"));
+  img.style.display = "none";
+
   // Format and highlight the DeepSeek response
   console.info(answer);
   output.innerHTML = formatDeepSeekResponse(answer);
