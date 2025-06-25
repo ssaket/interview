@@ -10,20 +10,34 @@ const {
 const axios = require("axios");
 require("dotenv").config();
 
+// -- Global variables -----------------------------------------------------
+let mainWindow;
+let ocrFilteringEnabled = true; // Default: filtering ON
+// Session management
+
+const session = {
+  history: [],
+  active: false,
+};
 // -- Helper functions ----------------------------------------------------
 
 function registerShortcuts(mainWindow) {
   // Capture shortcuts
-  const moveStep = 20, resizeStep = 50;
+  const moveStep = 20,
+    resizeStep = 50;
   // Screenshot shortcuts
-  globalShortcut.register("Command+Shift+S", () => mainWindow.webContents.send("trigger-screenshot"));
-  globalShortcut.register("Command+Shift+A", () => mainWindow.webContents.send("trigger-overlay-region-screenshot"));
+  globalShortcut.register("Command+Shift+S", () =>
+    mainWindow.webContents.send("trigger-screenshot")
+  );
+  globalShortcut.register("Command+Shift+A", () =>
+    mainWindow.webContents.send("trigger-overlay-region-screenshot")
+  );
   // Movement
-  ["Left","Right","Up","Down"].forEach(dir => {
+  ["Left", "Right", "Up", "Down"].forEach((dir) => {
     globalShortcut.register(`Command+${dir}`, () => {
-      const [x,y] = mainWindow.getPosition();
+      const [x, y] = mainWindow.getPosition();
       const dx = dir === "Left" ? -moveStep : dir === "Right" ? moveStep : 0;
-      const dy = dir === "Up"   ? -moveStep : dir === "Down"  ? moveStep : 0;
+      const dy = dir === "Up" ? -moveStep : dir === "Down" ? moveStep : 0;
       mainWindow.setPosition(x + dx, y + dy);
     });
   });
@@ -116,14 +130,20 @@ function registerShortcuts(mainWindow) {
     console.log("================================\n");
   });
   // Visibility toggle
-  globalShortcut.register("Command+B", () => mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show());
+  globalShortcut.register("Command+B", () =>
+    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
+  );
   // Audio
-  globalShortcut.register("Command+R", () => mainWindow.webContents.send("start-audio"));
-  globalShortcut.register("Command+T", () => mainWindow.webContents.send("stop-audio"));
+  globalShortcut.register("Command+R", () =>
+    mainWindow.webContents.send("start-audio")
+  );
+  globalShortcut.register("Command+T", () =>
+    mainWindow.webContents.send("stop-audio")
+  );
   // Session & OCR toggles
   globalShortcut.register("Command+Shift+R", () => {
-    sessionHistory = [];
-    sessionActive = false;
+    session.history = [];
+    session.active = false;
     mainWindow.webContents.send("session-reset");
   });
   globalShortcut.register("Command+Shift+F", () => {
@@ -148,8 +168,11 @@ function registerShortcuts(mainWindow) {
 function registerIpcHandlers(mainWindow) {
   ipcMain.handle("capture-screen", async () => {
     mainWindow.webContents.send("hide-ui");
-    await new Promise(r => setTimeout(r, 100));
-    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1920, height: 1080 } });
+    await new Promise((r) => setTimeout(r, 100));
+    const sources = await desktopCapturer.getSources({
+      types: ["screen"],
+      thumbnailSize: { width: 1920, height: 1080 },
+    });
     mainWindow.webContents.send("show-ui");
     return sources[0].thumbnail.toDataURL();
   });
@@ -232,7 +255,7 @@ function registerIpcHandlers(mainWindow) {
           role: "system",
           content: SYSTEM_PROMPT,
         },
-        ...sessionHistory,
+        ...session.history,
         { role: "user", content: question },
       ];
       let chatCompletion;
@@ -261,12 +284,12 @@ function registerIpcHandlers(mainWindow) {
           ? choice
           : choice.content || JSON.stringify(choice);
       // Add to session history
-      sessionHistory.push({ role: "user", content: question });
-      sessionHistory.push({ role: "assistant", content: rawResponse });
-      sessionActive = true;
+      session.history.push({ role: "user", content: question });
+      session.history.push({ role: "assistant", content: rawResponse });
+      session.active = true;
       // Keep only last 10 exchanges (20 messages) to prevent context overflow
-      if (sessionHistory.length > 20) {
-        sessionHistory = sessionHistory.slice(-20);
+      if (session.history.length > 20) {
+        session.history = session.history.slice(-20);
       }
       // Notify UI that processing is complete
       if (isOllama) {
@@ -302,7 +325,10 @@ function registerIpcHandlers(mainWindow) {
           return formatter.formatResponse(errorMsg).text;
         }
       } else {
-        if (err.status === 429 || (err.response && err.response.status === 429)) {
+        if (
+          err.status === 429 ||
+          (err.response && err.response.status === 429)
+        ) {
           const errorMsg = "⚠️ Rate limit exceeded. Please try again later.";
           return formatter.formatResponse(errorMsg).text;
         }
@@ -380,7 +406,7 @@ function registerIpcHandlers(mainWindow) {
             success: true,
             provider: result.provider,
             isOllama: result.isOllama,
-            sessionPreserved: sessionHistory.length,
+            sessionPreserved: session.history.length,
             model: result.isOllama
               ? process.env.OLLAMA_MODEL || "deepseek-r1"
               : process.env.HF_MODEL || "deepseek-ai/DeepSeek-R1-0528",
@@ -398,7 +424,7 @@ function registerIpcHandlers(mainWindow) {
           success: true,
           provider: currentProvider,
           isOllama: isOllama,
-          sessionPreserved: sessionHistory.length,
+          sessionPreserved: session.history.length,
           model: isOllama
             ? process.env.OLLAMA_MODEL || "deepseek-r1"
             : process.env.HF_MODEL || "deepseek-ai/DeepSeek-R1-0528",
@@ -474,9 +500,6 @@ function initializeAIClient(provider = currentProvider) {
 }
 // ------------------------------------------------------------------------
 
-let mainWindow;
-let ocrFilteringEnabled = true; // Default: filtering ON
-
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
@@ -530,7 +553,9 @@ app.whenReady().then(() => {
   registerShortcuts(mainWindow);
   registerIpcHandlers(mainWindow);
   initializeAIClient();
-  app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
 });
 
 app.on("before-quit", () => {
@@ -542,7 +567,6 @@ app.on("window-all-closed", () => {
   globalShortcut.unregisterAll();
   if (process.platform !== "darwin") app.quit();
 });
-
 
 const { InferenceClient } = require("@huggingface/inference");
 const OllamaClient = require("./ollama-client");
@@ -576,19 +600,15 @@ if (
     "You are a coding interview tutor. The input may have errors or junk from OCR—ignore those. Provide:\n1. Clear, beginner-friendly explanation\n2. Clean Python code\n3. Time and space complexity\nResponses should be structured and easy to follow.\nReference previous context appropriately.";
 }
 
-// Session management
-let sessionHistory = [];
-let sessionActive = false;
-
 function switchAIProvider() {
   const newProvider = isOllama ? "huggingface" : "ollama";
   console.log(`Switching from ${currentProvider} to ${newProvider}...`);
-  console.log(`Session history preserved: ${sessionHistory.length} messages`);
+  console.log(`Session history preserved: ${session.history.length} messages`);
   // Notify UI about the switch
   mainWindow.webContents.send("provider-switching", {
     from: currentProvider,
     to: newProvider,
-    sessionLength: sessionHistory.length,
+    sessionLength: session.history.length,
   });
   try {
     const result = initializeAIClient(newProvider);
@@ -596,14 +616,14 @@ function switchAIProvider() {
     mainWindow.webContents.send("provider-switched", {
       provider: result.provider,
       isOllama: result.isOllama,
-      sessionPreserved: sessionHistory.length,
+      sessionPreserved: session.history.length,
       model: result.isOllama
         ? process.env.OLLAMA_MODEL || "deepseek-r1"
         : process.env.HF_MODEL || "deepseek-ai/DeepSeek-R1-0528",
     });
     console.log(`✅ Successfully switched to ${newProvider}`);
     console.log(
-      `📚 Session history preserved: ${sessionHistory.length} messages`
+      `📚 Session history preserved: ${session.history.length} messages`
     );
   } catch (error) {
     console.error("❌ Failed to switch provider:", error.message);
