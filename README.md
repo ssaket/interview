@@ -195,7 +195,7 @@ Modify `formatter.js` to adjust:
 
 ### Common Issues
 
-**OCR not working**: Ensure `eng.traineddata` is in the project directory
+**OCR not working**: Ensure `eng.traineddata` is in the `assets/` directory
 
 **API errors**: Check your `.env` file and API key validity
 

@@ -3,8 +3,8 @@ const { ipcRenderer } = require("electron");
 let mediaRecorder,
   audioChunks = [];
 
-// Function to add basic highlighting to text responses
-function highlightResponse(text) {
+// Function to format and highlight DeepSeek responses
+function formatDeepSeekResponse(text) {
   if (!text) return "";
 
   // Escape HTML first
@@ -13,16 +13,22 @@ function highlightResponse(text) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // Highlight code blocks
+  // Highlight code blocks with language labels
   highlighted = highlighted.replace(
     /\[([A-Z]+) CODE\]\n([\s\S]*?)\n\[\/CODE\]/g,
-    '<div class="code-highlight"><div style="color: #87ceeb; font-size: 11px; margin-bottom: 4px;">$1</div>$2</div>',
+    '<div class="code-section"><div class="code-language">$1</div><pre class="code-block"><code>$2</code></pre></div>',
   );
 
   // Highlight complexity analysis
   highlighted = highlighted.replace(
     /📊 (.*?(?:Time|Space).*?Complexity.*?O\([^)]+\).*?)$/gm,
-    '<span class="complexity-highlight">📊 $1</span>',
+    '<div class="complexity-section"><span class="complexity-icon">📊</span><span class="complexity-text">$1</span></div>',
+  );
+
+  // Highlight reasoning sections
+  highlighted = highlighted.replace(
+    /💭 REASONING:\n([\s\S]*?)(?=\n\n|\n$|$)/g,
+    '<div class="thinking-section"><div class="thinking-header">💭 Reasoning Process</div><div class="thinking-content">$1</div></div>',
   );
 
   // Highlight inline code (backticks)
@@ -31,10 +37,10 @@ function highlightResponse(text) {
     '<span class="inline-code">$1</span>',
   );
 
-  // Convert newlines to <br> tags
+  // Convert remaining newlines to <br> tags
   highlighted = highlighted.replace(/\n/g, "<br>");
 
-  return highlighted;
+  return `<div class="deepseek-response">${highlighted}</div>`;
 }
 
 ipcRenderer.on("trigger-screenshot", async () => {
@@ -53,8 +59,9 @@ ipcRenderer.on("trigger-screenshot", async () => {
   output.textContent = `Extracted:\n${text}\n\nQuerying model...`;
   const answer = await ipcRenderer.invoke("ask-chatgpt", text);
 
-  // Only show the answer with highlighting, remove parsed question text
-  output.innerHTML = highlightResponse(answer);
+  // Format and highlight the DeepSeek response
+  console.info(answer);
+  output.innerHTML = formatDeepSeekResponse(answer);
   // Scroll to top when new answer arrives
   container.scrollTop = 0;
 });

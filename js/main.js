@@ -97,9 +97,9 @@ ipcMain.handle("perform-ocr", async (event, image) => {
 
 // IPC: ChatGPT
 const { InferenceClient } = require("@huggingface/inference");
-const ResponseFormatter = require("./formatter");
+const DeepSeekFormatter = require("./formatter");
 const hfClient = new InferenceClient(process.env.HF_TOKEN);
-const formatter = new ResponseFormatter();
+const formatter = new DeepSeekFormatter();
 
 ipcMain.handle("ask-chatgpt", async (event, question) => {
   try {

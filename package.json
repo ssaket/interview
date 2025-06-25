@@ -1,10 +1,14 @@
 {
   "name": "interview",
   "version": "1.0.0",
-  "main": "main.js",
+  "main": "js/main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron ."
+    "start": "electron .",
+    "test": "npm run test:deepseek",
+    "test:deepseek": "node test-deepseek.js",
+    "test:complex": "node test-complex-deepseek.js",
+    "demo": "node demo-final.js",
+    "demo:all": "npm run test:deepseek && echo '\n' && npm run test:complex && echo '\n' && npm run demo"
   },
   "keywords": [],
   "author": "",
