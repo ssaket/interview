@@ -186,6 +186,51 @@ ipcRenderer.on("session-reset", () => {
   // Session reset handled in main process, no UI updates needed
 });
 
+// Listen for provider switching events
+ipcRenderer.on("provider-switching", (event, data) => {
+  const output = document.getElementById("output");
+  output.textContent = `Switching to ${data.to}... (${data.sessionLength} messages preserved)`;
+});
+
+ipcRenderer.on("provider-switched", (event, data) => {
+  const output = document.getElementById("output");
+  const providerName = data.isOllama ? "Ollama" : "HuggingFace";
+  output.textContent = `✅ Switched to ${providerName} (${data.sessionPreserved} messages preserved)`;
+
+  setTimeout(() => {
+    if (output.textContent.includes("Switched to")) {
+      output.textContent = "Waiting for action...";
+    }
+  }, 2000);
+});
+
+ipcRenderer.on("provider-switch-failed", (event, data) => {
+  const output = document.getElementById("output");
+  output.textContent = `❌ Switch failed: ${data.error}`;
+
+  setTimeout(() => {
+    if (output.textContent.includes("Switch failed")) {
+      output.textContent = "Waiting for action...";
+    }
+  }, 3000);
+});
+
+// Listen for AI processing events
+ipcRenderer.on("ai-processing-started", (event, message) => {
+  const output = document.getElementById("output");
+  output.textContent = message || "🤔 AI Processing...";
+});
+
+ipcRenderer.on("ai-processing-complete", (event) => {
+  // Processing complete - response will be shown separately
+});
+
+// Listen for model warmup events
+ipcRenderer.on("model-warmup-started", (event, message) => {
+  const output = document.getElementById("output");
+  output.textContent = message || "🔥 Warming up model...";
+});
+
 // Initialize OCR filtering state when page loads
 document.addEventListener("DOMContentLoaded", () => {
   initOcrFilteringState();

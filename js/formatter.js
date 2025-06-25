@@ -4,13 +4,14 @@ class DeepSeekFormatter {
     this.thinkingPattern = /<think>([\s\S]*?)<\/think>/gi;
     this.codeBlockPattern = /```(\w+)?\n([\s\S]*?)```/g;
     this.complexityPattern = /(?:time|space)\s*complexity[:\s]*o\([^)]+\)/gi;
+    this.markdownSectionPattern = /^###\s*(.+)$/gm;
 
     // Verbose patterns to remove
     this.verbosePatterns = [
       /^(let me|i'll|i will|i can|sure!|certainly!|of course!)/i,
       /^(here's how|here is how|this is how|the way to)/i,
       /^(as you can see|as shown|as demonstrated)/i,
-      /^(i hope this helps|this should help)/i
+      /^(i hope this helps|this should help)/i,
     ];
   }
 
@@ -20,8 +21,8 @@ class DeepSeekFormatter {
    * @returns {object} - {text: string, html: string, hasCode: boolean}
    */
   formatResponse(response) {
-    if (!response || typeof response !== 'string') {
-      return { text: '', html: '', hasCode: false };
+    if (!response || typeof response !== "string") {
+      return { text: "", html: "", hasCode: false };
     }
 
     // Extract all sections
@@ -46,7 +47,8 @@ class DeepSeekFormatter {
       thinking: [],
       code: [],
       complexity: [],
-      explanations: []
+      markdownSections: [],
+      explanations: [],
     };
 
     // Extract thinking sections first
@@ -55,40 +57,86 @@ class DeepSeekFormatter {
 
     while ((thinkingMatch = this.thinkingPattern.exec(response)) !== null) {
       sections.thinking.push({
-        type: 'thinking',
-        content: thinkingMatch[1].trim()
+        type: "thinking",
+        content: thinkingMatch[1].trim(),
       });
     }
 
     // Remove thinking sections from main response
-    cleanResponse = cleanResponse.replace(this.thinkingPattern, '').trim();
+    cleanResponse = cleanResponse.replace(this.thinkingPattern, "").trim();
 
     // Extract code blocks
     let codeMatch;
     while ((codeMatch = this.codeBlockPattern.exec(cleanResponse)) !== null) {
       sections.code.push({
-        type: 'code',
-        language: codeMatch[1] || 'text',
-        content: codeMatch[2].trim()
+        type: "code",
+        language: codeMatch[1] || "text",
+        content: codeMatch[2].trim(),
       });
     }
 
     // Remove code blocks from text for further processing
-    const textWithoutCode = cleanResponse.replace(this.codeBlockPattern, '');
+    let textWithoutCode = cleanResponse.replace(this.codeBlockPattern, "");
+
+    // Extract markdown sections (### headers)
+    const markdownSections = [];
+    let match;
+    while (
+      (match = this.markdownSectionPattern.exec(textWithoutCode)) !== null
+    ) {
+      const header = match[1].trim();
+      const startIndex = match.index;
+      markdownSections.push({
+        header: header,
+        startIndex: startIndex,
+        fullMatch: match[0],
+      });
+    }
+
+    // Process markdown sections and extract their content
+    for (let i = 0; i < markdownSections.length; i++) {
+      const currentSection = markdownSections[i];
+      const nextSection = markdownSections[i + 1];
+
+      // Determine the end of current section
+      const endIndex = nextSection
+        ? nextSection.startIndex
+        : textWithoutCode.length;
+
+      // Extract content between current and next section
+      const sectionContent = textWithoutCode
+        .substring(currentSection.startIndex, endIndex)
+        .replace(currentSection.fullMatch, "") // Remove the header
+        .trim();
+
+      if (sectionContent) {
+        sections.markdownSections.push({
+          type: "markdownSection",
+          header: currentSection.header,
+          content: sectionContent,
+        });
+      }
+    }
+
+    // Remove markdown sections from text for further processing
+    textWithoutCode = textWithoutCode.replace(this.markdownSectionPattern, "");
 
     // Split remaining text into lines for analysis
-    const lines = textWithoutCode.split('\n').map(line => line.trim()).filter(line => line);
+    const lines = textWithoutCode
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line);
 
     for (const line of lines) {
       if (this.complexityPattern.test(line)) {
         sections.complexity.push({
-          type: 'complexity',
-          content: line
+          type: "complexity",
+          content: line,
         });
       } else if (this.isUsefulExplanation(line)) {
         sections.explanations.push({
-          type: 'explanation',
-          content: line
+          type: "explanation",
+          content: line,
         });
       }
     }
@@ -109,12 +157,25 @@ class DeepSeekFormatter {
 
     // Keep lines with substantive content
     const keywords = [
-      'algorithm', 'approach', 'solution', 'method', 'strategy',
-      'implementation', 'steps', 'process', 'technique', 'because',
-      'however', 'therefore', 'first', 'second', 'next', 'finally'
+      "algorithm",
+      "approach",
+      "solution",
+      "method",
+      "strategy",
+      "implementation",
+      "steps",
+      "process",
+      "technique",
+      "because",
+      "however",
+      "therefore",
+      "first",
+      "second",
+      "next",
+      "finally",
     ];
 
-    return keywords.some(keyword => line.toLowerCase().includes(keyword));
+    return keywords.some((keyword) => line.toLowerCase().includes(keyword));
   }
 
   /**
@@ -126,13 +187,16 @@ class DeepSeekFormatter {
     // 1. Code blocks first (most important)
     reordered.push(...sections.code);
 
-    // 2. Complexity analysis second
+    // 2. Markdown sections second (Solution Code, Approach and Time Complexity, etc.)
+    reordered.push(...sections.markdownSections);
+
+    // 3. Complexity analysis third
     reordered.push(...sections.complexity);
 
-    // 3. Main explanations third
+    // 4. Main explanations fourth
     reordered.push(...sections.explanations);
 
-    // 4. Thinking sections last
+    // 5. Thinking sections last
     reordered.push(...sections.thinking);
 
     return reordered;
@@ -146,25 +210,34 @@ class DeepSeekFormatter {
 
     for (const section of sections) {
       switch (section.type) {
-        case 'code':
-          parts.push(`\n[${section.language.toUpperCase()} CODE]\n${section.content}\n[/CODE]\n`);
+        case "code":
+          parts.push(
+            `\n[${section.language.toUpperCase()} CODE]\n${section.content}\n[/CODE]\n`,
+          );
           break;
 
-        case 'complexity':
+        case "markdownSection":
+          parts.push(`\n## ${section.header}\n${section.content}\n`);
+          break;
+
+        case "complexity":
           parts.push(`\n📊 ${section.content}\n`);
           break;
 
-        case 'explanation':
+        case "explanation":
           parts.push(`${section.content}\n`);
           break;
 
-        case 'thinking':
+        case "thinking":
           parts.push(`\n💭 REASONING:\n${section.content}\n`);
           break;
       }
     }
 
-    return parts.join('').replace(/\n{3,}/g, '\n\n').trim();
+    return parts
+      .join("")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   }
 
   /**
@@ -175,8 +248,11 @@ class DeepSeekFormatter {
 
     for (const section of sections) {
       switch (section.type) {
-        case 'code':
-          const highlightedCode = this.highlightCode(section.content, section.language);
+        case "code":
+          const highlightedCode = this.highlightCode(
+            section.content,
+            section.language,
+          );
           parts.push(`
             <div class="code-section">
               <div class="code-language">${section.language}</div>
@@ -185,7 +261,19 @@ class DeepSeekFormatter {
           `);
           break;
 
-        case 'complexity':
+        case "markdownSection":
+          const formattedMarkdownContent = this.formatInlineElements(
+            section.content,
+          );
+          parts.push(`
+            <div class="markdown-section">
+              <div class="markdown-header">${section.header}</div>
+              <div class="markdown-content">${formattedMarkdownContent}</div>
+            </div>
+          `);
+          break;
+
+        case "complexity":
           parts.push(`
             <div class="complexity-section">
               <span class="complexity-icon">📊</span>
@@ -194,12 +282,12 @@ class DeepSeekFormatter {
           `);
           break;
 
-        case 'explanation':
+        case "explanation":
           const formattedText = this.formatInlineElements(section.content);
           parts.push(`<div class="explanation-section">${formattedText}</div>`);
           break;
 
-        case 'thinking':
+        case "thinking":
           const formattedThinking = this.formatInlineElements(section.content);
           parts.push(`
             <div class="thinking-section">
@@ -211,7 +299,7 @@ class DeepSeekFormatter {
       }
     }
 
-    return `<div class="deepseek-response">${parts.join('')}</div>`;
+    return `<div class="deepseek-response">${parts.join("")}</div>`;
   }
 
   /**
@@ -220,15 +308,21 @@ class DeepSeekFormatter {
   highlightCode(code, language) {
     let highlighted = this.escapeHtml(code);
 
-    if (language === 'python' || language === 'py') {
+    if (language === "python" || language === "py") {
       highlighted = highlighted
-        .replace(/\b(def|class|if|else|elif|for|while|try|except|finally|with|import|from|return|yield|lambda|and|or|not|in|is|True|False|None)\b/g, '<span class="keyword">$1</span>')
+        .replace(
+          /\b(def|class|if|else|elif|for|while|try|except|finally|with|import|from|return|yield|lambda|and|or|not|in|is|True|False|None)\b/g,
+          '<span class="keyword">$1</span>',
+        )
         .replace(/\b(\d+)\b/g, '<span class="number">$1</span>')
         .replace(/(["'].*?["'])/g, '<span class="string">$1</span>')
         .replace(/(#.*$)/gm, '<span class="comment">$1</span>');
-    } else if (language === 'javascript' || language === 'js') {
+    } else if (language === "javascript" || language === "js") {
       highlighted = highlighted
-        .replace(/\b(function|const|let|var|if|else|for|while|try|catch|finally|return|class|extends|import|export|async|await|true|false|null|undefined)\b/g, '<span class="keyword">$1</span>')
+        .replace(
+          /\b(function|const|let|var|if|else|for|while|try|catch|finally|return|class|extends|import|export|async|await|true|false|null|undefined)\b/g,
+          '<span class="keyword">$1</span>',
+        )
         .replace(/\b(\d+)\b/g, '<span class="number">$1</span>')
         .replace(/(["'`].*?["'`])/g, '<span class="string">$1</span>')
         .replace(/(\/\/.*$)/gm, '<span class="comment">$1</span>');
@@ -242,8 +336,8 @@ class DeepSeekFormatter {
    */
   formatInlineElements(text) {
     return this.escapeHtml(text)
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.*?)\*/g, "<em>$1</em>")
       .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
   }
 
@@ -252,11 +346,11 @@ class DeepSeekFormatter {
    */
   escapeHtml(text) {
     return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   /**
@@ -382,6 +476,34 @@ class DeepSeekFormatter {
 
       .thinking-content strong {
         color: #ffc107;
+      }
+
+      .markdown-section {
+        margin: 16px 0;
+        background: rgba(33, 150, 243, 0.1);
+        border: 1px solid rgba(33, 150, 243, 0.3);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .markdown-header {
+        background: rgba(33, 150, 243, 0.2);
+        color: #2196f3;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        border-bottom: 1px solid rgba(33, 150, 243, 0.3);
+      }
+
+      .markdown-content {
+        padding: 16px;
+        line-height: 1.6;
+        color: #e0e0e0;
+      }
+
+      .markdown-content strong {
+        color: #2196f3;
+        font-weight: 600;
       }
     `;
   }
