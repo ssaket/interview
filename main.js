@@ -92,7 +92,9 @@ ipcMain.handle("perform-ocr", async (event, image) => {
 
 // IPC: ChatGPT
 const { InferenceClient } = require("@huggingface/inference");
+const ResponseFormatter = require("./formatter");
 const hfClient = new InferenceClient(process.env.HF_TOKEN);
+const formatter = new ResponseFormatter();
 
 ipcMain.handle("ask-chatgpt", async (event, question) => {
   try {
@@ -111,15 +113,22 @@ ipcMain.handle("ask-chatgpt", async (event, question) => {
     });
     const choice = chatCompletion.choices[0].message;
     // message could be string or object
-    return typeof choice === "string"
-      ? choice
-      : choice.content || JSON.stringify(choice);
+    const rawResponse =
+      typeof choice === "string"
+        ? choice
+        : choice.content || JSON.stringify(choice);
+
+    // Format the response for better display
+    const formatted = formatter.formatResponse(rawResponse);
+    return formatted.text; // Return plain text version for the overlay
   } catch (err) {
     console.error("InferenceClient error:", err);
     if (err.status === 429 || (err.response && err.response.status === 429)) {
-      return "⚠️ Rate limit exceeded. Please try again later.";
+      const errorMsg = "⚠️ Rate limit exceeded. Please try again later.";
+      return formatter.formatResponse(errorMsg).text;
     }
-    return "⚠️ Model inference failed: " + (err.message || err);
+    const errorMsg = "⚠️ Model inference failed: " + (err.message || err);
+    return formatter.formatResponse(errorMsg).text;
   }
 });
 
@@ -135,7 +144,7 @@ ipcMain.handle("transcribe-audio", async (evt, b64) => {
         "Content-Type": "audio/webm",
       },
       params: { model: "whisper-1" },
-    }
+    },
   );
   return resp.data.text;
 });

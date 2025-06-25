@@ -3,6 +3,40 @@ const { ipcRenderer } = require("electron");
 let mediaRecorder,
   audioChunks = [];
 
+// Function to add basic highlighting to text responses
+function highlightResponse(text) {
+  if (!text) return "";
+
+  // Escape HTML first
+  let highlighted = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // Highlight code blocks
+  highlighted = highlighted.replace(
+    /\[([A-Z]+) CODE\]\n([\s\S]*?)\n\[\/CODE\]/g,
+    '<div class="code-highlight"><div style="color: #87ceeb; font-size: 11px; margin-bottom: 4px;">$1</div>$2</div>',
+  );
+
+  // Highlight complexity analysis
+  highlighted = highlighted.replace(
+    /📊 (.*?(?:Time|Space).*?Complexity.*?O\([^)]+\).*?)$/gm,
+    '<span class="complexity-highlight">📊 $1</span>',
+  );
+
+  // Highlight inline code (backticks)
+  highlighted = highlighted.replace(
+    /`([^`]+)`/g,
+    '<span class="inline-code">$1</span>',
+  );
+
+  // Convert newlines to <br> tags
+  highlighted = highlighted.replace(/\n/g, "<br>");
+
+  return highlighted;
+}
+
 ipcRenderer.on("trigger-screenshot", async () => {
   const output = document.getElementById("output");
   const img = document.getElementById("screenshot");
@@ -19,8 +53,8 @@ ipcRenderer.on("trigger-screenshot", async () => {
   output.textContent = `Extracted:\n${text}\n\nQuerying model...`;
   const answer = await ipcRenderer.invoke("ask-chatgpt", text);
 
-  // Only show the answer, remove parsed question text
-  output.textContent = answer;
+  // Only show the answer with highlighting, remove parsed question text
+  output.innerHTML = highlightResponse(answer);
   // Scroll to top when new answer arrives
   container.scrollTop = 0;
 });
@@ -53,11 +87,10 @@ function stopAudioCapture() {
       const base64Audio = Buffer.from(arrayBuffer).toString("base64");
       const transcript = await ipcRenderer.invoke(
         "transcribe-audio",
-        base64Audio
+        base64Audio,
       );
-      document.getElementById(
-        "output"
-      ).textContent = `📝 Transcript:\n${transcript}`;
+      document.getElementById("output").textContent =
+        `📝 Transcript:\n${transcript}`;
       resolve();
     };
     mediaRecorder.stop();
