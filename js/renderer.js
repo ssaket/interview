@@ -3,6 +3,9 @@ const { ipcRenderer } = require("electron");
 let mediaRecorder,
   audioChunks = [];
 
+// OCR filtering state
+let ocrFilteringEnabled = true;
+
 // Function to format and highlight DeepSeek responses
 function formatDeepSeekResponse(text) {
   if (!text) return "";
@@ -41,6 +44,34 @@ function formatDeepSeekResponse(text) {
   highlighted = highlighted.replace(/\n/g, "<br>");
 
   return `<div class="deepseek-response">${highlighted}</div>`;
+}
+
+// Function to update OCR filtering indicator
+function updateOcrFilterIndicator(enabled) {
+  const indicator = document.getElementById("ocr-filter-indicator");
+  if (indicator) {
+    indicator.style.display = enabled ? "inline-block" : "none";
+  }
+  ocrFilteringEnabled = enabled;
+}
+
+// Function to toggle OCR filtering
+async function toggleOcrFiltering() {
+  const newState = await ipcRenderer.invoke("toggle-ocr-filtering");
+  updateOcrFilterIndicator(newState);
+  const output = document.getElementById("output");
+  output.textContent = `OCR Filtering: ${newState ? "ON" : "OFF"}`;
+  setTimeout(() => {
+    if (output.textContent.includes("OCR Filtering:")) {
+      output.textContent = "Waiting for action...";
+    }
+  }, 2000);
+}
+
+// Initialize OCR filtering state
+async function initOcrFilteringState() {
+  const state = await ipcRenderer.invoke("get-ocr-filtering-state");
+  updateOcrFilterIndicator(state);
 }
 
 async function captureScreenshot(isRegion = false) {
@@ -84,6 +115,18 @@ ipcRenderer.on("trigger-screenshot", async () => {
 
 ipcRenderer.on("trigger-overlay-region-screenshot", async () => {
   await captureScreenshot(true);
+});
+
+// Listen for OCR filtering changes from main process
+ipcRenderer.on("ocr-filtering-changed", (event, enabled) => {
+  updateOcrFilterIndicator(enabled);
+  const output = document.getElementById("output");
+  output.textContent = `OCR Filtering: ${enabled ? "ON" : "OFF"}`;
+  setTimeout(() => {
+    if (output.textContent.includes("OCR Filtering:")) {
+      output.textContent = "Waiting for action...";
+    }
+  }, 2000);
 });
 
 // Call this when you want to start recording (e.g. hotkey or button)
@@ -141,6 +184,11 @@ ipcRenderer.on("show-ui", () => {
 // Listen for session reset from keyboard shortcut
 ipcRenderer.on("session-reset", () => {
   // Session reset handled in main process, no UI updates needed
+});
+
+// Initialize OCR filtering state when page loads
+document.addEventListener("DOMContentLoaded", () => {
+  initOcrFilteringState();
 });
 
 // Keyboard scrolling with Option + Arrow keys

@@ -11,6 +11,7 @@ const axios = require("axios");
 require("dotenv").config();
 
 let mainWindow;
+let ocrFilteringEnabled = true; // Default: filtering ON
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -75,6 +76,13 @@ app.whenReady().then(() => {
     sessionHistory = [];
     sessionActive = false;
     mainWindow.webContents.send("session-reset");
+  });
+
+  // Toggle OCR filtering shortcut
+  globalShortcut.register("Command+Shift+F", () => {
+    ocrFilteringEnabled = !ocrFilteringEnabled;
+    console.log(`OCR Filtering: ${ocrFilteringEnabled ? "ON" : "OFF"}`);
+    mainWindow.webContents.send("ocr-filtering-changed", ocrFilteringEnabled);
   });
 
   app.on("activate", () => {
@@ -152,26 +160,33 @@ ipcMain.handle("capture-screen-region", async (event) => {
 // IPC: perform OCR
 ipcMain.handle("perform-ocr", async (event, image) => {
   const Tesseract = require("tesseract.js");
-  const OCRCleaner = require("./ocr-cleaner");
 
   const {
     data: { text },
   } = await Tesseract.recognize(image, "eng");
 
-  // Clean the OCR text to remove junk and irrelevant content
-  const cleaner = new OCRCleaner();
-  const cleanedText = cleaner.cleanText(text, {
-    minLineLength: 3,
-    maxLines: 30,
-    preserveCoding: true,
-    preserveQuestions: true,
-    removeCommonUI: true,
-  });
+  let finalText = text;
 
-  console.log(
-    `OCR cleaned: ${text.length} chars -> ${cleanedText.length} chars`,
-  );
-  return cleanedText;
+  if (ocrFilteringEnabled) {
+    // Clean the OCR text using ML-based approach
+    const LLMFriendlyOCRCleaner = require("./llm-friendly-ocr-cleaner");
+    const cleaner = new LLMFriendlyOCRCleaner();
+    finalText = cleaner.cleanText(text, {
+      maxLines: 30,
+      preserveQuestions: true,
+      preserveCode: true,
+      removeJunk: true,
+      logResults: true,
+    });
+
+    console.log(
+      `OCR cleaned: ${text.length} chars -> ${finalText.length} chars`,
+    );
+  } else {
+    console.log(`OCR raw text: ${text.length} chars (filtering disabled)`);
+  }
+
+  return finalText;
 });
 
 // IPC: ChatGPT
@@ -232,6 +247,18 @@ ipcMain.handle("ask-chatgpt", async (event, question) => {
     const errorMsg = "⚠️ Model inference failed: " + (err.message || err);
     return formatter.formatResponse(errorMsg).text;
   }
+});
+
+// IPC: get OCR filtering state
+ipcMain.handle("get-ocr-filtering-state", async () => {
+  return ocrFilteringEnabled;
+});
+
+// IPC: toggle OCR filtering
+ipcMain.handle("toggle-ocr-filtering", async () => {
+  ocrFilteringEnabled = !ocrFilteringEnabled;
+  console.log(`OCR Filtering: ${ocrFilteringEnabled ? "ON" : "OFF"}`);
+  return ocrFilteringEnabled;
 });
 
 ipcMain.handle("transcribe-audio", async (evt, b64) => {
