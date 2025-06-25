@@ -8,6 +8,7 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 - **Screenshot Capture**: Capture any part of your screen for analysis
 - **OCR Processing**: Extract text from screenshots using Tesseract.js
 - **AI Integration**: Query ChatGPT/DeepSeek models for coding assistance
+- **Session Management**: Maintain conversation context across multiple questions
 - **Audio Transcription**: Record and transcribe audio using Whisper API
 - **Overlay Interface**: Always-on-top transparent overlay window
 
@@ -57,6 +58,7 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 | `⌘+Shift+S` | Capture screenshot and analyze |
 | `⌘+←/→/↑/↓` | Move overlay window |
 | `⌘+B` | Hide/show application |
+| `⌘+Shift+R` | Reset session (clear context) |
 | `⌘+R` | Start audio recording |
 | `⌘+T` | Stop audio recording |
 | `Alt+↑/↓` | Scroll response up/down |
@@ -67,7 +69,50 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 1. **Position the overlay** where you want it on screen
 2. **Capture content** using `⌘+Shift+S` when you see a coding problem
 3. **Review the formatted response** with highlighted code and concise explanations
-4. **Navigate** through long responses using keyboard shortcuts
+4. **Ask follow-up questions** - the AI will remember previous context in the session
+5. **Reset session** using `⌘+Shift+R` or the reset button when starting a new topic
+6. **Navigate** through long responses using keyboard shortcuts
+
+## Session Management
+
+The application maintains conversation context across multiple screenshot captures, allowing for natural follow-up questions and contextual responses.
+
+### How Sessions Work
+
+- **Automatic Context**: Each new screenshot/query is added to the current session
+- **Session Indicator**: Visual indicator shows session status and exchange count
+- **Context Preservation**: AI remembers previous questions and answers
+- **Smart Limits**: Keeps last 10 exchanges (20 messages) to prevent context overflow
+
+### Session Controls
+
+- **Keyboard Reset**: Use `⌘+Shift+R` to reset session and clear context
+- **Automatic Context**: Sessions are managed automatically in the background
+
+### Session Workflow
+
+1. **First Question**: Start with any coding problem screenshot
+2. **Follow-up Questions**: Ask "Can you show me the implementation?" or "What about edge cases?"
+3. **Contextual Responses**: AI references previous discussion appropriately
+4. **Reset When Needed**: Use `⌘+Shift+R` to clear context when switching to new topics
+
+### Example Session Flow
+
+```
+Screenshot 1: "What is binary search?"
+Response: Explanation of binary search algorithm
+
+Screenshot 2: "Show me the Python code"
+Response: Python implementation (references previous explanation)
+
+Screenshot 3: "What are the edge cases?"
+Response: Edge cases for binary search (builds on previous context)
+
+[Press ⌘+Shift+R to reset session]
+
+Screenshot 4: "What is merge sort?"
+Response: Fresh explanation of merge sort (no binary search context)
+```
 
 ## Response Formatting
 
@@ -147,6 +192,17 @@ This will run through various test cases and show:
 - Code detection accuracy
 - HTML rendering examples
 
+Test session management:
+```bash
+node test-session.js
+```
+
+This will test:
+- Session initialization and state
+- Context preservation across multiple questions
+- Keyboard session reset functionality
+- Memory management for long conversations
+
 ## Project Structure
 
 ```
@@ -157,6 +213,7 @@ interview/
 ├── index.html        # UI layout and styles
 ├── preload.js        # Electron preload script
 ├── test-formatter.js # Formatter test suite
+├── test-session.js   # Session management tests
 ├── package.json      # Dependencies
 └── .env             # Environment variables
 ```

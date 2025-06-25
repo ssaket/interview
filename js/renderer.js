@@ -126,6 +126,11 @@ ipcRenderer.on("show-ui", () => {
   // Leave selLayer hidden unless region mode is active
 });
 
+// Listen for session reset from keyboard shortcut
+ipcRenderer.on("session-reset", () => {
+  // Session reset handled in main process, no UI updates needed
+});
+
 // Keyboard scrolling with Option + Arrow keys
 // Keyboard scrolling with Option (Alt) + Arrow/Page
 const SCROLL_AMOUNT = 50;

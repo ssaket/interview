@@ -63,6 +63,13 @@ app.whenReady().then(() => {
     mainWindow.webContents.send("stop-audio");
   });
 
+  // Reset session shortcut
+  globalShortcut.register("Command+Shift+R", () => {
+    sessionHistory = [];
+    sessionActive = false;
+    mainWindow.webContents.send("session-reset");
+  });
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -101,19 +108,27 @@ const DeepSeekFormatter = require("./formatter");
 const hfClient = new InferenceClient(process.env.HF_TOKEN);
 const formatter = new DeepSeekFormatter();
 
+// Session management
+let sessionHistory = [];
+let sessionActive = false;
+
 ipcMain.handle("ask-chatgpt", async (event, question) => {
   try {
+    // Build messages array with session history
+    const messages = [
+      {
+        role: "system",
+        content:
+          "You are a coding interview tutor. Provide explanation, clean Python code, and time/space complexity. When answering follow-up questions, reference previous context appropriately.",
+      },
+      ...sessionHistory,
+      { role: "user", content: question },
+    ];
+
     const chatCompletion = await hfClient.chatCompletion({
       provider: process.env.HF_PROVIDER || "hyperbolic",
       model: process.env.HF_MODEL || "deepseek-ai/DeepSeek-R1-0528",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a coding interview tutor. Provide explanation, clean Python code, and time/space complexity.",
-        },
-        { role: "user", content: question },
-      ],
+      messages: messages,
       stream: false,
     });
     const choice = chatCompletion.choices[0].message;
@@ -122,6 +137,16 @@ ipcMain.handle("ask-chatgpt", async (event, question) => {
       typeof choice === "string"
         ? choice
         : choice.content || JSON.stringify(choice);
+
+    // Add to session history
+    sessionHistory.push({ role: "user", content: question });
+    sessionHistory.push({ role: "assistant", content: rawResponse });
+    sessionActive = true;
+
+    // Keep only last 10 exchanges (20 messages) to prevent context overflow
+    if (sessionHistory.length > 20) {
+      sessionHistory = sessionHistory.slice(-20);
+    }
 
     // Format the response for better display
     const formatted = formatter.formatResponse(rawResponse);
