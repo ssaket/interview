@@ -268,28 +268,3 @@ document.addEventListener("DOMContentLoaded", () => {
   initOcrFilteringState();
   initTheme();
 });
-
-// Keyboard scrolling with Option + Arrow keys
-// Keyboard scrolling with Option (Alt) + Arrow/Page
-const SCROLL_AMOUNT = 50;
-document.addEventListener("keydown", (e) => {
-  if (!e.altKey) return;
-  switch (e.key) {
-    case "ArrowDown":
-      container.scrollBy({ top: SCROLL_AMOUNT, behavior: "smooth" });
-      e.preventDefault();
-      break;
-    case "ArrowUp":
-      container.scrollBy({ top: -SCROLL_AMOUNT, behavior: "smooth" });
-      e.preventDefault();
-      break;
-    case "PageDown":
-      container.scrollBy({ top: container.clientHeight, behavior: "smooth" });
-      e.preventDefault();
-      break;
-    case "PageUp":
-      container.scrollBy({ top: -container.clientHeight, behavior: "smooth" });
-      e.preventDefault();
-      break;
-  }
-});

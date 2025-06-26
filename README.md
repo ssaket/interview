@@ -64,8 +64,6 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 | `⌘+Shift+R` | Reset session (clear context) |
 | `⌘+R` | Start audio recording |
 | `⌘+T` | Stop audio recording |
-| `Alt+↑/↓` | Scroll response up/down |
-| `Alt+PageUp/PageDown` | Page up/down in response |
 
 ### Workflow
 
