@@ -14,6 +14,7 @@ require('dotenv').config();
 let mainWindow;
 let ocrFilteringEnabled = true; // Default: filtering ON
 let currentModelName = process.env.OLLAMA_MODEL || 'myaniu/qwen2.5-1m';
+const modelInstances = new Map(); // Map to store model instances
 
 // Available Ollama models
 const ollamaModels = {
@@ -512,22 +513,47 @@ function registerIpcHandlers(mainWindow) {
 
 function initializeAIClient(provider = currentProvider) {
   const providerLower = provider.toLowerCase();
+  const modelName =
+    providerLower === 'ollama'
+      ? process.env.OLLAMA_MODEL || 'deepseek-r1'
+      : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528';
+
+  // Create a unique key for the model instance
+  const instanceKey = `${providerLower}-${modelName}`;
+
+  // Return existing instance if available
+  if (modelInstances.has(instanceKey)) {
+    const instance = modelInstances.get(instanceKey);
+    aiClient = instance.client;
+    isOllama = instance.isOllama;
+    SYSTEM_PROMPT = instance.systemPrompt;
+    currentProvider = provider;
+    return { provider: currentProvider, isOllama };
+  }
+
+  // Create new instance if not exists
+  let newInstance;
   if (providerLower === 'ollama') {
-    aiClient = new OllamaClient(
+    const client = new OllamaClient(
       process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-      process.env.OLLAMA_MODEL || 'deepseek-r1'
+      modelName
     );
-    isOllama = true;
-    // Optional warmup on startup (can be disabled by setting OLLAMA_WARMUP=false)
+    newInstance = {
+      client,
+      isOllama: true,
+      systemPrompt: MODEL_PROMPTS[getModelType(modelName)] || MODEL_PROMPTS.default,
+    };
+
+    // Optional warmup on startup
     if (process.env.OLLAMA_WARMUP !== 'false' && provider === currentProvider) {
       setTimeout(async () => {
         try {
           console.log('Starting model warmup...');
-          await aiClient.warmupModel();
+          await client.warmupModel();
         } catch (error) {
           console.log('Model warmup failed, but continuing:', error.message);
         }
-      }, 2000); // Wait 2 seconds after startup
+      }, 2000);
     }
   } else {
     if (!process.env.HF_TOKEN) {
@@ -535,14 +561,24 @@ function initializeAIClient(provider = currentProvider) {
         'HF_TOKEN not found in environment variables. HuggingFace provider may not work.'
       );
     }
-    aiClient = new InferenceClient(process.env.HF_TOKEN);
-    isOllama = false;
-    console.log(
-      'Using HuggingFace provider with model:',
-      process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528'
-    );
+    const client = new InferenceClient(process.env.HF_TOKEN);
+    newInstance = {
+      client,
+      isOllama: false,
+      systemPrompt: MODEL_PROMPTS[getModelType(modelName)] || MODEL_PROMPTS.default,
+    };
+    console.log('Using HuggingFace provider with model:', modelName);
   }
+
+  // Store the new instance
+  modelInstances.set(instanceKey, newInstance);
+
+  // Set current state
+  aiClient = newInstance.client;
+  isOllama = newInstance.isOllama;
+  SYSTEM_PROMPT = newInstance.systemPrompt;
   currentProvider = provider;
+
   return { provider: currentProvider, isOllama };
 }
 // ------------------------------------------------------------------------
