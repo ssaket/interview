@@ -238,6 +238,20 @@ ipcRenderer.on('model-warmup-started', (event, message) => {
   output.textContent = message || '🔥 Warming up model...';
 });
 
+// Listen for model switch events
+ipcRenderer.on('model-switched', (event, data) => {
+  const output = document.getElementById('output');
+  const exchangeText = data.exchanges === 1 ? 'exchange' : 'exchanges';
+  output.textContent = `🔄 Switched to ${data.model}\n💬 Session preserved: ${data.exchanges} ${exchangeText} (${data.sessionLength} messages)`;
+
+  // Show session status for longer since it has more information
+  setTimeout(() => {
+    if (output.textContent.includes('Switched to')) {
+      output.textContent = 'Waiting for action...';
+    }
+  }, 3000);
+});
+
 // Listen for theme toggle event from main process
 ipcRenderer.on('toggle-theme', () => {
   toggleTheme();

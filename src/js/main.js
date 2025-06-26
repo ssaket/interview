@@ -13,8 +13,12 @@ require('dotenv').config();
 // -- Global variables -----------------------------------------------------
 let mainWindow;
 let ocrFilteringEnabled = true; // Default: filtering ON
-// Session management
+let currentModelName = process.env.OLLAMA_MODEL || 'myaniu/qwen2.5-1m';
 
+// Available Ollama models
+const ollamaModels = ['myaniu/qwen2.5-1m', 'mistral', 'phi4-mini-reasoning'];
+
+// Session management
 const session = {
   history: [],
   active: false,
@@ -23,7 +27,7 @@ const session = {
 
 function registerShortcuts(mainWindow) {
   // Capture shortcuts
-  const moveStep = 20,
+  let moveStep = 20,
     resizeStep = 50;
   // Screenshot shortcuts
   globalShortcut.register('Command+Shift+S', () =>
@@ -47,18 +51,20 @@ function registerShortcuts(mainWindow) {
   const minSize = 200;
   // Make window larger/smaller (uniform scaling)
   globalShortcut.register('Command+Shift+=', () => {
-    const [width, height] = mainWindow.getSize();
-    const newWidth = width + resizeStep;
-    const newHeight = height + resizeStep;
-    mainWindow.setSize(newWidth, newHeight);
-    console.log(`Window resized larger: ${newWidth}x${newHeight}`);
+    // const [width, height] = mainWindow.getSize();
+    // const newWidth = width + resizeStep;
+    // const newHeight = height + resizeStep;
+    // mainWindow.setSize(newWidth, newHeight);
+    // console.log(`Window resized larger: ${newWidth}x${newHeight}`);
+    if (moveStep < 400) moveStep *= 2;
   });
   globalShortcut.register('Command+Shift+-', () => {
-    const [width, height] = mainWindow.getSize();
-    const newWidth = Math.max(minSize, width - resizeStep);
-    const newHeight = Math.max(minSize, height - resizeStep);
-    mainWindow.setSize(newWidth, newHeight);
-    console.log(`Window resized smaller: ${newWidth}x${newHeight}`);
+    // const [width, height] = mainWindow.getSize();
+    // const newWidth = Math.max(minSize, width - resizeStep);
+    // const newHeight = Math.max(minSize, height - resizeStep);
+    // mainWindow.setSize(newWidth, newHeight);
+    // console.log(`Window resized smaller: ${newWidth}x${newHeight}`);
+    if (moveStep > 20) moveStep /= 2;
   });
   // Width adjustments
   globalShortcut.register('Command+Shift+]', () => {
@@ -118,6 +124,7 @@ function registerShortcuts(mainWindow) {
     console.log('  Cmd+Shift+P           - Switch AI provider');
     console.log('  Cmd+Shift+W           - Manual model warmup (Ollama only)');
     console.log('  Cmd+Shift+D           - Toggle dark/light theme');
+    console.log('  Cmd+Shift+M           - Switch Ollama model');
     console.log('\nPAGE SCROLLING:');
     console.log('  Shift+1               - Scroll page up');
     console.log('  Shift+2               - Scroll page down');
@@ -159,6 +166,37 @@ function registerShortcuts(mainWindow) {
   // Theme toggle
   globalShortcut.register('Command+Shift+D', () => {
     mainWindow.webContents.send('toggle-theme');
+  });
+
+  // Ollama model switch
+  globalShortcut.register('Command+Shift+M', () => {
+    if (isOllama) {
+      // Get current model index and calculate next
+      const currentIndex = ollamaModels.indexOf(currentModelName);
+      const nextIndex = (currentIndex + 1) % ollamaModels.length;
+      const newModel = ollamaModels[nextIndex];
+
+      // Store current session state
+      const prevSessionHistory = session.history.slice(-20); // Keep last 10 exchanges
+      const wasActive = session.active;
+
+      // Update model and reinitialize client
+      currentModelName = newModel;
+      process.env.OLLAMA_MODEL = newModel;
+      initializeAIClient('ollama');
+
+      // Restore session state
+      session.history = prevSessionHistory;
+      session.active = wasActive;
+
+      mainWindow.webContents.send('model-switched', {
+        model: newModel,
+        sessionLength: session.history.length,
+        exchanges: Math.floor(session.history.length / 2),
+      });
+
+      console.log(`Switched to ${newModel} (${session.history.length} messages preserved)`);
+    }
   });
 
   // Page scrolling shortcuts
