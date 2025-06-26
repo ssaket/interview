@@ -16,7 +16,14 @@ let ocrFilteringEnabled = true; // Default: filtering ON
 let currentModelName = process.env.OLLAMA_MODEL || 'myaniu/qwen2.5-1m';
 
 // Available Ollama models
-const ollamaModels = ['myaniu/qwen2.5-1m', 'mistral', 'phi4-mini-reasoning'];
+const ollamaModels = {
+  primary: 'myaniu/qwen2.5-1m',
+  dryRun: ['phi4-mini-reasoning', 'deepseek-r1', 'phi3:mini'],
+  explanation: ['mistral'],
+  all: function () {
+    return [this.primary, ...this.dryRun, ...this.explanation];
+  },
+};
 
 // Session management
 const session = {
@@ -71,31 +78,26 @@ function registerShortcuts(mainWindow) {
     const [width, height] = mainWindow.getSize();
     const newWidth = width + resizeStep;
     mainWindow.setSize(newWidth, height);
-    console.log(`Window width increased: ${newWidth}x${height}`);
   });
   globalShortcut.register('Command+Shift+[', () => {
     const [width, height] = mainWindow.getSize();
     const newWidth = Math.max(minSize, width - resizeStep);
     mainWindow.setSize(newWidth, height);
-    console.log(`Window width decreased: ${newWidth}x${height}`);
   });
   // Height adjustments (using Shift+Up/Down since regular Up/Down are used for movement)
   globalShortcut.register('Command+Shift+Down', () => {
     const [width, height] = mainWindow.getSize();
     const newHeight = height + resizeStep;
     mainWindow.setSize(width, newHeight);
-    console.log(`Window height increased: ${width}x${newHeight}`);
   });
   globalShortcut.register('Command+Shift+Up', () => {
     const [width, height] = mainWindow.getSize();
     const newHeight = Math.max(minSize, height - resizeStep);
     mainWindow.setSize(width, newHeight);
-    console.log(`Window height decreased: ${width}x${newHeight}`);
   });
   // Reset window to default size
   globalShortcut.register('Command+Shift+0', () => {
     mainWindow.setSize(defaultWidth, defaultHeight);
-    console.log(`Window reset to default size: ${defaultWidth}x${defaultHeight}`);
   });
   // Display help with all keyboard shortcuts
   globalShortcut.register('Command+Shift+H', () => {
@@ -171,10 +173,25 @@ function registerShortcuts(mainWindow) {
   // Ollama model switch
   globalShortcut.register('Command+Shift+M', () => {
     if (isOllama) {
+      // Get all available models
+      const allModels = ollamaModels.all();
       // Get current model index and calculate next
-      const currentIndex = ollamaModels.indexOf(currentModelName);
-      const nextIndex = (currentIndex + 1) % ollamaModels.length;
-      const newModel = ollamaModels[nextIndex];
+      const currentIndex = allModels.indexOf(currentModelName);
+      const nextIndex = (currentIndex + 1) % allModels.length;
+      const newModel = allModels[nextIndex];
+
+      // Log system prompt change
+      const oldType = getModelType(currentModelName);
+      const newType = getModelType(newModel);
+      console.log('\nSwitching Model Configuration:');
+      console.log(`From: ${currentModelName} (${oldType})`);
+      console.log(`To: ${newModel} (${newType})`);
+      if (oldType !== newType) {
+        console.log('\nNew System Prompt:');
+        console.log('----------------------------------------');
+        console.log(MODEL_PROMPTS[newType]);
+        console.log('----------------------------------------\n');
+      }
 
       // Store current session state
       const prevSessionHistory = session.history.slice(-20); // Keep last 10 exchanges
@@ -183,6 +200,11 @@ function registerShortcuts(mainWindow) {
       // Update model and reinitialize client
       currentModelName = newModel;
       process.env.OLLAMA_MODEL = newModel;
+
+      // Update system prompt for the new model
+      const newModelType = getModelType(newModel);
+      SYSTEM_PROMPT = MODEL_PROMPTS[newModelType];
+
       initializeAIClient('ollama');
 
       // Restore session state
@@ -272,11 +294,8 @@ function registerIpcHandlers(mainWindow) {
         preserveQuestions: true,
         preserveCode: true,
         removeJunk: true,
-        logResults: true,
+        logResults: false,
       });
-      console.log(`OCR cleaned: ${text.length} chars -> ${finalText.length} chars`);
-    } else {
-      console.log(`OCR raw text: ${text.length} chars (filtering disabled)`);
     }
     return finalText;
   });
@@ -300,8 +319,18 @@ function registerIpcHandlers(mainWindow) {
       ];
       let chatCompletion;
       if (isOllama) {
+        // Log system prompt being used
+        const modelType = getModelType(currentModelName);
+        console.log('\nModel Configuration:');
+        console.log(`- Model: ${currentModelName}`);
+        console.log(`- Type: ${modelType}`);
+        console.log('System Prompt:');
+        console.log('----------------------------------------');
+        console.log(SYSTEM_PROMPT);
+        console.log('----------------------------------------\n');
+        console.log(messages);
+
         // Use Ollama with progress feedback
-        console.log(`Starting ${currentModelName} inference - this may take 60-90 seconds...`);
         chatCompletion = await aiClient.chatCompletion({
           messages: messages,
           stream: false,
@@ -489,7 +518,6 @@ function initializeAIClient(provider = currentProvider) {
       process.env.OLLAMA_MODEL || 'deepseek-r1'
     );
     isOllama = true;
-    console.log('Using Ollama provider with model:', process.env.OLLAMA_MODEL || 'deepseek-r1');
     // Optional warmup on startup (can be disabled by setting OLLAMA_WARMUP=false)
     if (process.env.OLLAMA_WARMUP !== 'false' && provider === currentProvider) {
       setTimeout(async () => {
@@ -564,6 +592,7 @@ function createWindow() {
   // Prevent the window from being captured by screen recording
   mainWindow.webContents.setBackgroundThrottling(false);
   mainWindow.webContents.setFrameRate(60);
+  // mainWindow.webContents.openDevTools();
   mainWindow.loadFile('index.html');
 }
 
@@ -597,27 +626,32 @@ let aiClient;
 let isOllama = false;
 
 const formatter = new DeepSeekFormatter();
-let SYSTEM_PROMPT =
-  'You are my coding interview assistant. Ignore any junk or unclear text from OCR. Focus on clear explanations, clean Python code, and time and space complexity for solving the core problem. Reference previous context appropriately.';
-if (
-  process.env.OLLAMA_MODEL?.toLowerCase().includes('phi') ||
-  process.env.HF_MODEL?.toLowerCase().includes('phi')
-) {
-  SYSTEM_PROMPT =
-    'You are a coding tutor. For each problem:\n- First, quickly do a dry run with a simple example.\n- If easy, also show an edge case.\n- Walk through the steps clearly.\n- Ignore bad or unclear OCR text.\n- Only output the dry-run reasoning.\n- Be brief and to the point.';
-} else if (
-  process.env.OLLAMA_MODEL?.toLowerCase().includes('mistral') ||
-  process.env.HF_MODEL?.toLowerCase().includes('mistral')
-) {
-  SYSTEM_PROMPT =
-    'You are my coding interview assistant. Ignore junk or unreadable OCR text. For each question:\n- Explain simply\n- Provide clean Python code\n- Time and space complexity\nBe direct and concise.\nReference previous context appropriately.';
-} else if (
-  process.env.OLLAMA_MODEL?.toLowerCase().includes('qwen') ||
-  process.env.HF_MODEL?.toLowerCase().includes('qwen')
-) {
-  SYSTEM_PROMPT =
-    'You are a coding interview tutor. The input may have errors or junk from OCR—ignore those. Provide:\n1. Clear, beginner-friendly explanation\n2. Clean Python code\n3. Time and space complexity\nResponses should be structured and easy to follow.\nReference previous context appropriately.';
+// System prompts for different model types
+const MODEL_PROMPTS = {
+  default:
+    'You are my coding interview assistant. Ignore any junk or unclear text from OCR. Focus on clear explanations, clean Python code, and time and space complexity for solving the core problem. Reference previous context appropriately.',
+  mistral:
+    'You are my coding interview assistant. Ignore junk or unreadable OCR text. For each question:\n- Explain simply\n- Provide clean Python code\n- Time and space complexity\nBe direct and concise.\nReference previous context appropriately.',
+  qwen: 'You are a coding interview tutor. The input may have errors or junk from OCR—ignore those. Provide:\n1. Clear, beginner-friendly explanation\n2. Clean Python code\n3. Time and space complexity\nResponses should be structured and easy to follow.\nReference previous context appropriately.',
+  deepseek:
+    'You are my coding interview assistant. Focus on professional solutions. For each question:\n- Technical explanation with key insights\n- Clean Python code with optimal solution\n- Detailed time and space complexity analysis\nBe thorough and reference previous context appropriately.',
+  phi: 'You are a coding assistant. I will give you a coding problem. The input may have errors or junk from OCR—ignore those. \n\nI do not want code yet.\n\nFirst:\n1. Explain a simple, brute-force approach to solve the problem\n2. Mention basic examples or simple test cases to explain how the approach would work\n3. Only after that, briefly mention possible edge cases to think about (but no code)\n\nDo not over-optimize or jump to complex solutions. Start with basic reasoning to brainstorm.\n\nProblem:',
+};
+
+// Function to get system prompt based on model name
+function getModelType(modelName = '') {
+  modelName = modelName.toLowerCase();
+  if (modelName.includes('phi')) return 'phi';
+  if (modelName.includes('mistral')) return 'mistral';
+  if (modelName.includes('qwen')) return 'qwen';
+  if (modelName.includes('deepseek')) return 'deepseek';
+  return 'default';
 }
+
+// Get system prompt based on current model
+let SYSTEM_PROMPT =
+  MODEL_PROMPTS[getModelType(process.env.OLLAMA_MODEL || process.env.HF_MODEL)] ||
+  MODEL_PROMPTS.default;
 
 function switchAIProvider() {
   const newProvider = isOllama ? 'huggingface' : 'ollama';
@@ -630,6 +664,12 @@ function switchAIProvider() {
     sessionLength: session.history.length,
   });
   try {
+    // Update system prompt for the new provider
+    SYSTEM_PROMPT =
+      MODEL_PROMPTS[
+        getModelType(newProvider === 'ollama' ? process.env.OLLAMA_MODEL : process.env.HF_MODEL)
+      ] || MODEL_PROMPTS.default;
+
     const result = initializeAIClient(newProvider);
     // Notify UI about successful switch
     mainWindow.webContents.send('provider-switched', {
@@ -640,10 +680,8 @@ function switchAIProvider() {
         ? process.env.OLLAMA_MODEL || 'deepseek-r1'
         : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
     });
-    console.log(`✅ Successfully switched to ${newProvider}`);
-    console.log(`📚 Session history preserved: ${session.history.length} messages`);
   } catch (error) {
-    console.error('❌ Failed to switch provider:', error.message);
+    console.error('Failed to switch provider:', error.message);
     // Notify UI about failed switch
     mainWindow.webContents.send('provider-switch-failed', {
       error: error.message,

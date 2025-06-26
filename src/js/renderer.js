@@ -113,8 +113,6 @@ async function captureScreenshot(isRegion = false) {
   instructions.forEach((p) => (p.style.display = 'none'));
   img.style.display = 'none';
 
-  // Format and highlight the DeepSeek response
-  console.info(answer);
   output.innerHTML = formatDeepSeekResponse(answer);
 }
 

@@ -8,7 +8,6 @@ class OllamaClient {
 
   async chatCompletion(options) {
     const { messages, stream = false } = options;
-
     try {
       const response = await axios.post(
         `${this.baseUrl}/api/chat`,
@@ -93,7 +92,6 @@ class OllamaClient {
 
   async pullModel(modelName = this.model) {
     try {
-      console.log(`Pulling model ${modelName}... This may take several minutes.`);
       const response = await axios.post(
         `${this.baseUrl}/api/pull`,
         {
@@ -112,7 +110,6 @@ class OllamaClient {
   }
 
   async warmupModel() {
-    console.log(`Warming up model ${this.model}...`);
     try {
       const startTime = Date.now();
       await this.chatCompletion({
@@ -125,7 +122,6 @@ class OllamaClient {
         stream: false,
       });
       const duration = Date.now() - startTime;
-      console.log(`Model warmup completed in ${duration}ms`);
       return { success: true, duration };
     } catch (error) {
       console.error('Model warmup failed:', error.message);
@@ -136,7 +132,6 @@ class OllamaClient {
   async chatCompletionWithProgress(options, progressCallback) {
     const { messages, stream = false } = options;
 
-    console.log(`Starting ${this.model} inference...`);
     if (progressCallback) {
       progressCallback('Starting inference...');
     }
@@ -169,8 +164,6 @@ class OllamaClient {
       );
 
       const duration = Date.now() - startTime;
-      console.log(`${this.model} responded in ${duration}ms`);
-
       if (progressCallback) {
         progressCallback(`Response received in ${Math.round(duration / 1000)}s`);
       }
