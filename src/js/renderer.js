@@ -116,8 +116,6 @@ async function captureScreenshot(isRegion = false) {
   // Format and highlight the DeepSeek response
   console.info(answer);
   output.innerHTML = formatDeepSeekResponse(answer);
-  // Scroll to top when new answer arrives
-  container.scrollTop = 0;
 }
 
 ipcRenderer.on('trigger-screenshot', async () => {

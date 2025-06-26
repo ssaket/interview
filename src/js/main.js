@@ -392,7 +392,7 @@ function registerIpcHandlers(mainWindow) {
   // IPC: get provider status
   ipcMain.handle('get-provider-status', async () => {
     return {
-      provider: AI_PROVIDER,
+      provider: process.env.AI_PROVIDER,
       isOllama: isOllama,
       model: isOllama
         ? process.env.OLLAMA_MODEL || 'deepseek-r1'
