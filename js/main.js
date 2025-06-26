@@ -27,10 +27,10 @@ function registerShortcuts(mainWindow) {
     resizeStep = 50;
   // Screenshot shortcuts
   globalShortcut.register("Command+Shift+S", () =>
-    mainWindow.webContents.send("trigger-screenshot")
+    mainWindow.webContents.send("trigger-screenshot"),
   );
   globalShortcut.register("Command+Shift+A", () =>
-    mainWindow.webContents.send("trigger-overlay-region-screenshot")
+    mainWindow.webContents.send("trigger-overlay-region-screenshot"),
   );
   // Movement
   ["Left", "Right", "Up", "Down"].forEach((dir) => {
@@ -90,7 +90,7 @@ function registerShortcuts(mainWindow) {
   globalShortcut.register("Command+Shift+0", () => {
     mainWindow.setSize(defaultWidth, defaultHeight);
     console.log(
-      `Window reset to default size: ${defaultWidth}x${defaultHeight}`
+      `Window reset to default size: ${defaultWidth}x${defaultHeight}`,
     );
   });
   // Display help with all keyboard shortcuts
@@ -100,17 +100,17 @@ function registerShortcuts(mainWindow) {
     console.log("  Cmd+Arrow Keys        - Move window in direction");
     console.log("\nWINDOW RESIZING:");
     console.log(
-      "  Cmd+Shift+=           - Make window larger (both dimensions)"
+      "  Cmd+Shift+=           - Make window larger (both dimensions)",
     );
     console.log(
-      "  Cmd+Shift+-           - Make window smaller (both dimensions)"
+      "  Cmd+Shift+-           - Make window smaller (both dimensions)",
     );
     console.log("  Cmd+Shift+]           - Increase window width");
     console.log("  Cmd+Shift+[           - Decrease window width");
     console.log("  Cmd+Shift+Up          - Increase window height");
     console.log("  Cmd+Shift+Down        - Decrease window height");
     console.log(
-      "  Cmd+Shift+0           - Reset window to default size (800x800)"
+      "  Cmd+Shift+0           - Reset window to default size (800x800)",
     );
     console.log("\nSCREEN CAPTURE:");
     console.log("  Cmd+Shift+S           - Take screenshot");
@@ -125,20 +125,21 @@ function registerShortcuts(mainWindow) {
     console.log("  Cmd+Shift+F           - Toggle OCR filtering");
     console.log("  Cmd+Shift+P           - Switch AI provider");
     console.log("  Cmd+Shift+W           - Manual model warmup (Ollama only)");
+    console.log("  Cmd+Shift+D           - Toggle dark/light theme");
     console.log("\nHELP:");
     console.log("  Cmd+Shift+H           - Display this help");
     console.log("================================\n");
   });
   // Visibility toggle
   globalShortcut.register("Command+B", () =>
-    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
+    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show(),
   );
   // Audio
   globalShortcut.register("Command+R", () =>
-    mainWindow.webContents.send("start-audio")
+    mainWindow.webContents.send("start-audio"),
   );
   globalShortcut.register("Command+T", () =>
-    mainWindow.webContents.send("stop-audio")
+    mainWindow.webContents.send("stop-audio"),
   );
   // Session & OCR toggles
   globalShortcut.register("Command+Shift+R", () => {
@@ -159,9 +160,14 @@ function registerShortcuts(mainWindow) {
       console.log("Manual DeepSeek R1 warmup triggered...");
       mainWindow.webContents.send(
         "model-warmup-started",
-        "Warming up DeepSeek R1... This may take 10-30 seconds."
+        "Warming up DeepSeek R1... This may take 10-30 seconds.",
       );
     }
+  });
+
+  // Theme toggle
+  globalShortcut.register("Command+Shift+D", () => {
+    mainWindow.webContents.send("toggle-theme");
   });
 }
 
@@ -201,7 +207,7 @@ function registerIpcHandlers(mainWindow) {
     // Crop the image to the region behind overlay window
     try {
       const fullImage = nativeImage.createFromDataURL(
-        sources[0].thumbnail.toDataURL()
+        sources[0].thumbnail.toDataURL(),
       );
       const croppedImage = fullImage.crop({
         x: region.x,
@@ -233,7 +239,7 @@ function registerIpcHandlers(mainWindow) {
         logResults: true,
       });
       console.log(
-        `OCR cleaned: ${text.length} chars -> ${finalText.length} chars`
+        `OCR cleaned: ${text.length} chars -> ${finalText.length} chars`,
       );
     } else {
       console.log(`OCR raw text: ${text.length} chars (filtering disabled)`);
@@ -246,7 +252,7 @@ function registerIpcHandlers(mainWindow) {
       if (isOllama) {
         mainWindow.webContents.send(
           "ai-processing-started",
-          "DeepSeek R1 is thinking... This may take 60-90 seconds for complex coding questions."
+          "DeepSeek R1 is thinking... This may take 60-90 seconds for complex coding questions.",
         );
       }
       // Build messages array with session history
@@ -262,7 +268,7 @@ function registerIpcHandlers(mainWindow) {
       if (isOllama) {
         // Use Ollama with progress feedback
         console.log(
-          "Starting DeepSeek R1 inference - this may take 60-90 seconds..."
+          "Starting DeepSeek R1 inference - this may take 60-90 seconds...",
         );
         chatCompletion = await aiClient.chatCompletion({
           messages: messages,
@@ -361,7 +367,7 @@ function registerIpcHandlers(mainWindow) {
           "Content-Type": "audio/webm",
         },
         params: { model: "whisper-1" },
-      }
+      },
     );
     return resp.data.text;
   });
@@ -464,12 +470,12 @@ function initializeAIClient(provider = currentProvider) {
   if (providerLower === "ollama") {
     aiClient = new OllamaClient(
       process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-      process.env.OLLAMA_MODEL || "deepseek-r1"
+      process.env.OLLAMA_MODEL || "deepseek-r1",
     );
     isOllama = true;
     console.log(
       "Using Ollama provider with model:",
-      process.env.OLLAMA_MODEL || "deepseek-r1"
+      process.env.OLLAMA_MODEL || "deepseek-r1",
     );
     // Optional warmup on startup (can be disabled by setting OLLAMA_WARMUP=false)
     if (process.env.OLLAMA_WARMUP !== "false" && provider === currentProvider) {
@@ -485,14 +491,14 @@ function initializeAIClient(provider = currentProvider) {
   } else {
     if (!process.env.HF_TOKEN) {
       console.warn(
-        "HF_TOKEN not found in environment variables. HuggingFace provider may not work."
+        "HF_TOKEN not found in environment variables. HuggingFace provider may not work.",
       );
     }
     aiClient = new InferenceClient(process.env.HF_TOKEN);
     isOllama = false;
     console.log(
       "Using HuggingFace provider with model:",
-      process.env.HF_MODEL || "deepseek-ai/DeepSeek-R1-0528"
+      process.env.HF_MODEL || "deepseek-ai/DeepSeek-R1-0528",
     );
   }
   currentProvider = provider;
@@ -623,7 +629,7 @@ function switchAIProvider() {
     });
     console.log(`✅ Successfully switched to ${newProvider}`);
     console.log(
-      `📚 Session history preserved: ${session.history.length} messages`
+      `📚 Session history preserved: ${session.history.length} messages`,
     );
   } catch (error) {
     console.error("❌ Failed to switch provider:", error.message);

@@ -3,6 +3,25 @@ const { ipcRenderer } = require("electron");
 let mediaRecorder,
   audioChunks = [];
 
+// Theme state
+let currentTheme = "light";
+
+// Function to toggle theme
+function toggleTheme() {
+  currentTheme = currentTheme === "light" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", currentTheme);
+  localStorage.setItem("theme", currentTheme);
+}
+
+// Initialize theme from localStorage
+function initTheme() {
+  const savedTheme = localStorage.getItem("theme");
+  if (savedTheme) {
+    currentTheme = savedTheme;
+    document.documentElement.setAttribute("data-theme", currentTheme);
+  }
+}
+
 // OCR filtering state
 let ocrFilteringEnabled = true;
 
@@ -231,9 +250,23 @@ ipcRenderer.on("model-warmup-started", (event, message) => {
   output.textContent = message || "🔥 Warming up model...";
 });
 
+// Listen for theme toggle event from main process
+ipcRenderer.on("toggle-theme", () => {
+  toggleTheme();
+  const output = document.getElementById("output");
+  const themeText = currentTheme === "light" ? "Light" : "Dark";
+  output.textContent = `Theme switched to ${themeText}`;
+  setTimeout(() => {
+    if (output.textContent.includes("Theme switched")) {
+      output.textContent = "Waiting for action...";
+    }
+  }, 2000);
+});
+
 // Initialize OCR filtering state when page loads
 document.addEventListener("DOMContentLoaded", () => {
   initOcrFilteringState();
+  initTheme();
 });
 
 // Keyboard scrolling with Option + Arrow keys
