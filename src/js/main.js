@@ -155,10 +155,10 @@ function registerShortcuts(mainWindow) {
   });
   globalShortcut.register('Command+Shift+W', () => {
     if (isOllama) {
-      console.log('Manual DeepSeek R1 warmup triggered...');
+      console.log(`Manual ${currentModelName} warmup triggered...`);
       mainWindow.webContents.send(
         'model-warmup-started',
-        'Warming up DeepSeek R1... This may take 10-30 seconds.'
+        `Warming up ${currentModelName}... This may take 10-30 seconds.`
       );
     }
   });
@@ -286,7 +286,7 @@ function registerIpcHandlers(mainWindow) {
       if (isOllama) {
         mainWindow.webContents.send(
           'ai-processing-started',
-          'DeepSeek R1 is thinking... This may take 60-90 seconds for complex coding questions.'
+          `${currentModelName} is thinking... This may take 60-90 seconds for complex coding questions.`
         );
       }
       // Build messages array with session history
@@ -301,7 +301,7 @@ function registerIpcHandlers(mainWindow) {
       let chatCompletion;
       if (isOllama) {
         // Use Ollama with progress feedback
-        console.log('Starting DeepSeek R1 inference - this may take 60-90 seconds...');
+        console.log(`Starting ${currentModelName} inference - this may take 60-90 seconds...`);
         chatCompletion = await aiClient.chatCompletion({
           messages: messages,
           stream: false,
@@ -347,13 +347,11 @@ function registerIpcHandlers(mainWindow) {
           return formatter.formatResponse(errorMsg).text;
         }
         if (err.message.includes('model not found') || err.message.includes('Model')) {
-          const errorMsg =
-            '⚠️ DeepSeek R1 model not found. Please pull with: ollama pull deepseek-r1';
+          const errorMsg = `⚠️ ${currentModelName} model not found. Please pull with: ollama pull ${currentModelName}`;
           return formatter.formatResponse(errorMsg).text;
         }
         if (err.message.includes('timeout')) {
-          const errorMsg =
-            '⚠️ DeepSeek R1 timeout. This reasoning model typically takes 60-90 seconds for complex coding questions. For very complex problems, it may take up to 5 minutes. Please wait and try again, or consider using a simpler question.';
+          const errorMsg = `⚠️ ${currentModelName} timeout. This reasoning model typically takes 60-90 seconds for complex coding questions. For very complex problems, it may take up to 5 minutes. Please wait and try again, or consider using a simpler question.`;
           return formatter.formatResponse(errorMsg).text;
         }
       } else {
@@ -606,7 +604,7 @@ if (
   process.env.HF_MODEL?.toLowerCase().includes('phi')
 ) {
   SYSTEM_PROMPT =
-    'You are a coding tutor. Ignore bad or unclear text from OCR. Give:\n- Simple explanation\n- Python code\n- Time and space complexity\nBe short and easy to understand.\nReference previous context appropriately.';
+    'You are a coding tutor. For each problem:\n- First, quickly do a dry run with a simple example.\n- If easy, also show an edge case.\n- Walk through the steps clearly.\n- Ignore bad or unclear OCR text.\n- Only output the dry-run reasoning.\n- Be brief and to the point.';
 } else if (
   process.env.OLLAMA_MODEL?.toLowerCase().includes('mistral') ||
   process.env.HF_MODEL?.toLowerCase().includes('mistral')

@@ -1,7 +1,7 @@
-const axios = require("axios");
+const axios = require('axios');
 
 class OllamaClient {
-  constructor(baseUrl = "http://localhost:11434", model = "deepseek-r1") {
+  constructor(baseUrl = 'http://localhost:11434', model = 'myaniu/qwen2.5-1m') {
     this.baseUrl = baseUrl;
     this.model = model;
   }
@@ -22,11 +22,11 @@ class OllamaClient {
           },
         },
         {
-          timeout: 300000, // 5 minute timeout for reasoning models like DeepSeek R1
+          timeout: 300000, // 5 minute timeout for reasoning models
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
-        },
+        }
       );
 
       // Transform Ollama response to match HuggingFace format
@@ -34,35 +34,33 @@ class OllamaClient {
         choices: [
           {
             message: {
-              role: "assistant",
+              role: 'assistant',
               content: response.data.message.content,
             },
           },
         ],
       };
     } catch (error) {
-      console.error("Ollama API Error:", error.message);
+      console.error('Ollama API Error:', error.message);
 
-      if (error.code === "ECONNREFUSED") {
-        throw new Error(
-          "Ollama server not running. Please start with: ollama serve",
-        );
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error('Ollama server not running. Please start with: ollama serve');
       }
 
-      if (error.code === "ECONNABORTED" || error.message.includes("timeout")) {
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
         throw new Error(
-          "Ollama response timeout. DeepSeek R1 reasoning model typically takes 60-90 seconds for complex coding questions. This timeout suggests the question was particularly complex or system resources are limited.",
+          `Ollama response timeout. ${this.model} typically takes 60-90 seconds for complex coding questions. This timeout suggests the question was particularly complex or system resources are limited.`
         );
       }
 
       if (error.response) {
         if (error.response.status === 404) {
           throw new Error(
-            `Model '${this.model}' not found. Please pull it with: ollama pull ${this.model}`,
+            `Model '${this.model}' not found. Please pull it with: ollama pull ${this.model}`
           );
         }
         throw new Error(
-          `Ollama API error: ${error.response.status} - ${error.response.data?.error || error.response.statusText}`,
+          `Ollama API error: ${error.response.status} - ${error.response.data?.error || error.response.statusText}`
         );
       }
 
@@ -95,9 +93,7 @@ class OllamaClient {
 
   async pullModel(modelName = this.model) {
     try {
-      console.log(
-        `Pulling model ${modelName}... This may take several minutes.`,
-      );
+      console.log(`Pulling model ${modelName}... This may take several minutes.`);
       const response = await axios.post(
         `${this.baseUrl}/api/pull`,
         {
@@ -105,12 +101,12 @@ class OllamaClient {
         },
         {
           timeout: 600000, // 10 minute timeout for model pulling
-        },
+        }
       );
 
       return { success: true, data: response.data };
     } catch (error) {
-      console.error("Error pulling model:", error.message);
+      console.error('Error pulling model:', error.message);
       throw new Error(`Failed to pull model ${modelName}: ${error.message}`);
     }
   }
@@ -122,7 +118,7 @@ class OllamaClient {
       await this.chatCompletion({
         messages: [
           {
-            role: "user",
+            role: 'user',
             content: "Just say 'Ready' in one word.",
           },
         ],
@@ -132,7 +128,7 @@ class OllamaClient {
       console.log(`Model warmup completed in ${duration}ms`);
       return { success: true, duration };
     } catch (error) {
-      console.error("Model warmup failed:", error.message);
+      console.error('Model warmup failed:', error.message);
       return { success: false, error: error.message };
     }
   }
@@ -142,7 +138,7 @@ class OllamaClient {
 
     console.log(`Starting ${this.model} inference...`);
     if (progressCallback) {
-      progressCallback("Starting inference...");
+      progressCallback('Starting inference...');
     }
 
     const startTime = Date.now();
@@ -162,30 +158,28 @@ class OllamaClient {
         {
           timeout: 300000, // 5 minute timeout
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
           onUploadProgress: () => {
             if (progressCallback) {
-              progressCallback("Request sent, waiting for response...");
+              progressCallback('Request sent, waiting for response...');
             }
           },
-        },
+        }
       );
 
       const duration = Date.now() - startTime;
       console.log(`${this.model} responded in ${duration}ms`);
 
       if (progressCallback) {
-        progressCallback(
-          `Response received in ${Math.round(duration / 1000)}s`,
-        );
+        progressCallback(`Response received in ${Math.round(duration / 1000)}s`);
       }
 
       return {
         choices: [
           {
             message: {
-              role: "assistant",
+              role: 'assistant',
               content: response.data.message.content,
             },
           },
