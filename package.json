@@ -1,19 +1,28 @@
 {
   "name": "interview",
   "version": "1.0.0",
-  "main": "js/main.js",
+  "description": "DeepSeek Overlay Helper Application",
+  "main": "src/js/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "npm run test:deepseek",
-    "test:deepseek": "node test-deepseek.js",
-    "test:complex": "node test-complex-deepseek.js",
-    "demo": "node demo-final.js",
-    "demo:all": "npm run test:deepseek && echo '\n' && npm run test:complex && echo '\n' && npm run demo"
+    "dev": "electron . --debug",
+    "test": "npm run test:all",
+    "test:all": "node tests/test-llm-friendly-cleaner.js && node tests/test-markdown-sections.js && node tests/test-session.js",
+    "test:cleaner": "node tests/test-llm-friendly-cleaner.js",
+    "test:markdown": "node tests/test-markdown-sections.js",
+    "test:session": "node tests/test-session.js",
+    "lint": "eslint src/js/**/*.js",
+    "format": "prettier --write \"src/**/*.{js,css,html}\""
   },
-  "keywords": [],
+  "keywords": [
+    "electron",
+    "deepseek",
+    "overlay",
+    "ocr",
+    "ai"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@huggingface/inference": "^4.0.6",
     "axios": "^1.10.0",
@@ -23,5 +32,9 @@
     "html-entities": "^2.6.0",
     "natural": "^8.1.0",
     "tesseract.js": "^6.0.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0"
   }
 }
