@@ -2,13 +2,21 @@
 :root {
   /* Light Theme (Default) */
   --background-color: rgba(255, 255, 255, 0.4);
+  --background-code: rgba(255, 255, 255, 0.226);
+  --background-code-label: rgba(255, 255, 255, 0.4);
   --text-color: #000;
+  --text-code: #23272e;
+  --text-code-label: #292e30;
 }
 
 /* Dark Theme */
 [data-theme='dark'] {
   --background-color: rgba(26, 26, 26, 0.65);
+  --background-code: rgba(26, 26, 26, 0.65);
+  --background-code-label: rgba(26, 26, 26, 0.65);
   --text-color: #ffffff;
+  --text-code: #e0e0e0;
+  --text-code-label: #e0e0e0;
 }
 
 /* Apply theme variables */

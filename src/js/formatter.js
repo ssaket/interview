@@ -7,8 +7,9 @@ class DeepSeekFormatter {
   /**
    * @param {string} raw – raw model response
    * @param {boolean} formatterEnabled – bypass if false
+   * @param {boolean} codeOnly – if true, only show code blocks in output
    */
-  formatResponse(raw, formatterEnabled = true) {
+  formatResponse(raw, formatterEnabled = true, codeOnly = true) {
     if (!raw || typeof raw !== 'string') {
       return { text: '', html: '', hasCode: false };
     }
@@ -53,12 +54,13 @@ class DeepSeekFormatter {
             )}</code></pre>
           </div>`
         );
-      } else {
+      } else if (!codeOnly) {
         // Remove <think>...</think> and trim
         let cleaned = seg.content.replace(this.thinkingRegex, '').trim();
         if (!cleaned) continue;
 
         // Markdown headers
+        cleaned = cleaned.replace(/^#### (.*)$/gm, '<div class="response-header h4">$1</div>');
         cleaned = cleaned.replace(/^### (.*)$/gm, '<div class="response-header h3">$1</div>');
         cleaned = cleaned.replace(/^## (.*)$/gm, '<div class="response-header h2">$1</div>');
         cleaned = cleaned.replace(/^# (.*)$/gm, '<div class="response-header h1">$1</div>');
