@@ -1,5 +1,85 @@
 const { ipcRenderer } = require('electron');
 
+// --- UI Controller ---
+const UI = {
+  get output() {
+    return document.getElementById('output');
+  },
+  get screenshot() {
+    return document.getElementById('screenshot');
+  },
+  get container() {
+    return document.getElementById('container');
+  },
+  get ocrIndicator() {
+    return document.getElementById('ocr-filter-indicator');
+  },
+  get title() {
+    return document.querySelector('h2');
+  },
+  get instructions() {
+    return document.querySelectorAll('p');
+  },
+
+  get session() {
+    return document.querySelector('session-length');
+  },
+
+  setOutput(text, timeout = 0) {
+    this.output.textContent = text;
+    if (timeout > 0) {
+      setTimeout(() => {
+        if (this.output.textContent === text) {
+          this.output.textContent = 'Waiting for action...';
+        }
+      }, timeout);
+    }
+  },
+
+  setOutputHTML(html) {
+    this.output.innerHTML = html;
+  },
+
+  setSession(number) {
+    this.session.textContent = `L: ${number}`;
+  },
+
+
+  showScreenshot(src) {
+    this.screenshot.src = src;
+    this.screenshot.style.display = 'block';
+  },
+
+  hideScreenshot() {
+    this.screenshot.style.display = 'none';
+  },
+
+  hideInstructions() {
+    if (this.title) this.title.style.display = 'none';
+    this.instructions.forEach((p) => (p.style.display = 'none'));
+  },
+
+  showInstructions() {
+    if (this.title) this.title.style.display = '';
+    this.instructions.forEach((p) => (p.style.display = ''));
+  },
+
+  updateOcrIndicator(enabled) {
+    if (this.ocrIndicator) {
+      this.ocrIndicator.style.display = enabled ? 'inline-block' : 'none';
+    }
+    ocrFilteringEnabled = enabled;
+  },
+
+  hideUI() {
+    this.container.style.display = 'none';
+  },
+
+  showUI() {
+    this.container.style.display = 'block';
+  },
+};
+
 let mediaRecorder,
   audioChunks = [];
 
@@ -61,59 +141,74 @@ function formatDeepSeekResponse(text) {
 
 // Function to update OCR filtering indicator
 function updateOcrFilterIndicator(enabled) {
-  const indicator = document.getElementById('ocr-filter-indicator');
-  if (indicator) {
-    indicator.style.display = enabled ? 'inline-block' : 'none';
-  }
-  ocrFilteringEnabled = enabled;
+  UI.updateOcrIndicator(enabled);
 }
 
 // Function to toggle OCR filtering
 async function toggleOcrFiltering() {
   const newState = await ipcRenderer.invoke('toggle-ocr-filtering');
-  updateOcrFilterIndicator(newState);
-  const output = document.getElementById('output');
-  output.textContent = `OCR Filtering: ${newState ? 'ON' : 'OFF'}`;
-  setTimeout(() => {
-    if (output.textContent.includes('OCR Filtering:')) {
-      output.textContent = 'Waiting for action...';
-    }
-  }, 2000);
+  UI.updateOcrIndicator(newState);
+  UI.setOutput(`OCR Filtering: ${newState ? 'ON' : 'OFF'}`, 2000);
 }
 
 // Initialize OCR filtering state
 async function initOcrFilteringState() {
   const state = await ipcRenderer.invoke('get-ocr-filtering-state');
-  updateOcrFilterIndicator(state);
+  UI.updateOcrIndicator(state);
 }
 
-async function captureScreenshot(isRegion = false) {
-  const output = document.getElementById('output');
-  const img = document.getElementById('screenshot');
+function saveLastAssistantResponse(response) {
+  if (response) {
+    localStorage.setItem('lastAssistantResponse', response);
+  }
+}
 
-  output.textContent = isRegion ? 'Capturing behind overlay...' : 'Capturing screen...';
+function getLastAssistantResponse() {
+  return localStorage.getItem('lastAssistantResponse');
+}
+
+let formatterEnabled = true;
+let lastAssistantResponse = getLastAssistantResponse();
+
+// Listen for formatter toggle from main process
+ipcRenderer.on('formatter-toggled', (event, enabled) => {
+  formatterEnabled = enabled;
+  UI.setOutput(`Formatter: ${enabled ? 'ON' : 'OFF'}`, 1500);
+
+  // Re-render last assistant response if available
+  if (lastAssistantResponse) {
+    if (formatterEnabled) {
+      UI.setOutputHTML(formatDeepSeekResponse(lastAssistantResponse));
+    } else {
+      UI.setOutput(lastAssistantResponse);
+    }
+  }
+});
+
+async function captureScreenshot(isRegion = false) {
+  UI.setOutput(isRegion ? 'Capturing behind overlay...' : 'Capturing screen...');
   const image = isRegion
     ? await ipcRenderer.invoke('capture-screen-region')
     : await ipcRenderer.invoke('capture-screen');
 
-  img.src = image;
-  img.style.display = 'block';
+  UI.showScreenshot(image);
 
-  output.textContent = 'Running OCR...';
+  UI.setOutput('Running OCR...');
   const text = await ipcRenderer.invoke('perform-ocr', image);
 
-  output.textContent = `Extracted:\n${text}\n\nQuerying model...`;
+  UI.setOutput(`Extracted:\n${text}\n\nQuerying model...`);
   const answer = await ipcRenderer.invoke('ask-chatgpt', text);
 
-  // Hide all UI elements except the response
-  const title = document.querySelector('h2');
-  const instructions = document.querySelectorAll('p');
+  lastAssistantResponse = answer;
+  saveLastAssistantResponse(answer);
 
-  if (title) title.style.display = 'none';
-  instructions.forEach((p) => (p.style.display = 'none'));
-  img.style.display = 'none';
-
-  output.innerHTML = formatDeepSeekResponse(answer);
+  UI.hideInstructions();
+  UI.hideScreenshot();
+  if (formatterEnabled) {
+    UI.setOutputHTML(formatDeepSeekResponse(answer));
+  } else {
+    UI.setOutput(answer);
+  }
 }
 
 ipcRenderer.on('trigger-screenshot', async () => {
@@ -126,14 +221,8 @@ ipcRenderer.on('trigger-overlay-region-screenshot', async () => {
 
 // Listen for OCR filtering changes from main process
 ipcRenderer.on('ocr-filtering-changed', (event, enabled) => {
-  updateOcrFilterIndicator(enabled);
-  const output = document.getElementById('output');
-  output.textContent = `OCR Filtering: ${enabled ? 'ON' : 'OFF'}`;
-  setTimeout(() => {
-    if (output.textContent.includes('OCR Filtering:')) {
-      output.textContent = 'Waiting for action...';
-    }
-  }, 2000);
+  UI.updateOcrIndicator(enabled);
+  UI.setOutput(`OCR Filtering: ${enabled ? 'ON' : 'OFF'}`, 2000);
 });
 
 // Call this when you want to start recording (e.g. hotkey or button)
@@ -147,7 +236,7 @@ async function startAudioCapture() {
   };
 
   mediaRecorder.start();
-  document.getElementById('output').textContent = '🎙️ Recording audio…';
+  UI.setOutput('🎙️ Recording audio…');
 }
 
 // Call this to stop and process the recording
@@ -163,11 +252,11 @@ function stopAudioCapture() {
       const arrayBuffer = await blob.arrayBuffer();
       const base64Audio = Buffer.from(arrayBuffer).toString('base64');
       const transcript = await ipcRenderer.invoke('transcribe-audio', base64Audio);
-      document.getElementById('output').textContent = `📝 Transcript:\n${transcript}`;
+      UI.setOutput(`📝 Transcript:\n${transcript}`);
       resolve();
     };
     mediaRecorder.stop();
-    document.getElementById('output').textContent = '🎙️ Recording stopped';
+    UI.setOutput('🎙️ Recording stopped');
   });
 }
 
@@ -176,52 +265,42 @@ ipcRenderer.on('stop-audio', stopAudioCapture);
 
 // Listen for hide/show commands
 ipcRenderer.on('hide-ui', () => {
-  document.getElementById('container').style.display = 'none';
+  UI.hideUI();
   // document.getElementById("selLayer").style.display = "none";
 });
 ipcRenderer.on('show-ui', () => {
-  document.getElementById('container').style.display = 'block';
+  UI.showUI();
   // Leave selLayer hidden unless region mode is active
 });
 
 // Listen for session reset from keyboard shortcut
 ipcRenderer.on('session-reset', () => {
   // Session reset handled in main process, no UI updates needed
+  UI.setOutput('Session reset. Ready for new conversation.', 2000);
+  UI.setOutputHTML(''); // Clear output
+  lastAssistantResponse = null;
 });
 
 // Listen for provider switching events
 ipcRenderer.on('provider-switching', (event, data) => {
-  const output = document.getElementById('output');
-  output.textContent = `Switching to ${data.to}... (${data.sessionLength} messages preserved)`;
+  UI.setOutput(`Switching to ${data.to}... (${data.sessionLength} messages preserved)`);
 });
 
 ipcRenderer.on('provider-switched', (event, data) => {
-  const output = document.getElementById('output');
   const providerName = data.isOllama ? 'Ollama' : 'HuggingFace';
-  output.textContent = `✅ Switched to ${providerName} (${data.sessionPreserved} messages preserved)`;
-
-  setTimeout(() => {
-    if (output.textContent.includes('Switched to')) {
-      output.textContent = 'Waiting for action...';
-    }
-  }, 2000);
+  UI.setOutput(
+    `✅ Switched to ${providerName} (${data.sessionPreserved} messages preserved)`,
+    2000
+  );
 });
 
 ipcRenderer.on('provider-switch-failed', (event, data) => {
-  const output = document.getElementById('output');
-  output.textContent = `❌ Switch failed: ${data.error}`;
-
-  setTimeout(() => {
-    if (output.textContent.includes('Switch failed')) {
-      output.textContent = 'Waiting for action...';
-    }
-  }, 3000);
+  UI.setOutput(`❌ Switch failed: ${data.error}`, 3000);
 });
 
 // Listen for AI processing events
 ipcRenderer.on('ai-processing-started', (event, message) => {
-  const output = document.getElementById('output');
-  output.textContent = message || '🤔 AI Processing...';
+  UI.setOutput(message || '🤔 AI Processing...');
 });
 
 ipcRenderer.on('ai-processing-complete', (event) => {
@@ -230,46 +309,61 @@ ipcRenderer.on('ai-processing-complete', (event) => {
 
 // Listen for model warmup events
 ipcRenderer.on('model-warmup-started', (event, message) => {
-  const output = document.getElementById('output');
-  output.textContent = message || '🔥 Warming up model...';
+  UI.setOutput(message || '🔥 Warming up model...');
 });
 
 // Listen for model switch events
 ipcRenderer.on('model-switched', (event, data) => {
-  const output = document.getElementById('output');
   const exchangeText = data.exchanges === 1 ? 'exchange' : 'exchanges';
-  output.textContent = `🔄 Switched to ${data.model}\n💬 Session preserved: ${data.exchanges} ${exchangeText} (${data.sessionLength} messages)`;
-
-  // Show session status for longer since it has more information
-  setTimeout(() => {
-    if (output.textContent.includes('Switched to')) {
-      output.textContent = 'Waiting for action...';
-    }
-  }, 3000);
+  UI.setOutput(
+    `🔄 Switched to ${data.model}\n💬 Session preserved: ${data.exchanges} ${exchangeText} (${data.sessionLength} messages)`,
+    3000
+  );
+  // ask-chatgpt to answer a question with the new model
+  if (data.question) {
+    const question = data.question;
+    ipcRenderer.invoke('ask-chatgpt', question).then((response) => {
+      lastAssistantResponse = response;
+      saveLastAssistantResponse(response);
+      if (formatterEnabled) {
+        UI.setOutputHTML(formatDeepSeekResponse(response));
+      } else {
+        UI.setOutput(response);
+      }
+    });
+  }
 });
 
 // Listen for theme toggle event from main process
 ipcRenderer.on('toggle-theme', () => {
   toggleTheme();
-  const output = document.getElementById('output');
   const themeText = currentTheme === 'light' ? 'Light' : 'Dark';
-  output.textContent = `Theme switched to ${themeText}`;
+  UUI.setOutput(`Theme switched to ${themeText}`, 1000);
+  // 2) …then put back the last response
   setTimeout(() => {
-    if (output.textContent.includes('Theme switched')) {
-      output.textContent = 'Waiting for action...';
+    if (lastAssistantResponse) {
+      if (formatterEnabled) {
+        UI.setOutputHTML(formatDeepSeekResponse(lastAssistantResponse));
+      } else {
+        UI.setOutput(lastAssistantResponse);
+      }
     }
-  }, 2000);
+  }, 1000);
+});
+
+// Listen for session length updates
+ipcRenderer.on('session-length', (event, length) => {
+  UI.setSession(length);
 });
 
 // Listen for page scroll events
 ipcRenderer.on('scroll-page', (event, direction) => {
-  const container = document.getElementById('container');
-  const scrollAmount = container.clientHeight * 0.2;
+  const scrollAmount = UI.container.clientHeight * 0.2;
 
   if (direction === 'up') {
-    container.scrollBy({ top: -scrollAmount, behavior: 'smooth' });
+    UI.container.scrollBy({ top: -scrollAmount, behavior: 'smooth' });
   } else if (direction === 'down') {
-    container.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+    UI.container.scrollBy({ top: scrollAmount, behavior: 'smooth' });
   }
 });
 
@@ -277,4 +371,11 @@ ipcRenderer.on('scroll-page', (event, direction) => {
 document.addEventListener('DOMContentLoaded', () => {
   initOcrFilteringState();
   initTheme();
+  if (lastAssistantResponse) {
+    if (formatterEnabled) {
+      UI.setOutputHTML(formatDeepSeekResponse(lastAssistantResponse));
+    } else {
+      UI.setOutput(lastAssistantResponse);
+    }
+  }
 });

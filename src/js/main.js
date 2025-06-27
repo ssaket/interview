@@ -8,100 +8,342 @@ const {
   screen,
 } = require('electron');
 const axios = require('axios');
+const crypto = require('crypto');
+
 require('dotenv').config();
 
-// -- Global variables -----------------------------------------------------
-let mainWindow;
-let ocrFilteringEnabled = true; // Default: filtering ON
-let currentModelName = process.env.OLLAMA_MODEL || 'myaniu/qwen2.5-1m';
-const modelInstances = new Map(); // Map to store model instances
+const { InferenceClient } = require('@huggingface/inference');
+const OllamaClient = require('./ollama-client');
+const DeepSeekFormatter = require('./formatter');
 
-// Available Ollama models
+const MODEL_PROMPTS = {
+  /* Generic fallback — balanced detail */
+  default: `You are my coding interview assistant. Ignore any junk or unclear OCR text.
+
+Respond in three **clearly-labeled phases**:
+
+1. 🐢**Brute-force reasoning**  
+   • Describe the simplest correct approach conceptually.  
+   • Provide its time and space complexity.  
+   • **Do *not* show any code yet.**
+
+2. 🔍**Guided examples**  
+   • Walk through 2-3 small inputs step-by-step to illustrate the brute-force idea.  
+   • Surface any corner-cases and pitfalls.
+
+3. ⚡ **Optimised solution**  
+   • Explain the key insight that leads to the optimal algorithm.  
+   • Present clean, idiomatic Python code.  
+   • Analyse its time and space complexity.
+
+Keep the tone human and conversational, and reference earlier context when helpful.`,
+
+  /* Mistral models — concise & to‑the‑point */
+  mistral: `You are my coding interview assistant. Ignore junk or unreadable OCR text.
+
+For each problem answer **in order**:
+1. Brute-force idea (concept + Big-O, **no code**)  
+2. Two concise worked examples  
+3. Optimised approach → explanation → Python code → complexity
+
+Stay direct and concise. Reference previous context appropriately.`,
+
+  /* Qwen models — beginner‑friendly teaching style */
+  qwen: `You are a coding interview tutor. The input may have OCR noise—ignore it.
+
+Structure your response in three steps:
+1. Beginner-friendly brute-force explanation with complexity (**no code**)  
+2. Walkthrough of 2-3 simple examples  
+3. Optimised solution: key insight, Python code, detailed complexity
+
+Keep the language clear and approachable, and reference prior context when relevant.`,
+
+  /* CodeLlama — fast, clear coding help */
+  codellama: `You are my coding assistant. The input may contain OCR noise—ignore it.
+
+For each problem:
+1. Briefly explain the simplest approach with time and space complexity. Keep it short. No code yet.
+2. Show 1-2 small examples to illustrate.
+3. Present the efficient solution:
+   - Explain why it's better
+   - Provide clean Python code
+   - State precise time and space complexity
+
+Be clear and concise. Avoid long explanations or excessive brainstorming. Focus on working code and correctness. Reference prior context if helpful.`,
+
+  /* Phi models — quick, simple Python-first output */
+  phi: `You are a coding assistant focused on quick, easy-to-understand solutions. The input may contain OCR noise—ignore it.
+
+For each problem:
+1. Briefly describe the simplest correct approach in plain language.
+2. Show clean, minimal Python code immediately.
+3. Mention time and space complexity after the code.
+
+Keep your explanation short. Use simple words. No complex theory or long sentences. Focus on practical, working code`,
+};
+
 const ollamaModels = {
   primary: 'myaniu/qwen2.5-1m',
-  dryRun: ['phi4-mini-reasoning', 'deepseek-r1', 'phi3:mini'],
+  dryRun: ['phi3:mini', 'codellama:7b-instruct'],
   explanation: ['mistral'],
   all: function () {
     return [this.primary, ...this.dryRun, ...this.explanation];
   },
 };
 
-// Session management
-const session = {
-  history: [],
-  active: false,
-};
-// -- Helper functions ----------------------------------------------------
+const AppController = (() => {
+  // --- State ---
+  let mainWindow;
+  let ocrFilteringEnabled = true;
+  let formatterEnabled = true;
+  let currentModelName = process.env.OLLAMA_MODEL || ollamaModels.primary;
+  let currentProvider = process.env.AI_PROVIDER || 'ollama';
+  let aiClient;
+  let isOllama = false;
+  let SYSTEM_PROMPT = getSystemPrompt(currentModelName);
+  const modelInstances = new Map();
+  const formatter = new DeepSeekFormatter();
+  const sessions = new Map();
 
-function registerShortcuts(mainWindow) {
-  // Capture shortcuts
-  let moveStep = 20,
-    resizeStep = 50;
-  // Screenshot shortcuts
-  globalShortcut.register('Command+Shift+S', () =>
-    mainWindow.webContents.send('trigger-screenshot')
-  );
-  globalShortcut.register('Command+Shift+A', () =>
-    mainWindow.webContents.send('trigger-overlay-region-screenshot')
-  );
-  // Movement
-  ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
-    globalShortcut.register(`Command+${dir}`, () => {
-      const [x, y] = mainWindow.getPosition();
-      const dx = dir === 'Left' ? -moveStep : dir === 'Right' ? moveStep : 0;
-      const dy = dir === 'Up' ? -moveStep : dir === 'Down' ? moveStep : 0;
-      mainWindow.setPosition(x + dx, y + dy);
+  function getSession() {
+    if (!sessions.has(currentModelName)) {
+      sessions.set(currentModelName, { history: [], active: false, cache: new Map() });
+    }
+    return sessions.get(currentModelName);
+  }
+
+  // --- Utility ---
+  function getModelType(modelName = '') {
+    modelName = modelName.toLowerCase();
+    if (modelName.includes('phi')) return 'phi';
+    if (modelName.includes('mistral')) return 'mistral';
+    if (modelName.includes('qwen')) return 'qwen';
+    if (modelName.includes('codellama')) return 'codellama';
+    return 'default';
+  }
+  function getSystemPrompt(modelName) {
+    return MODEL_PROMPTS[getModelType(modelName)] || MODEL_PROMPTS.default;
+  }
+
+  // --- Window ---
+  function createWindow() {
+    mainWindow = new BrowserWindow({
+      width: 800,
+      height: 800,
+      alwaysOnTop: true,
+      frame: false,
+      transparent: true,
+      hasShadow: false,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+      },
+      show: true,
+      fullscreenable: false,
+      backgroundColor: '#00000000',
+      focusable: false,
+      skipTaskbar: true,
+      type: 'panel',
+      paintWhenInitiallyHidden: true,
+      titleBarStyle: 'hidden',
+      enableLargerThanScreen: true,
+      movable: true,
     });
-  });
-  // Resizing shortcuts...
-  const defaultWidth = 800;
-  const defaultHeight = 800;
-  const minSize = 200;
-  // Make window larger/smaller (uniform scaling)
-  globalShortcut.register('Command+Shift+=', () => {
-    // const [width, height] = mainWindow.getSize();
-    // const newWidth = width + resizeStep;
-    // const newHeight = height + resizeStep;
-    // mainWindow.setSize(newWidth, newHeight);
-    // console.log(`Window resized larger: ${newWidth}x${newHeight}`);
-    if (moveStep < 400) moveStep *= 2;
-  });
-  globalShortcut.register('Command+Shift+-', () => {
-    // const [width, height] = mainWindow.getSize();
-    // const newWidth = Math.max(minSize, width - resizeStep);
-    // const newHeight = Math.max(minSize, height - resizeStep);
-    // mainWindow.setSize(newWidth, newHeight);
-    // console.log(`Window resized smaller: ${newWidth}x${newHeight}`);
-    if (moveStep > 20) moveStep /= 2;
-  });
-  // Width adjustments
-  globalShortcut.register('Command+Shift+]', () => {
-    const [width, height] = mainWindow.getSize();
-    const newWidth = width + resizeStep;
-    mainWindow.setSize(newWidth, height);
-  });
-  globalShortcut.register('Command+Shift+[', () => {
-    const [width, height] = mainWindow.getSize();
-    const newWidth = Math.max(minSize, width - resizeStep);
-    mainWindow.setSize(newWidth, height);
-  });
-  // Height adjustments (using Shift+Up/Down since regular Up/Down are used for movement)
-  globalShortcut.register('Command+Shift+Down', () => {
-    const [width, height] = mainWindow.getSize();
-    const newHeight = height + resizeStep;
-    mainWindow.setSize(width, newHeight);
-  });
-  globalShortcut.register('Command+Shift+Up', () => {
-    const [width, height] = mainWindow.getSize();
-    const newHeight = Math.max(minSize, height - resizeStep);
-    mainWindow.setSize(width, newHeight);
-  });
-  // Reset window to default size
-  globalShortcut.register('Command+Shift+0', () => {
-    mainWindow.setSize(defaultWidth, defaultHeight);
-  });
-  // Display help with all keyboard shortcuts
-  globalShortcut.register('Command+Shift+H', () => {
+
+    mainWindow.setContentProtection(true);
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+
+    if (process.platform === 'darwin') {
+      mainWindow.setHiddenInMissionControl(true);
+      mainWindow.setWindowButtonVisibility(false);
+      mainWindow.setBackgroundColor('#00000000');
+      mainWindow.setSkipTaskbar(true);
+      mainWindow.setHasShadow(false);
+    }
+    mainWindow.webContents.setBackgroundThrottling(false);
+    mainWindow.webContents.setFrameRate(60);
+    mainWindow.loadFile('index.html');
+  }
+
+  // -- Formatting --
+  function toggleFormatter() {
+    formatterEnabled = !formatterEnabled;
+    mainWindow.webContents.send('formatter-toggled', formatterEnabled);
+  }
+
+  // --- AI Client ---
+  function initializeAIClient(provider = currentProvider) {
+    const providerLower = provider.toLowerCase();
+    const modelName =
+      providerLower === 'ollama'
+        ? currentModelName
+        : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528';
+    const instanceKey = `${providerLower}-${modelName}`;
+
+    if (modelInstances.has(instanceKey)) {
+      const instance = modelInstances.get(instanceKey);
+      aiClient = instance.client;
+      isOllama = instance.isOllama;
+      SYSTEM_PROMPT = instance.systemPrompt;
+      currentProvider = provider;
+      return { provider: currentProvider, isOllama };
+    }
+
+    let newInstance;
+    if (providerLower === 'ollama') {
+      const client = new OllamaClient(
+        process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+        modelName
+      );
+      newInstance = {
+        client,
+        isOllama: true,
+        systemPrompt: getSystemPrompt(modelName),
+      };
+      if (process.env.OLLAMA_WARMUP !== 'false' && provider === currentProvider) {
+        setTimeout(async () => {
+          try {
+            console.log('Starting model warmup...');
+            await client.warmupModel();
+          } catch (error) {
+            console.log('Model warmup failed, but continuing:', error.message);
+          }
+        }, 2000);
+      }
+    } else {
+      if (!process.env.HF_TOKEN) {
+        console.warn(
+          'HF_TOKEN not found in environment variables. HuggingFace provider may not work.'
+        );
+      }
+      const client = new InferenceClient(process.env.HF_TOKEN);
+      newInstance = {
+        client,
+        isOllama: false,
+        systemPrompt: getSystemPrompt(modelName),
+      };
+      console.log('Using HuggingFace provider with model:', modelName);
+    }
+    modelInstances.set(instanceKey, newInstance);
+    aiClient = newInstance.client;
+    isOllama = newInstance.isOllama;
+    SYSTEM_PROMPT = newInstance.systemPrompt;
+    currentProvider = provider;
+    return { provider: currentProvider, isOllama };
+  }
+
+  function switchAIProvider() {
+    const newProvider = isOllama ? 'huggingface' : 'ollama';
+    mainWindow.webContents.send('provider-switching', {
+      from: currentProvider,
+      to: newProvider,
+      sessionLength: session.history.length,
+    });
+    try {
+      SYSTEM_PROMPT = getSystemPrompt(
+        newProvider === 'ollama' ? currentModelName : process.env.HF_MODEL
+      );
+      const result = initializeAIClient(newProvider);
+      mainWindow.webContents.send('provider-switched', {
+        provider: result.provider,
+        isOllama: result.isOllama,
+        sessionPreserved: session.history.length,
+        model: result.isOllama
+          ? currentModelName
+          : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
+      });
+    } catch (error) {
+      console.error('Failed to switch provider:', error.message);
+      mainWindow.webContents.send('provider-switch-failed', {
+        error: error.message,
+        currentProvider: currentProvider,
+      });
+    }
+  }
+
+  // --- Shortcuts ---
+  function registerShortcuts() {
+    let moveStep = 20,
+      resizeStep = 50;
+    const defaultWidth = 800,
+      defaultHeight = 800,
+      minSize = 100;
+
+    // Window movement, resizing, and help
+    ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
+      globalShortcut.register(`Command+${dir}`, () => {
+        const [x, y] = mainWindow.getPosition();
+        const dx = dir === 'Left' ? -moveStep : dir === 'Right' ? moveStep : 0;
+        const dy = dir === 'Up' ? -moveStep : dir === 'Down' ? moveStep : 0;
+        mainWindow.setPosition(x + dx, y + dy);
+      });
+    });
+    globalShortcut.register('Command+Shift+=', () => {
+      if (moveStep < 400) moveStep *= 2;
+    });
+    globalShortcut.register('Command+Shift+-', () => {
+      if (moveStep > 20) moveStep /= 2;
+    });
+    globalShortcut.register('Command+Shift+]', () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(width + resizeStep, height);
+    });
+    globalShortcut.register('Command+Shift+[', () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
+    });
+    globalShortcut.register('Command+Shift+Down', () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(width, height + resizeStep);
+    });
+    globalShortcut.register('Command+Shift+Up', () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(width, Math.max(minSize, height - resizeStep));
+    });
+    globalShortcut.register('Command+Shift+0', () => {
+      mainWindow.setSize(defaultWidth, defaultHeight);
+    });
+    globalShortcut.register('Command+Shift+H', showHelp);
+
+    // Window, audio, session, OCR, theme, and model switching
+    globalShortcut.register('Command+B', () =>
+      mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
+    );
+    globalShortcut.register('Command+R', () => mainWindow.webContents.send('start-audio'));
+    globalShortcut.register('Command+T', () => mainWindow.webContents.send('stop-audio'));
+    globalShortcut.register('Command+Shift+R', () => {
+      sessions.set(currentModelName, { history: [], active: false });
+      mainWindow.webContents.send('session-reset');
+      mainWindow.webContents.send('session-length', 0);
+    });
+    globalShortcut.register('Command+Shift+F', () => {
+      ocrFilteringEnabled = !ocrFilteringEnabled;
+      mainWindow.webContents.send('ocr-filtering-changed', ocrFilteringEnabled);
+    });
+    globalShortcut.register('Command+Shift+P', switchAIProvider);
+    globalShortcut.register('Command+Shift+W', () => {
+      if (isOllama) {
+        mainWindow.webContents.send(
+          'model-warmup-started',
+          `Warming up ${currentModelName}... This may take 10-30 seconds.`
+        );
+      }
+    });
+    globalShortcut.register('Command+Shift+D', () => mainWindow.webContents.send('toggle-theme'));
+    globalShortcut.register('Command+Shift+M', switchOllamaModel);
+    globalShortcut.register('Shift+1', () => mainWindow.webContents.send('scroll-page', 'up'));
+    globalShortcut.register('Shift+2', () => mainWindow.webContents.send('scroll-page', 'down'));
+    globalShortcut.register('Command+Shift+S', () =>
+      mainWindow.webContents.send('trigger-screenshot')
+    );
+    globalShortcut.register('Command+Shift+A', () =>
+      mainWindow.webContents.send('trigger-overlay-region-screenshot')
+    );
+    globalShortcut.register('Command+Shift+L', toggleFormatter);
+  }
+
+  function showHelp() {
     console.log('\n=== KEYBOARD SHORTCUTS HELP ===');
     console.log('WINDOW MOVEMENT:');
     console.log('  Cmd+Arrow Keys        - Move window in direction');
@@ -134,594 +376,284 @@ function registerShortcuts(mainWindow) {
     console.log('\nHELP:');
     console.log('  Cmd+Shift+H           - Display this help');
     console.log('================================\n');
-  });
-  // Visibility toggle
-  globalShortcut.register('Command+B', () =>
-    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
-  );
-  // Audio
-  globalShortcut.register('Command+R', () => mainWindow.webContents.send('start-audio'));
-  globalShortcut.register('Command+T', () => mainWindow.webContents.send('stop-audio'));
-  // Session & OCR toggles
-  globalShortcut.register('Command+Shift+R', () => {
-    session.history = [];
-    session.active = false;
-    mainWindow.webContents.send('session-reset');
-  });
-  globalShortcut.register('Command+Shift+F', () => {
-    ocrFilteringEnabled = !ocrFilteringEnabled;
-    console.log(`OCR Filtering: ${ocrFilteringEnabled ? 'ON' : 'OFF'}`);
-    mainWindow.webContents.send('ocr-filtering-changed', ocrFilteringEnabled);
-  });
-  globalShortcut.register('Command+Shift+P', () => {
-    switchAIProvider();
-  });
-  globalShortcut.register('Command+Shift+W', () => {
-    if (isOllama) {
-      console.log(`Manual ${currentModelName} warmup triggered...`);
-      mainWindow.webContents.send(
-        'model-warmup-started',
-        `Warming up ${currentModelName}... This may take 10-30 seconds.`
+  }
+
+  function switchOllamaModel() {
+    if (!isOllama) return;
+    const allModels = ollamaModels.all();
+    const currentIndex = allModels.indexOf(currentModelName);
+    const nextIndex = (currentIndex + 1) % allModels.length;
+    const newModel = allModels[nextIndex];
+
+    const oldType = getModelType(currentModelName);
+    const newType = getModelType(newModel);
+    if (oldType !== newType) {
+      console.log('\nNew System Prompt:');
+      console.log('----------------------------------------');
+      console.log(MODEL_PROMPTS[newType]);
+      console.log('----------------------------------------\n');
+    }
+
+    const oldSession = getSession();
+    const prevSessionHistory = oldSession.history.slice(-20);
+    const lastUserMsg = prevSessionHistory.reverse().find((m) => m.role === 'user');
+
+    currentModelName = newModel;
+    process.env.OLLAMA_MODEL = newModel;
+    SYSTEM_PROMPT = getSystemPrompt(newModel);
+
+    initializeAIClient('ollama');
+
+    const existed = sessions.has(newModel);
+    if (existed) {
+      newSession = sessions.get(newModel);
+    } else {
+      newSession = {
+        history: lastUserMsg ? [lastUserMsg] : [],
+        active: Boolean(lastUserMsg),
+        cache: new Map(),
+      };
+      sessions.set(newModel, newSession);
+    }
+
+    mainWindow.webContents.send('model-switched', {
+      model: newModel,
+      question: lastUserMsg ? lastUserMsg.content : '',
+      sessionLength: newSession.history.length,
+      exchanges: Math.floor(newSession.history.length / 2),
+    });
+    console.log(`Switched to ${newModel} (${newSession.history.length} messages preserved)`);
+  }
+
+  // --- IPC Handlers ---
+  function registerIpcHandlers() {
+    ipcMain.handle('capture-screen', async () => {
+      mainWindow.webContents.send('hide-ui');
+      await new Promise((r) => setTimeout(r, 100));
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 1920, height: 1080 },
+      });
+      mainWindow.webContents.send('show-ui');
+      return sources[0].thumbnail.toDataURL();
+    });
+
+    ipcMain.handle('capture-screen-region', async () => {
+      mainWindow.webContents.send('hide-ui');
+      await new Promise((r) => setTimeout(r, 100));
+      const [windowX, windowY] = mainWindow.getPosition();
+      const [windowWidth, windowHeight] = mainWindow.getSize();
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: screenWidth, height: screenHeight },
+      });
+      mainWindow.webContents.send('show-ui');
+      const region = { x: windowX, y: windowY, width: windowWidth, height: windowHeight };
+      try {
+        const fullImage = nativeImage.createFromDataURL(sources[0].thumbnail.toDataURL());
+        const croppedImage = fullImage.crop(region);
+        return croppedImage.toDataURL();
+      } catch (error) {
+        console.error('Error cropping image:', error);
+        return sources[0].thumbnail.toDataURL();
+      }
+    });
+
+    ipcMain.handle('perform-ocr', async (event, image) => {
+      const Tesseract = require('tesseract.js');
+      const {
+        data: { text },
+      } = await Tesseract.recognize(image, 'eng');
+      let finalText = text;
+      if (ocrFilteringEnabled) {
+        const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
+        const cleaner = new LLMFriendlyOCRCleaner();
+        finalText = cleaner.cleanText(text, {
+          maxLines: 30,
+          preserveQuestions: true,
+          preserveCode: true,
+          removeJunk: true,
+          logResults: false,
+        });
+      }
+      return finalText;
+    });
+
+    ipcMain.handle('ask-chatgpt', async (event, question) => {
+      const session = getSession();
+      // 1) If we’ve already answered this exact question, return it immediately
+      const questionHash = crypto.createHash('md5').update(question).digest('hex');
+      console.log(`[DEBUG] questionHash = ${questionHash}`);
+      console.log(
+        `[DEBUG] cache size = ${session.cache.size}; keys = ${JSON.stringify(
+          Array.from(session.cache.keys())
+        )}`
       );
-    }
-  });
 
-  // Theme toggle
-  globalShortcut.register('Command+Shift+D', () => {
-    mainWindow.webContents.send('toggle-theme');
-  });
-
-  // Ollama model switch
-  globalShortcut.register('Command+Shift+M', () => {
-    if (isOllama) {
-      // Get all available models
-      const allModels = ollamaModels.all();
-      // Get current model index and calculate next
-      const currentIndex = allModels.indexOf(currentModelName);
-      const nextIndex = (currentIndex + 1) % allModels.length;
-      const newModel = allModels[nextIndex];
-
-      // Log system prompt change
-      const oldType = getModelType(currentModelName);
-      const newType = getModelType(newModel);
-      console.log('\nSwitching Model Configuration:');
-      console.log(`From: ${currentModelName} (${oldType})`);
-      console.log(`To: ${newModel} (${newType})`);
-      if (oldType !== newType) {
-        console.log('\nNew System Prompt:');
-        console.log('----------------------------------------');
-        console.log(MODEL_PROMPTS[newType]);
-        console.log('----------------------------------------\n');
+      if (session.cache.has(questionHash)) {
+        const cachedResponse = session.cache.get(questionHash);
+        console.log(`[DEBUG] cache hit for hash ${questionHash}`);
+        return formatter.formatResponse(cachedResponse, formatterEnabled).text;
       }
 
-      // Store current session state
-      const prevSessionHistory = session.history.slice(-20); // Keep last 10 exchanges
-      const wasActive = session.active;
+      console.log(`[DEBUG] cache miss for hash ${questionHash}, calling model...`);
+      try {
+        if (isOllama) {
+          mainWindow.webContents.send(
+            'ai-processing-started',
+            `${currentModelName} is thinking... This may take 60-90 seconds for complex coding questions.`
+          );
+        }
+        const messages = [
+          { role: 'system', content: SYSTEM_PROMPT },
+          ...session.history,
+          { role: 'user', content: question },
+        ];
+        let chatCompletion;
+        if (isOllama) {
+          chatCompletion = await aiClient.chatCompletion({ messages, stream: false });
+        } else {
+          chatCompletion = await aiClient.chatCompletion({
+            provider: process.env.HF_PROVIDER || 'hyperbolic',
+            model: process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
+            messages,
+            stream: false,
+          });
+        }
+        const choice = chatCompletion.choices[0].message;
+        const rawResponse =
+          typeof choice === 'string' ? choice : choice.content || JSON.stringify(choice);
+        session.history.push({ role: 'user', content: question });
+        session.history.push({ role: 'assistant', content: rawResponse });
+        session.cache.set(questionHash, rawResponse);
 
-      // Update model and reinitialize client
-      currentModelName = newModel;
-      process.env.OLLAMA_MODEL = newModel;
-
-      // Update system prompt for the new model
-      const newModelType = getModelType(newModel);
-      SYSTEM_PROMPT = MODEL_PROMPTS[newModelType];
-
-      initializeAIClient('ollama');
-
-      // Restore session state
-      session.history = prevSessionHistory;
-      session.active = wasActive;
-
-      mainWindow.webContents.send('model-switched', {
-        model: newModel,
-        sessionLength: session.history.length,
-        exchanges: Math.floor(session.history.length / 2),
-      });
-
-      console.log(`Switched to ${newModel} (${session.history.length} messages preserved)`);
-    }
-  });
-
-  // Page scrolling shortcuts
-  globalShortcut.register('Shift+1', () => {
-    mainWindow.webContents.send('scroll-page', 'up');
-  });
-
-  globalShortcut.register('Shift+2', () => {
-    mainWindow.webContents.send('scroll-page', 'down');
-  });
-}
-
-function registerIpcHandlers(mainWindow) {
-  ipcMain.handle('capture-screen', async () => {
-    mainWindow.webContents.send('hide-ui');
-    await new Promise((r) => setTimeout(r, 100));
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: 1920, height: 1080 },
-    });
-    mainWindow.webContents.send('show-ui');
-    return sources[0].thumbnail.toDataURL();
-  });
-  ipcMain.handle('capture-screen-region', async (event) => {
-    mainWindow.webContents.send('hide-ui');
-    await new Promise((r) => setTimeout(r, 100));
-    // Get overlay window position and size
-    const [windowX, windowY] = mainWindow.getPosition();
-    const [windowWidth, windowHeight] = mainWindow.getSize();
-    // Get actual screen dimensions
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.bounds;
-    // Use screen resolution for capture to avoid scaling issues
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: screenWidth, height: screenHeight },
-    });
-    mainWindow.webContents.send('show-ui');
-    // Define region as the area behind the overlay window
-    const region = {
-      x: windowX,
-      y: windowY,
-      width: windowWidth,
-      height: windowHeight,
-    };
-    // Crop the image to the region behind overlay window
-    try {
-      const fullImage = nativeImage.createFromDataURL(sources[0].thumbnail.toDataURL());
-      const croppedImage = fullImage.crop({
-        x: region.x,
-        y: region.y,
-        width: region.width,
-        height: region.height,
-      });
-      return croppedImage.toDataURL();
-    } catch (error) {
-      console.error('Error cropping image:', error);
-      return sources[0].thumbnail.toDataURL(); // Fallback to full screenshot
-    }
-  });
-  ipcMain.handle('perform-ocr', async (event, image) => {
-    const Tesseract = require('tesseract.js');
-    const {
-      data: { text },
-    } = await Tesseract.recognize(image, 'eng');
-    let finalText = text;
-    if (ocrFilteringEnabled) {
-      // Clean the OCR text using ML-based approach
-      const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
-      const cleaner = new LLMFriendlyOCRCleaner();
-      finalText = cleaner.cleanText(text, {
-        maxLines: 30,
-        preserveQuestions: true,
-        preserveCode: true,
-        removeJunk: true,
-        logResults: false,
-      });
-    }
-    return finalText;
-  });
-  ipcMain.handle('ask-chatgpt', async (event, question) => {
-    try {
-      // Notify UI that processing has started
-      if (isOllama) {
-        mainWindow.webContents.send(
-          'ai-processing-started',
-          `${currentModelName} is thinking... This may take 60-90 seconds for complex coding questions.`
-        );
+        session.active = true;
+        if (session.history.length > 20) session.history = session.history.slice(-20);
+        if (isOllama) mainWindow.webContents.send('ai-processing-complete');
+        const formatted = formatter.formatResponse(rawResponse, formatterEnabled);
+        return formatted.text;
+      } catch (err) {
+        if (isOllama) mainWindow.webContents.send('ai-processing-complete');
+        let errorMsg =
+          `⚠️ ${isOllama ? 'Ollama' : 'HuggingFace'} inference failed: ` + (err.message || err);
+        if (isOllama) {
+          if (err.message.includes('Ollama server not running')) {
+            errorMsg = '⚠️ Ollama server not running. Please start with: ollama serve';
+          }
+          if (err.message.includes('model not found') || err.message.includes('Model')) {
+            errorMsg = `⚠️ ${currentModelName} model not found. Please pull with: ollama pull ${currentModelName}`;
+          }
+          if (err.message.includes('timeout')) {
+            errorMsg = `⚠️ ${currentModelName} timeout. This reasoning model typically takes 60-90 seconds for complex coding questions. For very complex problems, it may take up to 5 minutes. Please wait and try again, or consider using a simpler question.`;
+          }
+        } else if (err.status === 429 || (err.response && err.response.status === 429)) {
+          errorMsg = '⚠️ Rate limit exceeded. Please try again later.';
+        }
+        // Update the UI with the new session length
+        mainWindow.webContents.send('session-length', session.history.length);
+        return formatter.formatResponse(errorMsg, formatterEnabled).text;
       }
-      // Build messages array with session history
-      const messages = [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
+    });
+
+    ipcMain.handle('get-ocr-filtering-state', async () => ocrFilteringEnabled);
+    ipcMain.handle('toggle-ocr-filtering', async () => {
+      ocrFilteringEnabled = !ocrFilteringEnabled;
+      return ocrFilteringEnabled;
+    });
+    ipcMain.handle('transcribe-audio', async (evt, b64) => {
+      const buffer = Buffer.from(b64, 'base64');
+      const resp = await axios.post('https://api.openai.com/v1/audio/transcriptions', buffer, {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'audio/webm',
         },
-        ...session.history,
-        { role: 'user', content: question },
-      ];
-      let chatCompletion;
-      if (isOllama) {
-        // Log system prompt being used
-        const modelType = getModelType(currentModelName);
-        console.log('\nModel Configuration:');
-        console.log(`- Model: ${currentModelName}`);
-        console.log(`- Type: ${modelType}`);
-        console.log('System Prompt:');
-        console.log('----------------------------------------');
-        console.log(SYSTEM_PROMPT);
-        console.log('----------------------------------------\n');
-        console.log(messages);
-
-        // Use Ollama with progress feedback
-        chatCompletion = await aiClient.chatCompletion({
-          messages: messages,
-          stream: false,
-        });
-      } else {
-        // Use HuggingFace
-        chatCompletion = await aiClient.chatCompletion({
-          provider: process.env.HF_PROVIDER || 'hyperbolic',
-          model: process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
-          messages: messages,
-          stream: false,
-        });
-      }
-      const choice = chatCompletion.choices[0].message;
-      // message could be string or object
-      const rawResponse =
-        typeof choice === 'string' ? choice : choice.content || JSON.stringify(choice);
-      // Add to session history
-      session.history.push({ role: 'user', content: question });
-      session.history.push({ role: 'assistant', content: rawResponse });
-      session.active = true;
-      // Keep only last 10 exchanges (20 messages) to prevent context overflow
-      if (session.history.length > 20) {
-        session.history = session.history.slice(-20);
-      }
-      // Notify UI that processing is complete
-      if (isOllama) {
-        mainWindow.webContents.send('ai-processing-complete');
-      }
-      // Format the response for better display
-      const formatted = formatter.formatResponse(rawResponse);
-      return formatted.text; // Return plain text version for the overlay
-    } catch (err) {
-      console.error(`${isOllama ? 'Ollama' : 'InferenceClient'} error:`, err);
-      // Notify UI that processing failed
-      if (isOllama) {
-        mainWindow.webContents.send('ai-processing-complete');
-      }
-      // Handle specific errors based on provider
-      if (isOllama) {
-        if (err.message.includes('Ollama server not running')) {
-          const errorMsg = '⚠️ Ollama server not running. Please start with: ollama serve';
-          return formatter.formatResponse(errorMsg).text;
-        }
-        if (err.message.includes('model not found') || err.message.includes('Model')) {
-          const errorMsg = `⚠️ ${currentModelName} model not found. Please pull with: ollama pull ${currentModelName}`;
-          return formatter.formatResponse(errorMsg).text;
-        }
-        if (err.message.includes('timeout')) {
-          const errorMsg = `⚠️ ${currentModelName} timeout. This reasoning model typically takes 60-90 seconds for complex coding questions. For very complex problems, it may take up to 5 minutes. Please wait and try again, or consider using a simpler question.`;
-          return formatter.formatResponse(errorMsg).text;
-        }
-      } else {
-        if (err.status === 429 || (err.response && err.response.status === 429)) {
-          const errorMsg = '⚠️ Rate limit exceeded. Please try again later.';
-          return formatter.formatResponse(errorMsg).text;
-        }
-      }
-      const errorMsg =
-        `⚠️ ${isOllama ? 'Ollama' : 'HuggingFace'} inference failed: ` + (err.message || err);
-      return formatter.formatResponse(errorMsg).text;
-    }
-  });
-  // IPC: get OCR filtering state
-  ipcMain.handle('get-ocr-filtering-state', async () => {
-    return ocrFilteringEnabled;
-  });
-  // IPC: toggle OCR filtering
-  ipcMain.handle('toggle-ocr-filtering', async () => {
-    ocrFilteringEnabled = !ocrFilteringEnabled;
-    console.log(`OCR Filtering: ${ocrFilteringEnabled ? 'ON' : 'OFF'}`);
-    return ocrFilteringEnabled;
-  });
-  ipcMain.handle('transcribe-audio', async (evt, b64) => {
-    const buffer = Buffer.from(b64, 'base64');
-    // Save to disk or send directly:
-    const resp = await axios.post('https://api.openai.com/v1/audio/transcriptions', buffer, {
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'audio/webm',
-      },
-      params: { model: 'whisper-1' },
+        params: { model: 'whisper-1' },
+      });
+      return resp.data.text;
     });
-    return resp.data.text;
-  });
-  // IPC: get provider status
-  ipcMain.handle('get-provider-status', async () => {
-    return {
-      provider: process.env.AI_PROVIDER,
+    ipcMain.handle('get-provider-status', async () => ({
+      provider: currentProvider,
       isOllama: isOllama,
-      model: isOllama
-        ? process.env.OLLAMA_MODEL || 'deepseek-r1'
-        : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
-    };
-  });
-  // IPC: check Ollama connection
-  ipcMain.handle('check-ollama-connection', async () => {
-    if (!isOllama) {
-      return {
-        error: 'Not using Ollama provider',
-        connected: false,
-        modelAvailable: false,
-      };
-    }
-    try {
-      const status = await aiClient.checkConnection();
-      return status;
-    } catch (error) {
-      return {
-        error: error.message,
-        connected: false,
-        modelAvailable: false,
-      };
-    }
-  });
-  // IPC: switch AI provider
-  ipcMain.handle('switch-ai-provider', async (event, targetProvider) => {
-    try {
-      if (targetProvider) {
-        // Switch to specific provider
-        if (targetProvider.toLowerCase() !== currentProvider.toLowerCase()) {
-          const result = initializeAIClient(targetProvider);
+      model: isOllama ? currentModelName : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
+    }));
+    ipcMain.handle('check-ollama-connection', async () => {
+      if (!isOllama) {
+        return { error: 'Not using Ollama provider', connected: false, modelAvailable: false };
+      }
+      try {
+        const status = await aiClient.checkConnection();
+        return status;
+      } catch (error) {
+        return { error: error.message, connected: false, modelAvailable: false };
+      }
+    });
+    ipcMain.handle('switch-ai-provider', async (event, targetProvider) => {
+      const session = getSession();
+      try {
+        if (targetProvider) {
+          if (targetProvider.toLowerCase() !== currentProvider.toLowerCase()) {
+            const result = initializeAIClient(targetProvider);
+            return {
+              success: true,
+              provider: result.provider,
+              isOllama: result.isOllama,
+              sessionPreserved: session.history.length,
+              model: result.isOllama
+                ? currentModelName
+                : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
+            };
+          } else {
+            return { success: false, error: `Already using ${currentProvider} provider` };
+          }
+        } else {
+          switchAIProvider();
           return {
             success: true,
-            provider: result.provider,
-            isOllama: result.isOllama,
+            provider: currentProvider,
+            isOllama: isOllama,
             sessionPreserved: session.history.length,
-            model: result.isOllama
-              ? process.env.OLLAMA_MODEL || 'deepseek-r1'
+            model: isOllama
+              ? currentModelName
               : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
           };
-        } else {
-          return {
-            success: false,
-            error: `Already using ${currentProvider} provider`,
-          };
         }
-      } else {
-        // Toggle between providers
-        switchAIProvider();
-        return {
-          success: true,
-          provider: currentProvider,
-          isOllama: isOllama,
-          sessionPreserved: session.history.length,
-          model: isOllama
-            ? process.env.OLLAMA_MODEL || 'deepseek-r1'
-            : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
-        };
+      } catch (error) {
+        return { success: false, error: error.message, currentProvider: currentProvider };
       }
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        currentProvider: currentProvider,
-      };
-    }
-  });
-  // IPC: warmup Ollama model
-  ipcMain.handle('warmup-ollama-model', async () => {
-    if (!isOllama) {
-      return {
-        success: false,
-        error: 'Not using Ollama provider',
-      };
-    }
-    try {
-      console.log('Starting manual model warmup...');
-      const result = await aiClient.warmupModel();
-      return result;
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  });
-}
-
-function initializeAIClient(provider = currentProvider) {
-  const providerLower = provider.toLowerCase();
-  const modelName =
-    providerLower === 'ollama'
-      ? process.env.OLLAMA_MODEL || 'deepseek-r1'
-      : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528';
-
-  // Create a unique key for the model instance
-  const instanceKey = `${providerLower}-${modelName}`;
-
-  // Return existing instance if available
-  if (modelInstances.has(instanceKey)) {
-    const instance = modelInstances.get(instanceKey);
-    aiClient = instance.client;
-    isOllama = instance.isOllama;
-    SYSTEM_PROMPT = instance.systemPrompt;
-    currentProvider = provider;
-    return { provider: currentProvider, isOllama };
-  }
-
-  // Create new instance if not exists
-  let newInstance;
-  if (providerLower === 'ollama') {
-    const client = new OllamaClient(
-      process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-      modelName
-    );
-    newInstance = {
-      client,
-      isOllama: true,
-      systemPrompt: MODEL_PROMPTS[getModelType(modelName)] || MODEL_PROMPTS.default,
-    };
-
-    // Optional warmup on startup
-    if (process.env.OLLAMA_WARMUP !== 'false' && provider === currentProvider) {
-      setTimeout(async () => {
-        try {
-          console.log('Starting model warmup...');
-          await client.warmupModel();
-        } catch (error) {
-          console.log('Model warmup failed, but continuing:', error.message);
-        }
-      }, 2000);
-    }
-  } else {
-    if (!process.env.HF_TOKEN) {
-      console.warn(
-        'HF_TOKEN not found in environment variables. HuggingFace provider may not work.'
-      );
-    }
-    const client = new InferenceClient(process.env.HF_TOKEN);
-    newInstance = {
-      client,
-      isOllama: false,
-      systemPrompt: MODEL_PROMPTS[getModelType(modelName)] || MODEL_PROMPTS.default,
-    };
-    console.log('Using HuggingFace provider with model:', modelName);
-  }
-
-  // Store the new instance
-  modelInstances.set(instanceKey, newInstance);
-
-  // Set current state
-  aiClient = newInstance.client;
-  isOllama = newInstance.isOllama;
-  SYSTEM_PROMPT = newInstance.systemPrompt;
-  currentProvider = provider;
-
-  return { provider: currentProvider, isOllama };
-}
-// ------------------------------------------------------------------------
-
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 800,
-    height: 800,
-    alwaysOnTop: true,
-    frame: false,
-    transparent: true,
-    hasShadow: false,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-    show: true,
-    fullscreenable: false,
-    backgroundColor: '#00000000',
-    focusable: false,
-    skipTaskbar: true,
-    type: 'panel',
-    paintWhenInitiallyHidden: true,
-    titleBarStyle: 'hidden',
-    enableLargerThanScreen: true,
-    movable: true,
-  });
-
-  mainWindow.setContentProtection(true);
-
-  mainWindow.setVisibleOnAllWorkspaces(true, {
-    visibleOnFullScreen: true,
-  });
-  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
-
-  // Additional screen capture resistance settings
-  if (process.platform === 'darwin') {
-    // Prevent window from being captured in screenshots
-    mainWindow.setHiddenInMissionControl(true);
-    mainWindow.setWindowButtonVisibility(false);
-    mainWindow.setBackgroundColor('#00000000');
-    // Prevent window from being included in window switcher
-    mainWindow.setSkipTaskbar(true);
-    // Disable window shadow
-    mainWindow.setHasShadow(false);
-  }
-  // Prevent the window from being captured by screen recording
-  mainWindow.webContents.setBackgroundThrottling(false);
-  mainWindow.webContents.setFrameRate(60);
-  // mainWindow.webContents.openDevTools();
-  mainWindow.loadFile('index.html');
-}
-
-app.whenReady().then(() => {
-  createWindow();
-  registerShortcuts(mainWindow);
-  registerIpcHandlers(mainWindow);
-  initializeAIClient();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
-
-app.on('before-quit', () => {
-  // Unregister all global shortcuts before quitting
-  globalShortcut.unregisterAll();
-});
-
-app.on('window-all-closed', () => {
-  globalShortcut.unregisterAll();
-  if (process.platform !== 'darwin') app.quit();
-});
-
-const { InferenceClient } = require('@huggingface/inference');
-const OllamaClient = require('./ollama-client');
-const DeepSeekFormatter = require('./formatter');
-
-// Initialize AI clients based on provider
-let currentProvider = process.env.AI_PROVIDER || 'ollama';
-let aiClient;
-let isOllama = false;
-
-const formatter = new DeepSeekFormatter();
-// System prompts for different model types
-const MODEL_PROMPTS = {
-  default:
-    'You are my coding interview assistant. Ignore any junk or unclear text from OCR. Focus on clear explanations, clean Python code, and time and space complexity for solving the core problem. Reference previous context appropriately.',
-  mistral:
-    'You are my coding interview assistant. Ignore junk or unreadable OCR text. For each question:\n- Explain simply\n- Provide clean Python code\n- Time and space complexity\nBe direct and concise.\nReference previous context appropriately.',
-  qwen: 'You are a coding interview tutor. The input may have errors or junk from OCR—ignore those. Provide:\n1. Clear, beginner-friendly explanation\n2. Clean Python code\n3. Time and space complexity\nResponses should be structured and easy to follow.\nReference previous context appropriately.',
-  deepseek:
-    'You are my coding interview assistant. Focus on professional solutions. For each question:\n- Technical explanation with key insights\n- Clean Python code with optimal solution\n- Detailed time and space complexity analysis\nBe thorough and reference previous context appropriately.',
-  phi: 'You are a coding assistant. I will give you a coding problem. The input may have errors or junk from OCR—ignore those. \n\nI do not want code yet.\n\nFirst:\n1. Explain a simple, brute-force approach to solve the problem\n2. Mention basic examples or simple test cases to explain how the approach would work\n3. Only after that, briefly mention possible edge cases to think about (but no code)\n\nDo not over-optimize or jump to complex solutions. Start with basic reasoning to brainstorm.\n\nProblem:',
-};
-
-// Function to get system prompt based on model name
-function getModelType(modelName = '') {
-  modelName = modelName.toLowerCase();
-  if (modelName.includes('phi')) return 'phi';
-  if (modelName.includes('mistral')) return 'mistral';
-  if (modelName.includes('qwen')) return 'qwen';
-  if (modelName.includes('deepseek')) return 'deepseek';
-  return 'default';
-}
-
-// Get system prompt based on current model
-let SYSTEM_PROMPT =
-  MODEL_PROMPTS[getModelType(process.env.OLLAMA_MODEL || process.env.HF_MODEL)] ||
-  MODEL_PROMPTS.default;
-
-function switchAIProvider() {
-  const newProvider = isOllama ? 'huggingface' : 'ollama';
-  console.log(`Switching from ${currentProvider} to ${newProvider}...`);
-  console.log(`Session history preserved: ${session.history.length} messages`);
-  // Notify UI about the switch
-  mainWindow.webContents.send('provider-switching', {
-    from: currentProvider,
-    to: newProvider,
-    sessionLength: session.history.length,
-  });
-  try {
-    // Update system prompt for the new provider
-    SYSTEM_PROMPT =
-      MODEL_PROMPTS[
-        getModelType(newProvider === 'ollama' ? process.env.OLLAMA_MODEL : process.env.HF_MODEL)
-      ] || MODEL_PROMPTS.default;
-
-    const result = initializeAIClient(newProvider);
-    // Notify UI about successful switch
-    mainWindow.webContents.send('provider-switched', {
-      provider: result.provider,
-      isOllama: result.isOllama,
-      sessionPreserved: session.history.length,
-      model: result.isOllama
-        ? process.env.OLLAMA_MODEL || 'deepseek-r1'
-        : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
     });
-  } catch (error) {
-    console.error('Failed to switch provider:', error.message);
-    // Notify UI about failed switch
-    mainWindow.webContents.send('provider-switch-failed', {
-      error: error.message,
-      currentProvider: currentProvider,
+    ipcMain.handle('warmup-ollama-model', async () => {
+      if (!isOllama) return { success: false, error: 'Not using Ollama provider' };
+      try {
+        const result = await aiClient.warmupModel();
+        return result;
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
     });
   }
-}
+
+  // --- App Lifecycle ---
+  function start() {
+    app.whenReady().then(() => {
+      createWindow();
+      registerShortcuts();
+      registerIpcHandlers();
+      initializeAIClient();
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      });
+    });
+    app.on('before-quit', () => globalShortcut.unregisterAll());
+    app.on('window-all-closed', () => {
+      globalShortcut.unregisterAll();
+      if (process.platform !== 'darwin') app.quit();
+    });
+  }
+
+  // --- Expose only start ---
+  return { start };
+})();
+
+AppController.start();
