@@ -163,6 +163,7 @@ const AppController = (() => {
     }
     mainWindow.webContents.setBackgroundThrottling(false);
     mainWindow.webContents.setFrameRate(60);
+    mainWindow.webContents.openDevTools();
     mainWindow.loadFile('index.html');
   }
 
@@ -476,6 +477,7 @@ const AppController = (() => {
           preserveCode: true,
           removeJunk: true,
           logResults: false,
+          applyOCRFixes: true,
         });
       }
       return finalText;
@@ -495,7 +497,7 @@ const AppController = (() => {
       if (session.cache.has(questionHash)) {
         const cachedResponse = session.cache.get(questionHash);
         console.log(`[DEBUG] cache hit for hash ${questionHash}`);
-        return formatter.formatResponse(cachedResponse, formatterEnabled).text;
+        return cachedResponse;
       }
 
       console.log(`[DEBUG] cache miss for hash ${questionHash}, calling model...`);
@@ -532,8 +534,7 @@ const AppController = (() => {
         session.active = true;
         if (session.history.length > 20) session.history = session.history.slice(-20);
         if (isOllama) mainWindow.webContents.send('ai-processing-complete');
-        const formatted = formatter.formatResponse(rawResponse, formatterEnabled);
-        return formatted.text;
+        return rawResponse;
       } catch (err) {
         if (isOllama) mainWindow.webContents.send('ai-processing-complete');
         let errorMsg =
@@ -553,7 +554,7 @@ const AppController = (() => {
         }
         // Update the UI with the new session length
         mainWindow.webContents.send('session-length', session.history.length);
-        return formatter.formatResponse(errorMsg, formatterEnabled).text;
+        return errorMsg;
       }
     });
 

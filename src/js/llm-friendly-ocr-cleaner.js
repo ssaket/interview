@@ -1,4 +1,13 @@
-const natural = require("natural");
+const natural = require('natural');
+
+// === Configuration constants ===
+const MIN_LINE_LENGTH = 2;
+const MAX_LINES = 50;
+const SCORE_THRESHOLD_HIGH = 0.25;
+const SCORE_THRESHOLD_LOW = 0.15;
+
+// Confidence-based filtering
+const CONFIDENCE_THRESHOLD = 0.6; // default minimum line confidence
 
 class LLMFriendlyOCRCleaner {
   constructor() {
@@ -39,6 +48,14 @@ class LLMFriendlyOCRCleaner {
       // URL patterns
       /^https?:\/\//i,
       /^\w+\.(com|org|net|edu|gov)$/i,
+
+      // Mac menu-bar & system artifacts
+      /^\s*/i,
+      /^\s*\d+%$/i, // Battery percentage
+      /^\s*Wi-?Fi$/i,
+      /^\s*Bluetooth$/i,
+      /^\s*(Siri|Spotlight)$/i,
+      /^\s*\d+% \d+°[CF]$/i, // e.g. "75% 72°F"
     ];
 
     // Patterns that indicate valuable content
@@ -99,11 +116,11 @@ class LLMFriendlyOCRCleaner {
     // Common OCR errors (conservative corrections only)
     this.simpleOCRFixes = new Map([
       // Only fix obvious, common OCR mistakes
-      ["rn", "m"],
-      ["cl", "d"],
-      ["0o", "oo"],
-      ["1l", "ll"],
-      ["5s", "ss"],
+      ['rn', 'm'],
+      ['cl', 'd'],
+      ['0o', 'oo'],
+      ['1l', 'll'],
+      ['5s', 'ss'],
     ]);
 
     // Notepad-style content indicators
@@ -117,65 +134,87 @@ class LLMFriendlyOCRCleaner {
       /^(input|output|result|expected):/i,
     ];
 
+    // Patterns to catch informal or hand-written prompts without '?'
+    this.casualPatterns = [
+      /\b(given|find|return|implement|solve)\b/i,
+      /\b(how do i|what is|where is|why does)\b/i,
+    ];
+
     // Programming vocabulary for scoring
     this.programmingTerms = new Set([
-      "algorithm",
-      "array",
-      "string",
-      "integer",
-      "boolean",
-      "function",
-      "method",
-      "class",
-      "variable",
-      "loop",
-      "condition",
-      "complexity",
-      "time",
-      "space",
-      "sort",
-      "search",
-      "tree",
-      "graph",
-      "stack",
-      "queue",
-      "hash",
-      "binary",
-      "linear",
-      "logarithmic",
-      "recursive",
-      "iterative",
-      "dynamic",
-      "greedy",
+      'algorithm',
+      'array',
+      'string',
+      'integer',
+      'boolean',
+      'function',
+      'method',
+      'class',
+      'variable',
+      'loop',
+      'condition',
+      'complexity',
+      'time',
+      'space',
+      'sort',
+      'search',
+      'tree',
+      'graph',
+      'stack',
+      'queue',
+      'hash',
+      'binary',
+      'linear',
+      'logarithmic',
+      'recursive',
+      'iterative',
+      'dynamic',
+      'greedy',
     ]);
   }
 
   /**
    * Main cleaning function optimized for LLM consumption
+   * Incorporates: short-circuit junk, configurable thresholds, merged code blocks,
+   * context-aware numeric fixes, and new applyNumericOCRFixes logic.
    * @param {string} rawText - Raw OCR text
    * @param {Object} options - Cleaning options
    * @returns {string} - Cleaned, LLM-friendly text
    */
   cleanText(rawText, options = {}) {
     const {
-      maxLines = 50,
-      minLineLength = 2,
+      maxLines = MAX_LINES,
+      minLineLength = MIN_LINE_LENGTH,
       preserveQuestions = true,
       preserveCode = true,
       removeJunk = true,
-      applyOCRFixes = false, // Conservative by default
+      applyOCRFixes = true,
+      applyConfidenceFilter = true,
+      confidenceThreshold = CONFIDENCE_THRESHOLD,
+      confidenceScores = [],
       logResults = false,
+      scoreThresholdHigh = SCORE_THRESHOLD_HIGH,
+      scoreThresholdLow = SCORE_THRESHOLD_LOW,
     } = options;
 
-    if (!rawText || typeof rawText !== "string") {
-      return "";
+    if (!rawText || typeof rawText !== 'string') {
+      return '';
     }
 
     // Split into lines and basic cleanup
     let lines = rawText
-      .split("\n")
+      .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length >= minLineLength);
+
+    // Drop lines below confidence threshold if enabled
+    if (
+      applyConfidenceFilter &&
+      Array.isArray(confidenceScores) &&
+      confidenceScores.length === lines.length
+    ) {
+      lines = lines.filter((_, idx) => confidenceScores[idx] >= confidenceThreshold);
+    }
 
     const originalLineCount = lines.length;
 
@@ -191,7 +230,23 @@ class LLMFriendlyOCRCleaner {
       preserveQuestions,
       preserveCode,
       removeJunk,
+      scoreThresholdHigh,
+      scoreThresholdLow,
     });
+
+    // Merge adjacent code lines into single blocks
+    const mergedLines = [];
+    filteredLines.forEach((item) => {
+      if (item.isCode) {
+        const last = mergedLines[mergedLines.length - 1];
+        if (last && last.isCode) {
+          last.line += '\n' + item.line;
+          return;
+        }
+      }
+      mergedLines.push({ ...item });
+    });
+    filteredLines = mergedLines;
 
     // Sort by importance and limit
     filteredLines.sort((a, b) => b.totalScore - a.totalScore);
@@ -202,28 +257,49 @@ class LLMFriendlyOCRCleaner {
     // Restore original order
     filteredLines.sort((a, b) => a.index - b.index);
 
-    // Apply conservative OCR fixes if requested
+    // Apply OCR fixes: numeric fixes only on non-code lines, conservative only if requested
     let cleanedLines = filteredLines.map((item) => {
       let line = item.line;
       if (applyOCRFixes) {
+        // Apply conservative OCR error fixes
         line = this.applyConservativeOCRFixes(line);
+      }
+      // Apply numeric OCR fixes only on non-code lines
+      if (!item.isCode) {
+        line = this.applyNumericOCRFixes(line);
       }
       return line;
     });
 
-    const cleanedText = cleanedLines.join("\n");
+    const cleanedText = cleanedLines.join('\n');
 
     if (logResults) {
       this.logResults(rawText, cleanedText, scoredLines, filteredLines);
     }
 
-    return cleanedText.trim();
+    // Final pass to remove stray punctuation/whitespace
+    return this.postProcess(cleanedText);
   }
 
   /**
    * Score a line for importance and content type
    */
   scoreLine(line, index, allLines) {
+    // Short-circuit: if clearly junk, skip all further checks for performance
+    if (this.junkPatterns.some((pattern) => pattern.test(line))) {
+      return {
+        line,
+        index,
+        isQuestion: false,
+        isProblemDescription: false,
+        isCode: false,
+        isProgramming: false,
+        isJunk: true,
+        contentScore: 0,
+        contextScore: 0,
+        totalScore: 0,
+      };
+    }
     let scores = {
       isQuestion: false,
       isCode: false,
@@ -242,13 +318,13 @@ class LLMFriendlyOCRCleaner {
       this.valuePatterns.some(
         (pattern) =>
           pattern.test(line) &&
-          (line.includes("?") ||
-            /^(what|how|why|when|where|which|who|can|should|would|could)\b/i.test(
-              line,
-            )),
+          (line.includes('?') ||
+            /^(what|how|why|when|where|which|who|can|should|would|could)\b/i.test(line))
       ) ||
       this.problemPatterns.some((pattern) => pattern.test(line)) ||
       this.notepadPatterns.some((pattern) => pattern.test(line));
+    // Also treat casual prompts (no '?') as questions
+    scores.isQuestion = scores.isQuestion || this.casualPatterns.some((p) => p.test(line));
 
     // Check if it's a problem description (valuable instructional content)
     scores.isProblemDescription =
@@ -256,32 +332,26 @@ class LLMFriendlyOCRCleaner {
       this.notepadPatterns.some((pattern) => pattern.test(line)) ||
       (line.length > 30 &&
         /\b(given|return|find|determine|implement|solve)\b/i.test(line) &&
-        /\b(array|string|integer|number|target|element|node|tree|graph)\b/i.test(
-          line,
-        )) ||
+        /\b(array|string|integer|number|target|element|node|tree|graph)\b/i.test(line)) ||
       // Notepad-style explanatory content
       (line.length > 20 &&
-        /\b(explanation|example|approach|method|solution|walkthrough)\b/i.test(
-          line,
-        ));
+        /\b(explanation|example|approach|method|solution|walkthrough)\b/i.test(line));
 
     // Check if it's code
     scores.isCode = this.valuePatterns.some(
       (pattern) =>
         pattern.test(line) &&
-        (line.includes("def ") ||
-          line.includes("function") ||
-          line.includes("=") ||
-          line.includes("()") ||
+        (line.includes('def ') ||
+          line.includes('function') ||
+          line.includes('=') ||
+          line.includes('()') ||
           /^\s{2,}/.test(line) ||
-          line.includes("{") ||
-          line.includes("}")),
+          line.includes('{') ||
+          line.includes('}'))
     );
 
     // Check for programming content
-    const programmingWords = tokens.filter((token) =>
-      this.programmingTerms.has(token),
-    ).length;
+    const programmingWords = tokens.filter((token) => this.programmingTerms.has(token)).length;
     scores.isProgramming = programmingWords > 0;
 
     // Check if it's junk
@@ -316,9 +386,7 @@ class LLMFriendlyOCRCleaner {
     }
 
     // Technical vocabulary bonus
-    const technicalWords = tokens.filter((token) =>
-      this.programmingTerms.has(token),
-    ).length;
+    const technicalWords = tokens.filter((token) => this.programmingTerms.has(token)).length;
     score += Math.min(technicalWords * 0.15, 0.4);
 
     // Grammar indicators
@@ -328,19 +396,13 @@ class LLMFriendlyOCRCleaner {
     // Bonus for sentences with technical content
     if (
       line.length > 20 &&
-      /\b(array|string|integer|algorithm|complexity|function|method)\b/i.test(
-        line,
-      )
+      /\b(array|string|integer|algorithm|complexity|function|method)\b/i.test(line)
     ) {
       score += 0.2;
     }
 
     // Bonus for instructional content
-    if (
-      /\b(given|return|find|implement|assume|example|input|output)\b/i.test(
-        line,
-      )
-    ) {
+    if (/\b(given|return|find|implement|assume|example|input|output)\b/i.test(line)) {
       score += 0.15;
     }
 
@@ -350,11 +412,7 @@ class LLMFriendlyOCRCleaner {
     }
 
     // Bonus for explanatory text
-    if (
-      /\b(because|since|therefore|thus|hence|so|explanation|reason)\b/i.test(
-        line,
-      )
-    ) {
+    if (/\b(because|since|therefore|thus|hence|so|explanation|reason)\b/i.test(line)) {
       score += 0.1;
     }
 
@@ -364,6 +422,30 @@ class LLMFriendlyOCRCleaner {
     return Math.max(0, Math.min(1, score));
   }
 
+  applyNumericOCRFixes(line) {
+    // Count letters vs digits
+    const letters = (line.match(/[A-Za-z]/g) || []).length;
+    const digits = (line.match(/[0-9]/g) || []).length;
+
+    // Only correct if mostly letters (i.e. text lines)
+    if (letters > digits) {
+      const map = {
+        0: 'O',
+        1: 'l',
+        3: 'E',
+        4: 'A',
+        5: 'S',
+        6: 'G',
+        7: 'T',
+        8: 'B',
+        9: 'g',
+      };
+      return line.replace(/[013456789]/g, (ch) => map[ch] || ch);
+    }
+    // Otherwise leave code/numeric lines alone
+    return line;
+  }
+
   /**
    * Calculate contextual importance score
    */
@@ -371,18 +453,14 @@ class LLMFriendlyOCRCleaner {
     let score = 0;
 
     // Position bonus for content near questions or code
-    for (
-      let i = Math.max(0, index - 2);
-      i <= Math.min(allLines.length - 1, index + 2);
-      i++
-    ) {
+    for (let i = Math.max(0, index - 2); i <= Math.min(allLines.length - 1, index + 2); i++) {
       if (i === index) continue;
 
       const nearbyLine = allLines[i];
       if (
-        nearbyLine.includes("?") ||
-        nearbyLine.includes("def ") ||
-        nearbyLine.includes("function") ||
+        nearbyLine.includes('?') ||
+        nearbyLine.includes('def ') ||
+        nearbyLine.includes('function') ||
         /^(what|how|why|explain|implement)/i.test(nearbyLine)
       ) {
         score += 0.1;
@@ -414,12 +492,8 @@ class LLMFriendlyOCRCleaner {
     if (scores.isJunk) total -= 0.5;
 
     // Special patterns
-    if (line.includes("O(") || line.includes("complexity")) total += 0.25;
-    if (
-      line.includes("Example") ||
-      line.includes("Input:") ||
-      line.includes("Output:")
-    )
+    if (line.includes('O(') || line.includes('complexity')) total += 0.25;
+    if (line.includes('Example') || line.includes('Input:') || line.includes('Output:'))
       total += 0.2;
 
     // Bonus for longer meaningful sentences
@@ -450,11 +524,7 @@ class LLMFriendlyOCRCleaner {
       }
 
       // Always keep code with lower threshold
-      if (
-        preserveCode &&
-        (item.isCode || item.isProgramming) &&
-        item.totalScore > 0.15
-      ) {
+      if (preserveCode && (item.isCode || item.isProgramming) && item.totalScore > 0.15) {
         return true;
       }
 
@@ -481,13 +551,13 @@ class LLMFriendlyOCRCleaner {
     // Only apply very safe, common fixes
     for (const [error, correction] of this.simpleOCRFixes) {
       // Be very conservative - only fix if it creates a known word
-      const pattern = new RegExp(`\\b${error}\\b`, "gi");
+      const pattern = new RegExp(`\\b${error}\\b`, 'gi');
       if (pattern.test(fixed)) {
         const testFix = fixed.replace(pattern, correction);
         // Only apply if the result looks better (basic heuristic)
         if (
           testFix.length >= fixed.length - 1 &&
-          testFix.split(" ").length >= fixed.split(" ").length
+          testFix.split(' ').length >= fixed.split(' ').length
         ) {
           fixed = testFix;
         }
@@ -501,29 +571,20 @@ class LLMFriendlyOCRCleaner {
    * Get quality metrics for the cleaned text
    */
   getQualityMetrics(originalText, cleanedText) {
-    const originalLines = originalText
-      .split("\n")
-      .filter((l) => l.trim().length > 0);
-    const cleanedLines = cleanedText
-      .split("\n")
-      .filter((l) => l.trim().length > 0);
+    const originalLines = originalText.split('\n').filter((l) => l.trim().length > 0);
+    const cleanedLines = cleanedText.split('\n').filter((l) => l.trim().length > 0);
 
     return {
       originalLineCount: originalLines.length,
       cleanedLineCount: cleanedLines.length,
-      reductionPercentage: Math.round(
-        (1 - cleanedLines.length / originalLines.length) * 100,
-      ),
+      reductionPercentage: Math.round((1 - cleanedLines.length / originalLines.length) * 100),
       originalLength: originalText.length,
       cleanedLength: cleanedText.length,
-      lengthReduction: Math.round(
-        (1 - cleanedText.length / originalText.length) * 100,
-      ),
+      lengthReduction: Math.round((1 - cleanedText.length / originalText.length) * 100),
       questionsPreserved: (cleanedText.match(/\?/g) || []).length,
-      codeBlocksPreserved: (cleanedText.match(/def |function |class |=/g) || [])
-        .length,
-      technicalTermsPreserved: Array.from(this.programmingTerms).filter(
-        (term) => cleanedText.toLowerCase().includes(term),
+      codeBlocksPreserved: (cleanedText.match(/def |function |class |=/g) || []).length,
+      technicalTermsPreserved: Array.from(this.programmingTerms).filter((term) =>
+        cleanedText.toLowerCase().includes(term)
       ).length,
     };
   }
@@ -532,23 +593,21 @@ class LLMFriendlyOCRCleaner {
    * Log detailed results for analysis
    */
   logResults(originalText, cleanedText, scoredLines, filteredLines) {
-    console.log("\n🚀 LLM-FRIENDLY OCR CLEANING RESULTS");
-    console.log("====================================");
+    console.log('\n🚀 LLM-FRIENDLY OCR CLEANING RESULTS');
+    console.log('====================================');
 
     const metrics = this.getQualityMetrics(originalText, cleanedText);
 
     console.log(`📊 Processing Summary:`);
     console.log(
-      `   Lines: ${metrics.originalLineCount} → ${metrics.cleanedLineCount} (${metrics.reductionPercentage}% reduction)`,
+      `   Lines: ${metrics.originalLineCount} → ${metrics.cleanedLineCount} (${metrics.reductionPercentage}% reduction)`
     );
     console.log(
-      `   Length: ${metrics.originalLength} → ${metrics.cleanedLength} (${metrics.lengthReduction}% reduction)`,
+      `   Length: ${metrics.originalLength} → ${metrics.cleanedLength} (${metrics.lengthReduction}% reduction)`
     );
     console.log(`   Questions preserved: ${metrics.questionsPreserved}`);
     console.log(`   Code blocks preserved: ${metrics.codeBlocksPreserved}`);
-    console.log(
-      `   Technical terms preserved: ${metrics.technicalTermsPreserved}`,
-    );
+    console.log(`   Technical terms preserved: ${metrics.technicalTermsPreserved}`);
 
     console.log(`\n🎯 TOP SCORING LINES:`);
     filteredLines
@@ -556,24 +615,24 @@ class LLMFriendlyOCRCleaner {
       .slice(0, 10)
       .forEach((item, i) => {
         const flags = [];
-        if (item.isQuestion) flags.push("QUESTION");
-        if (item.isCode) flags.push("CODE");
-        if (item.isProgramming) flags.push("PROGRAMMING");
-        if (item.isJunk) flags.push("JUNK");
+        if (item.isQuestion) flags.push('QUESTION');
+        if (item.isCode) flags.push('CODE');
+        if (item.isProgramming) flags.push('PROGRAMMING');
+        if (item.isJunk) flags.push('JUNK');
 
         console.log(
-          `  ${i + 1}. [Score: ${item.totalScore.toFixed(3)}] [${flags.join(", ") || "CONTENT"}]`,
+          `  ${i + 1}. [Score: ${item.totalScore.toFixed(3)}] [${flags.join(', ') || 'CONTENT'}]`
         );
         console.log(`     "${item.line}"`);
       });
 
     console.log(`\n✨ FINAL CLEANED TEXT:`);
-    const lines = cleanedText.split("\n");
+    const lines = cleanedText.split('\n');
     lines.forEach((line, i) => {
       console.log(`   ${i + 1}. "${line}"`);
     });
 
-    console.log("====================================\n");
+    console.log('====================================\n');
   }
 
   /**
@@ -582,18 +641,15 @@ class LLMFriendlyOCRCleaner {
   isLLMWorthy(text) {
     if (!text || text.length < 10) return false;
 
-    const lines = text.split("\n").filter((l) => l.trim().length > 0);
+    const lines = text.split('\n').filter((l) => l.trim().length > 0);
     if (lines.length === 0) return false;
 
     // Check for questions, code, or technical content
-    const hasQuestions =
-      text.includes("?") || /^(what|how|why|explain)/i.test(text);
+    const hasQuestions = text.includes('?') || /^(what|how|why|explain)/i.test(text);
     const hasCode =
-      /def |function |class |=/i.test(text) ||
-      text.includes("(") ||
-      text.includes("{");
+      /def |function |class |=/i.test(text) || text.includes('(') || text.includes('{');
     const hasTechnical = Array.from(this.programmingTerms).some((term) =>
-      text.toLowerCase().includes(term),
+      text.toLowerCase().includes(term)
     );
 
     return hasQuestions || hasCode || hasTechnical;
@@ -610,11 +666,11 @@ class LLMFriendlyOCRCleaner {
       examples: [],
     };
 
-    const lines = text.split("\n");
+    const lines = text.split('\n');
 
     lines.forEach((line) => {
       if (
-        line.includes("?") ||
+        line.includes('?') ||
         /^(what|how|why|explain|describe|implement)/i.test(line) ||
         this.notepadPatterns.some((pattern) => pattern.test(line))
       ) {
@@ -631,9 +687,9 @@ class LLMFriendlyOCRCleaner {
       }
 
       if (
-        line.toLowerCase().includes("example") ||
-        line.includes("Input:") ||
-        line.includes("Output:") ||
+        line.toLowerCase().includes('example') ||
+        line.includes('Input:') ||
+        line.includes('Output:') ||
         /^(step|note|solution|answer):/i.test(line) ||
         /^\d+[\.\)]\s+/.test(line)
       ) {
@@ -643,16 +699,31 @@ class LLMFriendlyOCRCleaner {
       // Extract technical terms
       const tokens = this.tokenizer.tokenize(line.toLowerCase()) || [];
       tokens.forEach((token) => {
-        if (
-          this.programmingTerms.has(token) &&
-          !context.technicalConcepts.includes(token)
-        ) {
+        if (this.programmingTerms.has(token) && !context.technicalConcepts.includes(token)) {
           context.technicalConcepts.push(token);
         }
       });
     });
 
     return context;
+  }
+
+  /**
+   * Final cleanup: trim stray punctuation and normalize whitespace
+   * @param {string} text
+   * @returns {string}
+   */
+  postProcess(text) {
+    return (
+      text
+        // Remove leading/trailing punctuation or dashes on each line
+        .split('\n')
+        .map((line) => line.replace(/^[\s\.\-–—]+|[\s\.\-–—]+$/g, '').trim())
+        .filter((line) => line.length > 0)
+        .join('\n')
+        // Normalize multiple spaces to single
+        .replace(/ {2,}/g, ' ')
+    );
   }
 }
 

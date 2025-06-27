@@ -1,4 +1,13 @@
+
 const { ipcRenderer } = require('electron');
+// --- Unified formatter (DeepSeekFormatter) ---
+const path = require('path');
+// `__dirname` points to the project root when running inside a <script> tag,
+// so jump into the source folder explicitly.
+const DeepSeekFormatter = require(
+  path.join(__dirname, 'src', 'js', 'formatter.js')
+);
+const dsFormatter = new DeepSeekFormatter();
 
 // --- UI Controller ---
 const UI = {
@@ -22,7 +31,7 @@ const UI = {
   },
 
   get session() {
-    return document.querySelector('session-length');
+    return document.getElementById('session-length');
   },
 
   setOutput(text, timeout = 0) {
@@ -105,39 +114,6 @@ function initTheme() {
 // OCR filtering state
 let ocrFilteringEnabled = true;
 
-// Function to format and highlight DeepSeek responses
-function formatDeepSeekResponse(text) {
-  if (!text) return '';
-
-  // Escape HTML first
-  let highlighted = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-  // Highlight code blocks with language labels
-  highlighted = highlighted.replace(
-    /\[([A-Z]+) CODE\]\n([\s\S]*?)\n\[\/CODE\]/g,
-    '<div class="code-section"><div class="code-language">$1</div><pre class="code-block"><code>$2</code></pre></div>'
-  );
-
-  // Highlight complexity analysis
-  highlighted = highlighted.replace(
-    /📊 (.*?(?:Time|Space).*?Complexity.*?O\([^)]+\).*?)$/gm,
-    '<div class="complexity-section"><span class="complexity-icon">📊</span><span class="complexity-text">$1</span></div>'
-  );
-
-  // Highlight reasoning sections
-  highlighted = highlighted.replace(
-    /💭 REASONING:\n([\s\S]*?)(?=\n\n|\n$|$)/g,
-    '<div class="thinking-section"><div class="thinking-header">💭 Reasoning Process</div><div class="thinking-content">$1</div></div>'
-  );
-
-  // Highlight inline code (backticks)
-  highlighted = highlighted.replace(/`([^`]+)`/g, '<span class="inline-code">$1</span>');
-
-  // Convert remaining newlines to <br> tags
-  highlighted = highlighted.replace(/\n/g, '<br>');
-
-  return `<div class="deepseek-response">${highlighted}</div>`;
-}
 
 // Function to update OCR filtering indicator
 function updateOcrFilterIndicator(enabled) {
@@ -175,13 +151,13 @@ ipcRenderer.on('formatter-toggled', (event, enabled) => {
   formatterEnabled = enabled;
   UI.setOutput(`Formatter: ${enabled ? 'ON' : 'OFF'}`, 1500);
 
-  // Re-render last assistant response if available
-  if (lastAssistantResponse) {
-    if (formatterEnabled) {
-      UI.setOutputHTML(formatDeepSeekResponse(lastAssistantResponse));
-    } else {
-      UI.setOutput(lastAssistantResponse);
-    }
+  if (!lastAssistantResponse) return;
+
+  const { text, html } = dsFormatter.formatResponse(lastAssistantResponse, formatterEnabled);
+  if (formatterEnabled) {
+    UI.setOutputHTML(html);
+  } else {
+    UI.setOutput(text);
   }
 });
 
@@ -204,10 +180,11 @@ async function captureScreenshot(isRegion = false) {
 
   UI.hideInstructions();
   UI.hideScreenshot();
+  const { text: plain, html } = dsFormatter.formatResponse(answer, formatterEnabled);
   if (formatterEnabled) {
-    UI.setOutputHTML(formatDeepSeekResponse(answer));
+    UI.setOutputHTML(html);
   } else {
-    UI.setOutput(answer);
+    UI.setOutput(plain);
   }
 }
 
@@ -325,10 +302,11 @@ ipcRenderer.on('model-switched', (event, data) => {
     ipcRenderer.invoke('ask-chatgpt', question).then((response) => {
       lastAssistantResponse = response;
       saveLastAssistantResponse(response);
+      const { text, html } = dsFormatter.formatResponse(response, formatterEnabled);
       if (formatterEnabled) {
-        UI.setOutputHTML(formatDeepSeekResponse(response));
+        UI.setOutputHTML(html);
       } else {
-        UI.setOutput(response);
+        UI.setOutput(text);
       }
     });
   }
@@ -338,14 +316,15 @@ ipcRenderer.on('model-switched', (event, data) => {
 ipcRenderer.on('toggle-theme', () => {
   toggleTheme();
   const themeText = currentTheme === 'light' ? 'Light' : 'Dark';
-  UUI.setOutput(`Theme switched to ${themeText}`, 1000);
+  UI.setOutput(`Theme switched to ${themeText}`, 1000);
   // 2) …then put back the last response
   setTimeout(() => {
     if (lastAssistantResponse) {
+      const { text, html } = dsFormatter.formatResponse(lastAssistantResponse, formatterEnabled);
       if (formatterEnabled) {
-        UI.setOutputHTML(formatDeepSeekResponse(lastAssistantResponse));
+        UI.setOutputHTML(html);
       } else {
-        UI.setOutput(lastAssistantResponse);
+        UI.setOutput(text);
       }
     }
   }, 1000);
@@ -372,10 +351,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initOcrFilteringState();
   initTheme();
   if (lastAssistantResponse) {
+    const { text, html } = dsFormatter.formatResponse(lastAssistantResponse, formatterEnabled);
     if (formatterEnabled) {
-      UI.setOutputHTML(formatDeepSeekResponse(lastAssistantResponse));
+      UI.setOutputHTML(html);
     } else {
-      UI.setOutput(lastAssistantResponse);
+      UI.setOutput(text);
     }
   }
 });

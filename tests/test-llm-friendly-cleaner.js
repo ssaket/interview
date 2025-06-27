@@ -1,9 +1,9 @@
-const LLMFriendlyOCRCleaner = require("./js/llm-friendly-ocr-cleaner");
+const LLMFriendlyOCRCleaner = require('../src/js/llm-friendly-ocr-cleaner');
 
 // Test data simulating various OCR outputs
 const testCases = [
   {
-    name: "Mixed UI and coding content",
+    name: 'Mixed UI and coding content',
     input: `File
 Edit
 View
@@ -26,11 +26,11 @@ Paste
 Cut
 Minimize
 Close`,
-    expected: "Should remove UI elements but keep the question and code intact",
+    expected: 'Should remove UI elements but keep the question and code intact',
   },
 
   {
-    name: "Leetcode problem with browser junk",
+    name: 'Leetcode problem with browser junk',
     input: `Chrome
 New Tab
 Back
@@ -49,12 +49,11 @@ WiFi
 Battery
 12:34 PM
 Notification`,
-    expected:
-      "Should keep the problem description and examples, remove browser/system UI",
+    expected: 'Should keep the problem description and examples, remove browser/system UI',
   },
 
   {
-    name: "Code with comments and system junk",
+    name: 'Code with comments and system junk',
     input: `VS Code
 Terminal
 Debug
@@ -73,12 +72,11 @@ Finder
 Safari
 Settings
 85%`,
-    expected:
-      "Should keep code and comments intact, remove app names and battery",
+    expected: 'Should keep code and comments intact, remove app names and battery',
   },
 
   {
-    name: "Interview questions with timestamps",
+    name: 'Interview questions with timestamps',
     input: `10:30 AM
 Monday
 What is the time complexity of bubble sort?
@@ -89,12 +87,11 @@ What are the best and worst case scenarios?
 Meeting
 Notification
 Alert`,
-    expected:
-      "Should keep questions intact, remove timestamps and notifications",
+    expected: 'Should keep questions intact, remove timestamps and notifications',
   },
 
   {
-    name: "Algorithm explanation with menu items",
+    name: 'Algorithm explanation with menu items',
     input: `File
 Edit
 Binary search is a search algorithm that finds the position of a target value within a sorted array.
@@ -106,12 +103,11 @@ Window
 Help
 About
 Quit`,
-    expected:
-      "Should keep the algorithm explanation and complexity info intact",
+    expected: 'Should keep the algorithm explanation and complexity info intact',
   },
 
   {
-    name: "Very short fragments and single characters",
+    name: 'Very short fragments and single characters',
     input: `a
 b
 c
@@ -126,12 +122,11 @@ def merge_sort(arr):
 x
 y
 z`,
-    expected:
-      "Should remove single characters but keep the question and function definition",
+    expected: 'Should remove single characters but keep the question and function definition',
   },
 
   {
-    name: "Mixed technical content",
+    name: 'Mixed technical content',
     input: `JavaScript array methods
 map(), filter(), reduce()
 const numbers = [1, 2, 3, 4, 5];
@@ -145,11 +140,11 @@ function complexityAnalysis() {
 Chrome DevTools
 Inspector
 Console`,
-    expected: "Should keep code, comments, and technical content intact",
+    expected: 'Should keep code, comments, and technical content intact',
   },
 
   {
-    name: "OCR artifacts and special characters",
+    name: 'OCR artifacts and special characters',
     input: `|||||||
 -------
 =======
@@ -163,12 +158,11 @@ Trade-offs depend on use case
 Implementation considerations
 ||||
 ----`,
-    expected:
-      "Should remove artifact lines but keep technical comparison intact",
+    expected: 'Should remove artifact lines but keep technical comparison intact',
   },
 
   {
-    name: "Real-world OCR with common mistakes",
+    name: 'Real-world OCR with common mistakes',
     input: `Explain the merge sort algorithm
 def merge_sort(arr):
     if len(arr) <= 1:
@@ -186,7 +180,7 @@ Space complexity: O(n)`,
   },
 
   {
-    name: "Notepad-style numbered walkthrough",
+    name: 'Notepad-style numbered walkthrough',
     input: `Let's solve the two sum problem step by step:
 
 1. First, understand the problem:
@@ -213,11 +207,11 @@ Space complexity: O(n)`,
 5. This reduces time complexity to O(n)
 
 Note: The hash map approach trades space for time`,
-    expected: "Should preserve numbered steps, code, and explanations",
+    expected: 'Should preserve numbered steps, code, and explanations',
   },
 
   {
-    name: "Informal notepad Q&A format",
+    name: 'Informal notepad Q&A format',
     input: `Here's how I approach binary search problems:
 
 Question: How do you implement binary search?
@@ -240,11 +234,11 @@ Second iteration: left=3, right=5, mid=4, arr[4]=9 > 7, so right=3
 Third iteration: left=3, right=3, mid=3, arr[3]=7 == 7, return 3
 
 Important: Binary search only works on sorted arrays!`,
-    expected: "Should preserve Q&A format, steps, and examples",
+    expected: 'Should preserve Q&A format, steps, and examples',
   },
 
   {
-    name: "Bullet point explanation with code",
+    name: 'Bullet point explanation with code',
     input: `Understanding recursion:
 
 • Base case: The condition that stops the recursion
@@ -267,12 +261,11 @@ Walkthrough for factorial(4):
 • Working backwards: 1 * 2 * 3 * 4 = 24
 
 Remember: Always ensure you have a proper base case!`,
-    expected:
-      "Should preserve bullet points, code, and step-by-step explanation",
+    expected: 'Should preserve bullet points, code, and step-by-step explanation',
   },
 
   {
-    name: "Mixed notepad content with console output",
+    name: 'Mixed notepad content with console output',
     input: `Let's test our sorting algorithm:
 
 Here's the code:
@@ -299,11 +292,11 @@ Analysis:
 - In-place: Yes, sorts the array without extra space
 
 Note: Bubble sort is inefficient for large datasets`,
-    expected: "Should preserve code, console output, and analysis",
+    expected: 'Should preserve code, console output, and analysis',
   },
 
   {
-    name: "Problem-solving approach notes",
+    name: 'Problem-solving approach notes',
     input: `Approach to solve coding problems:
 
 Problem: Find the maximum subarray sum
@@ -335,13 +328,48 @@ Expected output: 6 (subarray [4, -1, 2, 1])
 
 Reasoning: At each step, decide whether to start a new subarray
 or extend the current one based on which gives a larger sum.`,
-    expected: "Should preserve structured problem-solving approach",
+    expected: 'Should preserve structured problem-solving approach',
+  },
+  {
+    name: 'Numeric-to-letter OCR correction',
+    input: `8inary search is on a sorted array.`,
+    expected: "Should correct '8inary' to 'Binary' in text lines",
+  },
+  {
+    name: 'Numeric OCR in code preserved',
+    input: `def version1():\n    return 404\n`,
+    expected: 'Should not alter numeric literals in code lines',
+  },
+  {
+    name: 'Casual prompt detection',
+    input: `given array and target find sum`,
+    expected: 'Should detect questions without question mark and preserve them',
+  },
+  {
+    name: 'Mac UI artifacts removal',
+    input: ` 8:00 PM
+WiFi
+Bluetooth
+Battery 90%
+Find the maximum subarray sum`,
+    expected: 'Should remove Mac menu-bar artifacts and preserve the question',
+  },
+  {
+    name: 'PostProcess stray punctuation trimming',
+    input: `---Important Note---
+Given arr, return sum`,
+    expected: 'Should trim leading/trailing punctuation and preserve content',
+  },
+  {
+    name: 'Casual prompt with varied casing',
+    input: `So how Do I implement Quick Sort`,
+    expected: 'Should detect casual prompt regardless of casing',
   },
 ];
 
 function runBasicTests() {
-  console.log("🧪 Testing LLM-Friendly OCR Cleaner");
-  console.log("=".repeat(60));
+  console.log('🧪 Testing LLM-Friendly OCR Cleaner');
+  console.log('='.repeat(60));
 
   const cleaner = new LLMFriendlyOCRCleaner();
   let passedTests = 0;
@@ -349,99 +377,88 @@ function runBasicTests() {
 
   testCases.forEach((testCase, index) => {
     console.log(`\n${index + 1}. ${testCase.name}`);
-    console.log("-".repeat(40));
+    console.log('-'.repeat(40));
 
-    console.log("📝 Original OCR Text:");
+    console.log('📝 Original OCR Text:');
     console.log(testCase.input);
 
     const cleaned = cleaner.cleanText(testCase.input, { logResults: false });
     const metrics = cleaner.getQualityMetrics(testCase.input, cleaned);
 
-    console.log("\n🧹 Cleaned Text:");
-    console.log(cleaned || "[EMPTY - All text was filtered out]");
+    console.log('\n🧹 Cleaned Text:');
+    console.log(cleaned || '[EMPTY - All text was filtered out]');
 
     console.log(`\n📊 Filtering Summary:`);
     console.log(
-      `   Lines: ${metrics.originalLineCount} → ${metrics.cleanedLineCount} (${metrics.reductionPercentage}% reduction)`,
+      `   Lines: ${metrics.originalLineCount} → ${metrics.cleanedLineCount} (${metrics.reductionPercentage}% reduction)`
     );
     console.log(
-      `   Characters: ${metrics.originalLength} → ${metrics.cleanedLength} (${metrics.lengthReduction}% reduction)`,
+      `   Characters: ${metrics.originalLength} → ${metrics.cleanedLength} (${metrics.lengthReduction}% reduction)`
     );
     console.log(`   Questions preserved: ${metrics.questionsPreserved}`);
     console.log(`   Code blocks preserved: ${metrics.codeBlocksPreserved}`);
-    console.log(
-      `   Technical terms preserved: ${metrics.technicalTermsPreserved}`,
-    );
+    console.log(`   Technical terms preserved: ${metrics.technicalTermsPreserved}`);
 
     console.log(`\n💭 Expected: ${testCase.expected}`);
 
     // Validation criteria
     const hasContent = cleaned.length > 0;
     const preservedImportantContent =
-      (testCase.input.includes("def ") && cleaned.includes("def ")) ||
-      (testCase.input.includes("function") && cleaned.includes("function")) ||
-      (testCase.input.includes("?") && cleaned.includes("?")) ||
-      (testCase.input.includes("algorithm") && cleaned.includes("algorithm")) ||
-      (testCase.input.includes("complexity") &&
-        cleaned.includes("complexity")) ||
+      (testCase.input.includes('def ') && cleaned.includes('def ')) ||
+      (testCase.input.includes('function') && cleaned.includes('function')) ||
+      (testCase.input.includes('?') && cleaned.includes('?')) ||
+      (testCase.input.includes('algorithm') && cleaned.includes('algorithm')) ||
+      (testCase.input.includes('complexity') && cleaned.includes('complexity')) ||
       // Check for problem descriptions and valuable content
-      (testCase.input.includes("Given") && cleaned.includes("Given")) ||
-      (testCase.input.includes("return") && cleaned.includes("return")) ||
-      (testCase.input.includes("array") && cleaned.includes("array")) ||
-      (testCase.input.includes("Example") && cleaned.includes("Example")) ||
-      (testCase.input.includes("Input:") && cleaned.includes("Input:")) ||
-      (testCase.input.includes("Output:") && cleaned.includes("Output:")) ||
-      // Check if substantial content is preserved (at least 30% of meaningful content)
-      (cleaned.length > testCase.input.length * 0.2 &&
-        metrics.cleanedLineCount >= 3);
-
-    const removedJunk =
-      (!testCase.input.includes("File") || !cleaned.includes("File")) &&
-      (!testCase.input.includes("Chrome") || !cleaned.includes("Chrome")) &&
-      (!testCase.input.includes("WiFi") || !cleaned.includes("WiFi"));
+      (testCase.input.includes('Given') && cleaned.includes('Given')) ||
+      (testCase.input.includes('return') && cleaned.includes('return')) ||
+      (testCase.input.includes('array') && cleaned.includes('array')) ||
+      (testCase.input.includes('Example') && cleaned.includes('Example')) ||
+      (testCase.input.includes('Input:') && cleaned.includes('Input:')) ||
+      (testCase.input.includes('Output:') && cleaned.includes('Output:')) ||
+      // Check if substantial content is preserved (at least 30% of original content)
+      cleaned.length > testCase.input.length * 0.2;
 
     // Check for text corruption (should NOT happen with new cleaner)
     const hasTextCorruption =
-      cleaned.includes("rnicl") ||
-      cleaned.includes("clef") ||
-      cleaned.includes("ancl") ||
-      cleaned.includes("nurns") ||
-      cleaned.includes("irnplernent");
+      cleaned.includes('rnicl') ||
+      cleaned.includes('clef') ||
+      cleaned.includes('ancl') ||
+      cleaned.includes('nurns') ||
+      cleaned.includes('irnplernent');
 
     if (hasContent && preservedImportantContent && !hasTextCorruption) {
-      console.log("✅ PASSED - Important content preserved without corruption");
+      console.log('✅ PASSED - Important content preserved without corruption');
       passedTests++;
     } else {
-      console.log("❌ FAILED - Content issues detected");
+      console.log('❌ FAILED - Content issues detected');
       if (hasTextCorruption) {
-        console.log("   ⚠️  Text corruption detected!");
+        console.log('   ⚠️  Text corruption detected!');
       }
       if (!preservedImportantContent) {
-        console.log("   ⚠️  Important content may have been lost");
+        console.log('   ⚠️  Important content may have been lost');
         console.log(
-          `   📝 Cleaned content length: ${cleaned.length} (${Math.round((cleaned.length / testCase.input.length) * 100)}% of original)`,
+          `   📝 Cleaned content length: ${cleaned.length} (${Math.round((cleaned.length / testCase.input.length) * 100)}% of original)`
         );
       }
     }
   });
 
-  console.log("\n" + "=".repeat(60));
+  console.log('\n' + '='.repeat(60));
   console.log(`🎯 Test Results: ${passedTests}/${totalTests} tests passed`);
 
   if (passedTests === totalTests) {
-    console.log(
-      "🎉 All tests passed! LLM-friendly cleaner is working correctly.",
-    );
+    console.log('🎉 All tests passed! LLM-friendly cleaner is working correctly.');
   } else {
-    console.log("⚠️  Some tests failed. Review the cleaner logic.");
+    console.log('⚠️  Some tests failed. Review the cleaner logic.');
   }
 
   return { passedTests, totalTests };
 }
 
 function testCleaningOptions() {
-  console.log("\n🔧 Testing Cleaning Options");
-  console.log("=".repeat(60));
+  console.log('\n🔧 Testing Cleaning Options');
+  console.log('='.repeat(60));
 
   const cleaner = new LLMFriendlyOCRCleaner();
   const testText = `File
@@ -465,16 +482,16 @@ b
 c`;
 
   const options = [
-    { name: "Default settings", opts: {} },
-    { name: "Keep more lines", opts: { maxLines: 50 } },
-    { name: "Aggressive filtering", opts: { maxLines: 10, minLineLength: 5 } },
+    { name: 'Default settings', opts: {} },
+    { name: 'Keep more lines', opts: { maxLines: 50 } },
+    { name: 'Aggressive filtering', opts: { maxLines: 10, minLineLength: 5 } },
     {
-      name: "Preserve all content types",
+      name: 'Preserve all content types',
       opts: { preserveQuestions: true, preserveCode: true, removeJunk: false },
     },
-    { name: "Apply OCR fixes", opts: { applyOCRFixes: true } },
+    { name: 'Apply OCR fixes', opts: { applyOCRFixes: true } },
     {
-      name: "Minimal filtering",
+      name: 'Minimal filtering',
       opts: { removeJunk: false, minLineLength: 1 },
     },
   ];
@@ -485,56 +502,73 @@ c`;
     const metrics = cleaner.getQualityMetrics(testText, cleaned);
 
     console.log(
-      `   Lines: ${metrics.originalLineCount} → ${metrics.cleanedLineCount} (${metrics.reductionPercentage}% reduction)`,
+      `   Lines: ${metrics.originalLineCount} → ${metrics.cleanedLineCount} (${metrics.reductionPercentage}% reduction)`
     );
     console.log(
-      `   Length: ${metrics.originalLength} → ${metrics.cleanedLength} (${metrics.lengthReduction}% reduction)`,
+      `   Length: ${metrics.originalLength} → ${metrics.cleanedLength} (${metrics.lengthReduction}% reduction)`
     );
     console.log(
-      `   Questions: ${metrics.questionsPreserved}, Code blocks: ${metrics.codeBlocksPreserved}`,
+      `   Questions: ${metrics.questionsPreserved}, Code blocks: ${metrics.codeBlocksPreserved}`
     );
-    console.log(
-      `   Preview: ${cleaned.substring(0, 100)}${cleaned.length > 100 ? "..." : ""}`,
-    );
+    console.log(`   Preview: ${cleaned.substring(0, 100)}${cleaned.length > 100 ? '...' : ''}`);
   });
 }
 
+function testConfidenceFilter() {
+  console.log('\n📦 Testing Confidence Filtering');
+  console.log('='.repeat(60));
+
+  const cleaner = new LLMFriendlyOCRCleaner();
+  const testText = `junk line
+valid question?
+junk again`;
+
+  const scores = [0.1, 0.9, 0.2];
+
+  const cleaned = cleaner.cleanText(testText, {
+    applyConfidenceFilter: true,
+    confidenceThreshold: 0.5,
+    confidenceScores: scores,
+  });
+
+  console.log('   Cleaned Text:', cleaned);
+  console.log('   Expected to only keep the "valid question?" line.');
+}
+
 function testEdgeCases() {
-  console.log("\n🚨 Testing Edge Cases");
-  console.log("=".repeat(60));
+  console.log('\n🚨 Testing Edge Cases');
+  console.log('='.repeat(60));
 
   const cleaner = new LLMFriendlyOCRCleaner();
   const edgeCases = [
-    { name: "Empty string", input: "" },
-    { name: "Only whitespace", input: "   \n\n\t  \n  " },
+    { name: 'Empty string', input: '' },
+    { name: 'Only whitespace', input: '   \n\n\t  \n  ' },
     {
-      name: "Only junk patterns",
-      input: "File\nEdit\nView\nChrome\nSafari\nWiFi\nBattery",
+      name: 'Only junk patterns',
+      input: 'File\nEdit\nView\nChrome\nSafari\nWiFi\nBattery',
     },
-    { name: "Only single characters", input: "a\nb\nc\n1\n2\n3" },
+    { name: 'Only single characters', input: 'a\nb\nc\n1\n2\n3' },
     {
-      name: "Very long technical line",
+      name: 'Very long technical line',
       input:
-        "This is a comprehensive explanation of the quicksort algorithm which is a divide-and-conquer sorting algorithm that works by selecting a pivot element and partitioning the array around it",
+        'This is a comprehensive explanation of the quicksort algorithm which is a divide-and-conquer sorting algorithm that works by selecting a pivot element and partitioning the array around it',
     },
     {
-      name: "Mixed languages (code)",
+      name: 'Mixed languages (code)',
       input:
         'function test() {\n  return "hello";\n}\n\ndef test():\n  return "hello"\n\npublic void test() {\n  System.out.println("hello");\n}',
     },
     {
-      name: "Only technical terms",
-      input:
-        "algorithm\ncomplexity\narray\nstring\nfunction\nclass\ntime\nspace\nruntime",
+      name: 'Only technical terms',
+      input: 'algorithm\ncomplexity\narray\nstring\nfunction\nclass\ntime\nspace\nruntime',
     },
     {
-      name: "Questions only",
-      input:
-        "What is recursion?\nHow does it work?\nWhy use it?\nWhen to avoid it?",
+      name: 'Questions only',
+      input: 'What is recursion?\nHow does it work?\nWhy use it?\nWhen to avoid it?',
     },
     {
-      name: "Code with OCR errors",
-      input: "def rnerge_sort(arr):\n    if len(arr) <= 1:\n        retum arr",
+      name: 'Code with OCR errors',
+      input: 'def rnerge_sort(arr):\n    if len(arr) <= 1:\n        retum arr',
     },
   ];
 
@@ -545,20 +579,20 @@ function testEdgeCases() {
 
     console.log(`   Input length: ${testCase.input.length}`);
     console.log(`   Output length: ${cleaned.length}`);
-    console.log(`   LLM worthy: ${isWorthy ? "✅" : "❌"}`);
-    console.log(`   Result: ${cleaned || "[EMPTY]"}`);
+    console.log(`   LLM worthy: ${isWorthy ? '✅' : '❌'}`);
+    console.log(`   Result: ${cleaned || '[EMPTY]'}`);
   });
 }
 
 function testLLMContextExtraction() {
-  console.log("\n🤖 Testing LLM Context Extraction");
-  console.log("=".repeat(60));
+  console.log('\n🤖 Testing LLM Context Extraction');
+  console.log('='.repeat(60));
 
   const cleaner = new LLMFriendlyOCRCleaner();
 
   const contextTestCases = [
     {
-      name: "Interview question with code",
+      name: 'Interview question with code',
       text: `What is binary search?
 def binary_search(arr, target):
     left, right = 0, len(arr) - 1
@@ -570,7 +604,7 @@ def binary_search(arr, target):
 Time complexity: O(log n)`,
     },
     {
-      name: "Algorithm explanation",
+      name: 'Algorithm explanation',
       text: `Merge sort is a divide and conquer algorithm.
 It works by recursively splitting the array.
 Example: [3,1,4,1,5] becomes [1,1,3,4,5]
@@ -578,7 +612,7 @@ Time complexity: O(n log n)
 Space complexity: O(n)`,
     },
     {
-      name: "Code with examples",
+      name: 'Code with examples',
       text: `def fibonacci(n):
     if n <= 1:
         return n
@@ -603,28 +637,26 @@ Output: 5`,
     console.log(`   Examples: ${context.examples.length}`);
     context.examples.forEach((e) => console.log(`     - "${e}"`));
 
-    console.log(
-      `   Technical concepts: [${context.technicalConcepts.join(", ")}]`,
-    );
+    console.log(`   Technical concepts: [${context.technicalConcepts.join(', ')}]`);
   });
 }
 
 function testReadabilityPreservation() {
-  console.log("\n📖 Testing Readability Preservation");
-  console.log("=".repeat(60));
+  console.log('\n📖 Testing Readability Preservation');
+  console.log('='.repeat(60));
 
   const cleaner = new LLMFriendlyOCRCleaner();
 
   const readabilityTests = [
     {
-      name: "Technical explanation",
+      name: 'Technical explanation',
       input: `Binary search is an efficient algorithm for finding an item from a sorted list.
 It works by repeatedly dividing the search interval in half.
 Time complexity: O(log n)
 Space complexity: O(1)`,
     },
     {
-      name: "Code with proper formatting",
+      name: 'Code with proper formatting',
       input: `def quicksort(arr):
     if len(arr) <= 1:
         return arr
@@ -636,7 +668,7 @@ Space complexity: O(1)`,
     return quicksort(left) + [pivot] + quicksort(right)`,
     },
     {
-      name: "Interview Q&A format",
+      name: 'Interview Q&A format',
       input: `Q: What is the difference between arrays and linked lists?
 A: Arrays provide O(1) random access but O(n) insertion/deletion.
    Linked lists provide O(1) insertion/deletion but O(n) access.`,
@@ -645,80 +677,77 @@ A: Arrays provide O(1) random access but O(n) insertion/deletion.
 
   readabilityTests.forEach((test, index) => {
     console.log(`\n${index + 1}. ${test.name}:`);
-    console.log("   Original:");
+    console.log('   Original:');
     console.log(`   "${test.input}"`);
 
     const cleaned = cleaner.cleanText(test.input, { applyOCRFixes: false });
-    console.log("   Cleaned (no OCR fixes):");
+    console.log('   Cleaned (no OCR fixes):');
     console.log(`   "${cleaned}"`);
 
     const cleanedWithFixes = cleaner.cleanText(test.input, {
       applyOCRFixes: true,
     });
-    console.log("   Cleaned (with OCR fixes):");
+    console.log('   Cleaned (with OCR fixes):');
     console.log(`   "${cleanedWithFixes}"`);
 
     // Check for corruption
     const hasCorruption =
-      cleaned.includes("rnicl") ||
-      cleaned.includes("clef") ||
-      cleanedWithFixes.includes("rnicl") ||
-      cleanedWithFixes.includes("clef");
+      cleaned.includes('rnicl') ||
+      cleaned.includes('clef') ||
+      cleanedWithFixes.includes('rnicl') ||
+      cleanedWithFixes.includes('clef');
 
-    console.log(
-      `   Text corruption: ${hasCorruption ? "❌ DETECTED" : "✅ NONE"}`,
-    );
+    console.log(`   Text corruption: ${hasCorruption ? '❌ DETECTED' : '✅ NONE'}`);
   });
 }
 
 function compareWithEnhancedCleaner() {
-  console.log("\n⚖️ Comparison with Enhanced ML Cleaner");
-  console.log("=".repeat(60));
+  console.log('\n⚖️ Comparison with Enhanced ML Cleaner');
+  console.log('='.repeat(60));
 
   // This would require importing the enhanced cleaner, but we'll simulate
-  console.log("Key improvements in LLM-Friendly Cleaner:");
-  console.log("✅ No aggressive OCR correction that corrupts text");
-  console.log("✅ Better preservation of code structure and formatting");
-  console.log("✅ More conservative junk removal");
-  console.log("✅ Focus on LLM readability over ML scoring complexity");
-  console.log("✅ Simpler, more predictable filtering logic");
-  console.log("✅ Context extraction for LLM usage");
-  console.log("✅ Better handling of technical content");
+  console.log('Key improvements in LLM-Friendly Cleaner:');
+  console.log('✅ No aggressive OCR correction that corrupts text');
+  console.log('✅ Better preservation of code structure and formatting');
+  console.log('✅ More conservative junk removal');
+  console.log('✅ Focus on LLM readability over ML scoring complexity');
+  console.log('✅ Simpler, more predictable filtering logic');
+  console.log('✅ Context extraction for LLM usage');
+  console.log('✅ Better handling of technical content');
 }
 
 // Run all tests
 function runAllTests() {
-  console.log("🚀 Starting comprehensive LLM-Friendly OCR Cleaner tests...\n");
+  console.log('🚀 Starting comprehensive LLM-Friendly OCR Cleaner tests...\n');
 
   const basicResults = runBasicTests();
   testCleaningOptions();
   testEdgeCases();
   testLLMContextExtraction();
   testReadabilityPreservation();
+  testConfidenceFilter();
   compareWithEnhancedCleaner();
 
-  console.log("\n" + "=".repeat(60));
-  console.log("🏁 FINAL TEST SUMMARY");
-  console.log("=".repeat(60));
+  console.log('\n' + '='.repeat(60));
+  console.log('🏁 FINAL TEST SUMMARY');
+  console.log('='.repeat(60));
   console.log(
-    `Basic functionality: ${basicResults.passedTests}/${basicResults.totalTests} tests passed`,
+    `Basic functionality: ${basicResults.passedTests}/${basicResults.totalTests} tests passed`
   );
 
   if (basicResults.passedTests === basicResults.totalTests) {
-    console.log(
-      "🎉 SUCCESS: LLM-Friendly OCR Cleaner is ready for production!",
-    );
-    console.log("🤖 The cleaned text should be optimal for LLM processing.");
+    console.log('🎉 SUCCESS: LLM-Friendly OCR Cleaner is ready for production!');
+    console.log('🤖 The cleaned text should be optimal for LLM processing.');
   } else {
-    console.log("⚠️  ISSUES DETECTED: Review failed tests before deployment.");
+    console.log('⚠️  ISSUES DETECTED: Review failed tests before deployment.');
   }
 
-  console.log("\n💡 Key benefits for LLM usage:");
-  console.log("   • Preserves code structure and syntax");
-  console.log("   • Maintains question clarity");
-  console.log("   • Removes UI junk without text corruption");
-  console.log("   • Provides context extraction for better LLM understanding");
-  console.log("   • Conservative approach prevents over-processing");
+  console.log('\n💡 Key benefits for LLM usage:');
+  console.log('   • Preserves code structure and syntax');
+  console.log('   • Maintains question clarity');
+  console.log('   • Removes UI junk without text corruption');
+  console.log('   • Provides context extraction for better LLM understanding');
+  console.log('   • Conservative approach prevents over-processing');
 }
 
 // Export for use in other modules
