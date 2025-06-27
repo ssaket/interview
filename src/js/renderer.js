@@ -20,6 +20,9 @@ const UI = {
   get ocrIndicator() {
     return document.getElementById('ocr-filter-indicator');
   },
+  get burnModeIndicator() {
+    return document.getElementById('burn-mode-indicator');
+  },
   get title() {
     return document.querySelector('h2');
   },
@@ -76,6 +79,12 @@ const UI = {
     ocrFilteringEnabled = enabled;
   },
 
+  updateBurnModeIndicator(enabled) {
+    if (this.burnModeIndicator) {
+      this.burnModeIndicator.style.display = enabled ? 'inline-block' : 'none';
+    }
+  },
+
   hideUI() {
     this.container.style.display = 'none';
   },
@@ -110,22 +119,16 @@ function initTheme() {
 // OCR filtering state
 let ocrFilteringEnabled = true;
 
-// Function to update OCR filtering indicator
-function updateOcrFilterIndicator(enabled) {
-  UI.updateOcrIndicator(enabled);
-}
-
-// Function to toggle OCR filtering
-async function toggleOcrFiltering() {
-  const newState = await ipcRenderer.invoke('toggle-ocr-filtering');
-  UI.updateOcrIndicator(newState);
-  UI.setOutput(`OCR Filtering: ${newState ? 'ON' : 'OFF'}`, 2000);
-}
-
 // Initialize OCR filtering state
 async function initOcrFilteringState() {
   const state = await ipcRenderer.invoke('get-ocr-filtering-state');
   UI.updateOcrIndicator(state);
+}
+
+//Initialize Burn Mode state
+async function initBurnModeState() {
+  const state = await ipcRenderer.invoke('get-burn-mode-state');
+  UI.updateBurnModeIndicator(state);
 }
 
 function saveLastAssistantResponse(response) {
@@ -195,6 +198,12 @@ ipcRenderer.on('trigger-overlay-region-screenshot', async () => {
 ipcRenderer.on('ocr-filtering-changed', (event, enabled) => {
   UI.updateOcrIndicator(enabled);
   UI.setOutput(`OCR Filtering: ${enabled ? 'ON' : 'OFF'}`, 2000);
+});
+
+// Listen for burn mode changes from main process
+ipcRenderer.on('burn-mode-changed', (event, enabled) => {
+  UI.updateBurnModeIndicator(enabled);
+  UI.setOutput(`Burn Mode: ${enabled ? 'ON' : 'OFF'}`, 2000);
 });
 
 // Call this when you want to start recording (e.g. hotkey or button)
@@ -344,6 +353,8 @@ ipcRenderer.on('scroll-page', (event, direction) => {
 // Initialize OCR filtering state when page loads
 document.addEventListener('DOMContentLoaded', () => {
   initOcrFilteringState();
+  initBurnModeState();
+  // Initialize theme and set last response if available
   initTheme();
   if (lastAssistantResponse) {
     const { text, html } = dsFormatter.formatResponse(lastAssistantResponse, formatterEnabled);

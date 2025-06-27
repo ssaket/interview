@@ -14,7 +14,6 @@ require('dotenv').config();
 
 const { InferenceClient } = require('@huggingface/inference');
 const OllamaClient = require('./ollama-client');
-const DeepSeekFormatter = require('./formatter');
 
 const MODEL_PROMPTS = {
   /* Generic fallback — balanced detail */
@@ -83,9 +82,10 @@ Keep your explanation short. Use simple words. No complex theory or long sentenc
 };
 
 const ollamaModels = {
-  primary: 'myaniu/qwen2.5-1m',
-  dryRun: ['phi3:mini', 'codellama:7b-instruct'],
-  explanation: ['mistral'],
+  primary: 'phi3:mini',
+  dryRun: [],
+  explanation: ['mistral', 'codellama:7b-instruct', 'myaniu/qwen2.5-1m'],
+  simple: ['phi3:mini', 'codellama:7b-instruct', 'mistral'],
   all: function () {
     return [this.primary, ...this.dryRun, ...this.explanation];
   },
@@ -96,13 +96,15 @@ const AppController = (() => {
   let mainWindow;
   let ocrFilteringEnabled = true;
   let formatterEnabled = true;
-  let currentModelName = process.env.OLLAMA_MODEL || ollamaModels.primary;
+  let burnModeEnabled = false;
+  let currentModelName = ollamaModels.primary || process.env.OLLAMA_MODEL || 'phi3:mini';
   let currentProvider = process.env.AI_PROVIDER || 'ollama';
   let aiClient;
   let isOllama = false;
   let SYSTEM_PROMPT = getSystemPrompt(currentModelName);
+
+  // --- Model Instances and Sessions ---
   const modelInstances = new Map();
-  const formatter = new DeepSeekFormatter();
   const sessions = new Map();
 
   function getSession() {
@@ -322,6 +324,10 @@ const AppController = (() => {
       ocrFilteringEnabled = !ocrFilteringEnabled;
       mainWindow.webContents.send('ocr-filtering-changed', ocrFilteringEnabled);
     });
+    globalShortcut.register('Command+Shift+Q', () => {
+      burnModeEnabled = !burnModeEnabled;
+      mainWindow.webContents.send('burn-mode-changed', burnModeEnabled);
+    });
     globalShortcut.register('Command+Shift+P', switchAIProvider);
     globalShortcut.register('Command+Shift+W', () => {
       if (isOllama) {
@@ -381,7 +387,9 @@ const AppController = (() => {
 
   function switchOllamaModel() {
     if (!isOllama) return;
-    const allModels = ollamaModels.all();
+
+    let allModels = burnModeEnabled ? ollamaModels.all() : ollamaModels.simple.slice();
+
     const currentIndex = allModels.indexOf(currentModelName);
     const nextIndex = (currentIndex + 1) % allModels.length;
     const newModel = allModels[nextIndex];
@@ -535,7 +543,7 @@ const AppController = (() => {
         if (session.history.length > 20) session.history = session.history.slice(-20);
         if (isOllama) mainWindow.webContents.send('ai-processing-complete');
         mainWindow.webContents.send('session-length', session.history.length);
-        
+
         return rawResponse;
       } catch (err) {
         if (isOllama) mainWindow.webContents.send('ai-processing-complete');
@@ -560,11 +568,20 @@ const AppController = (() => {
       }
     });
 
+    // OCR Filtering
     ipcMain.handle('get-ocr-filtering-state', async () => ocrFilteringEnabled);
     ipcMain.handle('toggle-ocr-filtering', async () => {
       ocrFilteringEnabled = !ocrFilteringEnabled;
       return ocrFilteringEnabled;
     });
+
+    // Burn Mode
+    ipcMain.handle('get-burn-mode-state', async () => burnModeEnabled);
+    ipcMain.handle('toggle-burn-mode', async () => {
+      burnModeEnabled = !burnModeEnabled;
+      return burnModeEnabled;
+    });
+
     ipcMain.handle('transcribe-audio', async (evt, b64) => {
       const buffer = Buffer.from(b64, 'base64');
       const resp = await axios.post('https://api.openai.com/v1/audio/transcriptions', buffer, {
