@@ -339,8 +339,8 @@ const AppController = (() => {
     });
     globalShortcut.register('Command+Shift+D', () => mainWindow.webContents.send('toggle-theme'));
     globalShortcut.register('Command+Shift+M', switchOllamaModel);
-    globalShortcut.register('Shift+1', () => mainWindow.webContents.send('scroll-page', 'up'));
-    globalShortcut.register('Shift+2', () => mainWindow.webContents.send('scroll-page', 'down'));
+    globalShortcut.register('Shift+X', () => mainWindow.webContents.send('scroll-page', 'up'));
+    globalShortcut.register('Shift+Z', () => mainWindow.webContents.send('scroll-page', 'down'));
     globalShortcut.register('Command+Shift+S', () =>
       mainWindow.webContents.send('trigger-screenshot')
     );
