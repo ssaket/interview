@@ -163,7 +163,6 @@ const AppController = (() => {
     }
     mainWindow.webContents.setBackgroundThrottling(false);
     mainWindow.webContents.setFrameRate(60);
-    mainWindow.webContents.openDevTools();
     mainWindow.loadFile('index.html');
   }
 
@@ -235,6 +234,7 @@ const AppController = (() => {
   }
 
   function switchAIProvider() {
+    const session = getSession();
     const newProvider = isOllama ? 'huggingface' : 'ollama';
     mainWindow.webContents.send('provider-switching', {
       from: currentProvider,
