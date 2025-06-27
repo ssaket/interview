@@ -1,12 +1,9 @@
-
 const { ipcRenderer } = require('electron');
 // --- Unified formatter (DeepSeekFormatter) ---
 const path = require('path');
 // `__dirname` points to the project root when running inside a <script> tag,
 // so jump into the source folder explicitly.
-const DeepSeekFormatter = require(
-  path.join(__dirname, 'src', 'js', 'formatter.js')
-);
+const DeepSeekFormatter = require(path.join(__dirname, 'src', 'js', 'formatter.js'));
 const dsFormatter = new DeepSeekFormatter();
 
 // --- UI Controller ---
@@ -52,7 +49,6 @@ const UI = {
   setSession(number) {
     this.session.textContent = `L: ${number}`;
   },
-
 
   showScreenshot(src) {
     this.screenshot.src = src;
@@ -113,7 +109,6 @@ function initTheme() {
 
 // OCR filtering state
 let ocrFilteringEnabled = true;
-
 
 // Function to update OCR filtering indicator
 function updateOcrFilterIndicator(enabled) {
@@ -358,4 +353,9 @@ document.addEventListener('DOMContentLoaded', () => {
       UI.setOutput(text);
     }
   }
+  // Auto-hide shortcuts after 2 seconds
+  setTimeout(() => {
+    const shortcuts = document.getElementById('shortcuts');
+    if (shortcuts) shortcuts.style.display = 'none';
+  }, 2000);
 });

@@ -22,3 +22,8 @@
 #output {
     color: var(--text-color);
 }
+
+#header {
+    background: var(--background-color);
+    color: var(--text-color);
+}

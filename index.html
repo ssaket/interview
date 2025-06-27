@@ -8,31 +8,33 @@
     <link rel="stylesheet" href="src/css/themes.css" />
   </head>
   <body>
+    <div id="header">
+      Overlay Helper
+      <div
+        id="ocr-filter-indicator"
+        style="
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          background-color: #00ff00;
+          border-radius: 50%;
+          margin-left: 8px;
+        "
+      ></div>
+      <div id="session-length" style="margin-left: 8px">L:0</div>
+    </div>
     <div id="container">
-      <h2>
-        Overlay DeepSeek Helper
-        <div
-          id="ocr-filter-indicator"
-          style="
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            background-color: #00ff00;
-            border-radius: 50%;
-            margin-left: 8px;
-          "
-        ></div>
-        <div id="session-length">L:0</div>
-      </h2>
-      <p>Press ⌘+Shift+S to capture screen</p>
-      <p>Press ⌘+Shift+A to capture behind overlay</p>
-      <p>Press ⌘+Shift+F to toggle OCR filtering</p>
-      <p>Press ⌘+Shift+P to switch AI provider</p>
-      <p>Press ⌘+Shift+M to switch Ollama model</p>
-      <p>Press ⌘+Shift+W to warm up Ollama model</p>
-      <p>Use ⌘+←/→/↑/↓ to move window</p>
-      <p>Press ⌘+B to hide/show app</p>
-      <p>Press ⌘+Shift+R to reset session</p>
+      <div id="shortcuts">
+        <p>Press ⌘+Shift+S to capture screen</p>
+        <p>Press ⌘+Shift+A to capture behind overlay</p>
+        <p>Press ⌘+Shift+F to toggle OCR filtering</p>
+        <p>Press ⌘+Shift+P to switch AI provider</p>
+        <p>Press ⌘+Shift+M to switch Ollama model</p>
+        <p>Press ⌘+Shift+W to warm up Ollama model</p>
+        <p>Use ⌘+←/→/↑/↓ to move window</p>
+        <p>Press ⌘+B to hide/show app</p>
+        <p>Press ⌘+Shift+R to reset session</p>
+      </div>
       <div id="output">Waiting for action...</div>
       <img id="screenshot" style="display: none" />
     </div>

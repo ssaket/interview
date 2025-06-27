@@ -7,6 +7,13 @@ body {
   height: 100%;
 }
 
+#header {
+  width: 100%;
+  margin: auto;
+  color: var(--text-color);
+  background: var(--background-color);
+}
+
 #container {
   position: absolute;
   top: 0;
