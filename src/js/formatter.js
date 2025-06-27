@@ -1,16 +1,7 @@
-/**
- * Extremely-lightweight formatter for AI responses.
- * -------------------------------------------------
- * • Strips <think> … </think> blocks.
- * • Separates Markdown code fences (```lang ... ```) from plain text.
- * • Returns:
- *     { text: cleanPlainText, html: basicHTML, hasCode: boolean }
- * • No heavy re-ordering – content stays in original order.
- */
 class DeepSeekFormatter {
   constructor() {
     this.codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    this.thinkingRegex  = /<think>[\s\S]*?<\/think>/gi;
+    this.thinkingRegex = /<think>[\s\S]*?<\/think>/gi;
   }
 
   /**
@@ -22,48 +13,91 @@ class DeepSeekFormatter {
       return { text: '', html: '', hasCode: false };
     }
 
-    // Normalize custom "[LANG CODE]" headings into fenced blocks
-    // e.g., "[PYTHON CODE]" → "```python"
-    raw = raw.replace(/^\[ *([A-Za-z]+) CODE *\]\s*$/gim, (_, lang) =>
-      '```' + lang.toLowerCase()
-    );
     if (!formatterEnabled) {
       return { text: raw, html: this.escapeHtml(raw), hasCode: false };
     }
 
-    // --- slice into segments ---
-    const segments = [];
-    let last = 0, m;
-    while ((m = this.codeBlockRegex.exec(raw)) !== null) {
-      if (m.index > last) segments.push({ type: 'text', content: raw.slice(last, m.index) });
-      segments.push({ type: 'code', language: m[1] || 'text', content: m[2] });
-      last = this.codeBlockRegex.lastIndex;
-    }
-    if (last < raw.length) segments.push({ type: 'text', content: raw.slice(last) });
+    // Normalize custom "[LANG CODE]" headings into fenced blocks
+    raw = raw.replace(/^\[ *([A-Za-z]+) CODE *\]\s*$/gim, (_, lang) => '```' + lang.toLowerCase());
 
-    // --- build outputs ---
-    const plain = [], html = [];
+    // --- Split into code and non-code segments, preserving order ---
+    const segments = [];
+    let lastIndex = 0;
+    let m;
+    while ((m = this.codeBlockRegex.exec(raw)) !== null) {
+      if (m.index > lastIndex) {
+        segments.push({ type: 'text', content: raw.slice(lastIndex, m.index) });
+      }
+      segments.push({ type: 'code', language: m[1] || 'text', content: m[2] });
+      lastIndex = this.codeBlockRegex.lastIndex;
+    }
+    if (lastIndex < raw.length) {
+      segments.push({ type: 'text', content: raw.slice(lastIndex) });
+    }
+
+    // --- Build outputs ---
+    const plain = [],
+      html = [];
     let hasCode = false;
 
     for (const seg of segments) {
-      if (seg.type === 'text') {
-        const cleaned = seg.content.replace(this.thinkingRegex, '').trim();
-        if (!cleaned) continue;
-        plain.push(cleaned);
-        html.push(`<p>${this.escapeHtml(cleaned)}</p>`);
-      } else { // code
+      if (seg.type === 'code') {
         hasCode = true;
         plain.push(`\n[${seg.language.toUpperCase()} CODE]\n${seg.content}\n`);
         html.push(
-          `<pre class="code-block"><code>${
-            this.highlightCode(this.escapeHtml(seg.content), seg.language)
-          }</code></pre>`
+          `<div class="code-section">
+            <div class="code-language">${seg.language.toUpperCase()}</div>
+            <pre class="code-block"><code>${this.highlightCode(
+              this.escapeHtml(seg.content),
+              seg.language
+            )}</code></pre>
+          </div>`
         );
+      } else {
+        // Remove <think>...</think> and trim
+        let cleaned = seg.content.replace(this.thinkingRegex, '').trim();
+        if (!cleaned) continue;
+
+        // Markdown headers
+        cleaned = cleaned.replace(/^### (.*)$/gm, '<div class="response-header h3">$1</div>');
+        cleaned = cleaned.replace(/^## (.*)$/gm, '<div class="response-header h2">$1</div>');
+        cleaned = cleaned.replace(/^# (.*)$/gm, '<div class="response-header h1">$1</div>');
+
+        // Lists
+        cleaned = cleaned.replace(/^\s*[-*] (.*)$/gm, '<li>$1</li>');
+        // Wrap consecutive <li> in <ul>
+        cleaned = cleaned.replace(/(<li>.*?<\/li>)/gs, '<ul>$1</ul>');
+
+        // Bold, italic, inline code
+        cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        cleaned = cleaned.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        cleaned = cleaned.replace(/`([^`]+)`/g, '<span class="inline-code">$1</span>');
+
+        // Complexity and reasoning highlights
+        cleaned = cleaned.replace(
+          /📊 (.*?(?:Time|Space).*?Complexity.*?O\([^)]+\).*?)$/gm,
+          '<div class="complexity-section"><span class="complexity-icon">📊</span><span class="complexity-text">$1</span></div>'
+        );
+        cleaned = cleaned.replace(
+          /💭 REASONING:\n([\s\S]*?)(?=\n\n|\n$|$)/g,
+          '<div class="thinking-section"><div class="thinking-header">💭 Reasoning Process</div><div class="thinking-content">$1</div></div>'
+        );
+
+        // Paragraphs for remaining text (split by double newlines)
+        cleaned.split(/\n{2,}/).forEach((paragraph) => {
+          if (paragraph.trim()) {
+            html.push(`<p class="text-section">${paragraph.trim()}</p>`);
+            plain.push(paragraph.trim());
+          }
+        });
       }
     }
 
     return {
-      text: plain.join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+      text: plain
+        .join('\n\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim(),
       html: `<div class="formatted-response">\n${html.join('\n')}\n</div>`,
       hasCode,
     };
@@ -71,41 +105,44 @@ class DeepSeekFormatter {
 
   // --- helpers ---
   escapeHtml(s) {
-    return s.replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   highlightCode(code, lang) {
-    if (['python','py'].includes(lang)) {
-      return code
-        // Comments
-        .replace(/(#.*?$)/gm, '<span class="comment">$1</span>')
-        // Strings
-        .replace(/(".*?"|'.*?')/g, '<span class="string">$1</span>')
-        // Numbers (integer, float)
-        .replace(/\b(\d+\.?\d*|\.\d+)\b/g, '<span class="number">$1</span>')
-        // Keywords
-        .replace(
-          /\b(def|class|if|else|elif|for|while|try|except|finally|with|return|import|from|as|lambda|True|False|None)\b/g,
-          '<span class="keyword">$1</span>'
-        );
+    if (['python', 'py'].includes(lang)) {
+      // Highlight comments first
+      code = code.replace(/(#.*?$)/gm, '<span class="comment">$1</span>');
+      // Now, only highlight outside of comments
+      code = code.replace(
+        /(<span class="comment">.*?<\/span>)|(".*?"|'.*?')|(\b\d+\.?\d*|\.\d+\b)|\b(def|class|if|else|elif|for|while|try|except|finally|with|return|import|from|as|lambda|True|False|None)\b/gs,
+        (match, comment, string, number, keyword) => {
+          if (comment) return comment; // Don't touch inside comments
+          if (string) return `<span class="string">${string}</span>`;
+          if (number) return `<span class="number">${number}</span>`;
+          if (keyword) return `<span class="keyword">${keyword}</span>`;
+          return match;
+        }
+      );
+      return code;
     }
-    if (['javascript','js'].includes(lang)) {
-      return code
-        // Line comments
-        .replace(/(\/\/.*?$)/gm, '<span class="comment">$1</span>')
-        // Strings
-        .replace(/(".*?"|'.*?')/g, '<span class="string">$1</span>')
-        // Numbers (integer, float)
-        .replace(/\b(\d+\.?\d*|\.\d+)\b/g, '<span class="number">$1</span>')
-        // Keywords
-        .replace(
-          /\b(const|let|var|function|if|else|for|while|return|class|extends|import|export|async|await|true|false|null|undefined)\b/g,
-          '<span class="keyword">$1</span>'
-        );
+    if (['javascript', 'js'].includes(lang)) {
+      code = code.replace(/(\/\/.*?$)/gm, '<span class="comment">$1</span>');
+      code = code.replace(
+        /(<span class="comment">.*?<\/span>)|(".*?"|'.*?'|`.*?`)|(\b\d+\.?\d*|\.\d+\b)|\b(const|let|var|function|if|else|for|while|return|class|extends|import|export|async|await|true|false|null|undefined)\b/gs,
+        (match, comment, string, number, keyword) => {
+          if (comment) return comment;
+          if (string) return `<span class="string">${string}</span>`;
+          if (number) return `<span class="number">${number}</span>`;
+          if (keyword) return `<span class="keyword">${keyword}</span>`;
+          return match;
+        }
+      );
+      return code;
     }
     return code;
   }
