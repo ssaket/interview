@@ -8,10 +8,14 @@ body {
 }
 
 #header {
+  display: flex;
+  justify-content: center;
   width: 100%;
-  margin: auto;
+  font-family: monospace;
+  font-size: 1.2em;
+  white-space: pre-wrap;
+  margin: 10px auto;
   color: var(--text-color);
-  background: var(--background-color);
 }
 
 #container {

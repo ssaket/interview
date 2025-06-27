@@ -534,6 +534,8 @@ const AppController = (() => {
         session.active = true;
         if (session.history.length > 20) session.history = session.history.slice(-20);
         if (isOllama) mainWindow.webContents.send('ai-processing-complete');
+        mainWindow.webContents.send('session-length', session.history.length);
+        
         return rawResponse;
       } catch (err) {
         if (isOllama) mainWindow.webContents.send('ai-processing-complete');
