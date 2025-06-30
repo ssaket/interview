@@ -147,7 +147,7 @@ class ProviderFactory {
   createProviderWithEnvConfig(providerName, overrides = {}) {
     const envConfigs = {
       ollama: {
-        model: process.env.OLLAMA_MODEL || 'phi3:mini',
+        model: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
         baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
       },
       openai: {
@@ -181,7 +181,11 @@ class ProviderFactory {
   getProviderConfigTemplate(providerName) {
     const templates = {
       ollama: {
-        model: { required: false, default: 'phi3:mini', description: 'Ollama model name' },
+        model: {
+          required: false,
+          default: 'deepseek-coder:6.7b',
+          description: 'Ollama model name',
+        },
         baseUrl: {
           required: false,
           default: 'http://localhost:11434',

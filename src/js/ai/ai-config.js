@@ -20,17 +20,15 @@ class AIConfig {
     return {
       ollama: {
         name: 'ollama',
-        model: 'phi3:mini',
+        model: 'deepseek-coder:6.7b',
         baseUrl: 'http://localhost:11434',
         timeout: 300000, // 5 minutes
         models: {
-          simple: ['phi3:mini', 'codellama:7b-instruct', 'mistral'],
-          primary: 'phi3:mini',
-          reasoning: ['qwen2.5:7b', 'llama3.1:8b'],
-          coding: ['codellama:7b-instruct', 'deepseek-coder:6.7b'],
+          simple: ['deepseek-coder-v2', 'codellama:7b-instruct', 'mistral'],
+          primary: 'deepseek-coder:6.7b',
         },
         parameters: {
-          temperature: 0.7,
+          temperature: 0.4,
           top_p: 0.9,
           repeat_penalty: 1.1,
           num_predict: -1,
@@ -345,19 +343,19 @@ class AIConfig {
       ollama: {
         timeout: 300000, // 5 minutes for production
         parameters: {
-          temperature: 0.5, // More conservative for production
+          temperature: 0.4, // More conservative for production
         },
       },
       openai: {
         timeout: 120000, // 2 minutes for production
         parameters: {
-          temperature: 0.5,
+          temperature: 0.4,
         },
       },
       huggingface: {
         timeout: 120000,
         parameters: {
-          temperature: 0.5,
+          temperature: 0.4,
         },
       },
     };

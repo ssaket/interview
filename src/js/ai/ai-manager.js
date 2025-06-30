@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { createProvider, getAvailableProviders } = require('./provider-factory');
 const MODEL_PROMPTS = require('../model-prompts');
+const { getProviderConfig } = require('./ai-config');
 
 /**
  * Modern Object-Oriented AI Manager
@@ -318,6 +319,23 @@ class AIManager {
   }
 
   /**
+   * Get Ollama models configuration
+   * @returns {Object} Ollama models config with simple array and all() method
+   */
+  getOllamaModels() {
+    const ollamaConfig = getProviderConfig('ollama');
+    const models = ollamaConfig.models || {};
+
+    return {
+      simple: models.simple || [],
+      primary: models.primary || 'deepseek-coder:6.7b',
+      all() {
+        return [...this.simple];
+      },
+    };
+  }
+
+  /**
    * Get or create a provider instance
    * @param {string} providerName - Provider name
    * @param {Object} config - Configuration
@@ -344,7 +362,7 @@ class AIManager {
    */
   _getDefaultModelForProvider(providerName) {
     const defaults = {
-      ollama: process.env.OLLAMA_MODEL || 'phi3:mini',
+      ollama: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
       openai: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
       huggingface: process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
     };
@@ -364,6 +382,7 @@ class AIManager {
     if (name.includes('qwen')) return 'qwen';
     if (name.includes('codellama')) return 'codellama';
     if (name.includes('gpt')) return 'gpt';
+    if (name.includes('deepseek-coder')) return 'deepseek_coder';
     if (name.includes('deepseek')) return 'deepseek';
     return 'default';
   }

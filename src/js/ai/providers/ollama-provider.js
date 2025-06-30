@@ -10,7 +10,7 @@ class OllamaProvider extends BaseAIProvider {
   constructor(config = {}) {
     super({
       name: 'ollama',
-      model: config.model || 'phi3:mini',
+      model: config.model || process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
       baseUrl: config.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
       timeout: config.timeout || 300000, // 5 minute timeout for reasoning models
       ...config
@@ -285,7 +285,7 @@ class OllamaProvider extends BaseAIProvider {
    */
   getDefaultParameters() {
     return {
-      temperature: 0.7,
+      temperature: 0.4,
       top_p: 0.9,
       stream: false,
       num_predict: -1, // Generate until stop

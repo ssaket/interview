@@ -1,14 +1,5 @@
 const { globalShortcut } = require('electron');
 
-// Define Ollama models for shortcut manager use
-const ollamaModels = {
-  simple: ['phi3:mini', 'codellama:7b-instruct', 'mistral'],
-  primary: 'phi3:mini',
-  all() {
-    return [...this.simple];
-  },
-};
-
 class ShortcutManager {
   /**
    * @param {WindowManager} windowManager
@@ -194,7 +185,9 @@ class ShortcutManager {
     }
 
     const burnMode = this.appController.burnModeEnabled;
+    const ollamaModels = this.aiManager.getOllamaModels();
     const allModels = burnMode ? ollamaModels.all() : ollamaModels.simple.slice();
+    this.aiManager;
 
     /* 1️⃣ Determine next model */
     const current = info.model;
