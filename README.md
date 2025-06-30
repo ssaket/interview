@@ -349,7 +349,69 @@ DEBUG=true
 ## Performance
 
 - **Response time**: ~2-3 seconds for screenshot + OCR + AI query
-- **Memory usage**: ~50-100MB typical
+**Memory usage**: ~50-100MB typical
+
+## OCR Text Processing Logging
+
+The application includes comprehensive logging to track OCR text cleaning effectiveness. Every OCR processing session is automatically logged with before/after text comparison and quality metrics.
+
+### Log Structure
+
+Logs are organized by month with timestamp-based files:
+```
+logs/ocr/
+├── 2025-01/
+│   ├── 2025-01-15_14-30-25_ocr.json
+│   ├── 2025-01-15_14-32-10_ocr.json
+│   └── ...
+└── 2025-02/
+    └── ...
+```
+
+### Analyzing OCR Performance
+
+Use the built-in analysis script to evaluate cleaning effectiveness:
+
+```bash
+# Analyze last 7 days
+npm run analyze:ocr
+
+# Analyze last 30 days  
+npm run analyze:ocr:30d
+
+# Custom time period
+node scripts/analyze-ocr-logs.js 90
+```
+
+### Sample Analysis Output
+
+```
+📊 OCR TEXT CLEANING ANALYSIS RESULTS
+══════════════════════════════════════
+
+📈 OVERVIEW STATISTICS
+Total Sessions: 45
+Average OCR Confidence: 84.2%
+Overall Text Reduction: 30.1%
+
+🧹 CLEANING EFFECTIVENESS
+🟢 excellent    12 (26.7%)
+🟡 good         20 (44.4%)
+🟠 fair          8 (17.8%)
+🔴 poor          5 (11.1%)
+
+💡 RECOMMENDATIONS
+✅ OCR text cleaning is working well!
+```
+
+### Key Metrics
+
+- **Quality Score**: Overall cleaning effectiveness (0.0-1.0)
+- **Reduction Percentage**: Amount of text removed during cleaning
+- **Content Preservation**: Questions, code blocks, and meaningful words kept
+- **Processing Time**: OCR and cleaning performance
+
+See `docs/OCR_LOGGING.md` for detailed documentation.
 - **Compression**: 10-40% reduction in response length
 - **Code detection**: 95%+ accuracy for common languages
 

@@ -12,7 +12,10 @@
     "test:markdown": "node tests/test-markdown-sections.js",
     "test:session": "node tests/test-session.js",
     "lint": "eslint src/js/**/*.js",
-    "format": "prettier --write \"src/**/*.{js,css,html}\""
+    "format": "prettier --write \"src/**/*.{js,css,html}\"",
+    "analyze:ocr": "node scripts/analyze-ocr-logs.js",
+    "analyze:ocr:7d": "node scripts/analyze-ocr-logs.js 7",
+    "analyze:ocr:30d": "node scripts/analyze-ocr-logs.js 30"
   },
   "keywords": [
     "electron",

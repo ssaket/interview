@@ -1,7 +1,9 @@
 const { app, ipcMain, desktopCapturer, nativeImage, screen } = require('electron');
+const path = require('path');
 const WindowManager = require('./window-manager');
 const { AIManager } = require('./ai/index');
 const ShortcutManager = require('./shortcut-manager');
+const OCRLogger = require('./ocr-logger');
 // const AudioService = require('./audio-service');  ← later
 
 class AppController {
@@ -9,6 +11,11 @@ class AppController {
     this.windowManager = new WindowManager();
     this.aiManager = new AIManager(this);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
+    this.ocrLogger = new OCRLogger({
+      logDir: path.join(process.cwd(), 'logs', 'ocr'),
+      enableLogging: true,
+      maxLogAge: 90, // Keep logs for 90 days
+    });
     this.ocrFilteringEnabled = true;
     this.burnModeEnabled = false;
 
@@ -74,33 +81,56 @@ class AppController {
     });
 
     /* ------------ OCR (Tesseract) ------------ */
-    ipcMain.handle('perform-ocr', async (_event, imageDataUrl) => {
+    ipcMain.handle('perform-ocr', async (_event, imageDataUrl, options = {}) => {
+      const startTime = Date.now();
       const Tesseract = require('tesseract.js');
-      const {
-        data: { text },
-      } = await Tesseract.recognize(imageDataUrl, 'eng');
 
-      let finalText = text;
+      try {
+        const {
+          data: { text, confidence },
+        } = await Tesseract.recognize(imageDataUrl, 'eng');
 
-      if (this.ocrFilteringEnabled) {
-        const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
-        const cleaner = new LLMFriendlyOCRCleaner();
-
-        finalText = cleaner.cleanText(text, {
+        let finalText = text;
+        const cleaningOptions = {
           maxLines: 30,
           preserveQuestions: true,
           preserveCode: true,
           removeJunk: true,
           logResults: false,
           applyOCRFixes: true,
+        };
+
+        if (this.ocrFilteringEnabled) {
+          const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
+          const cleaner = new LLMFriendlyOCRCleaner();
+
+          finalText = cleaner.cleanText(text, cleaningOptions);
+        }
+
+        // Log OCR processing session
+        const processingTime = Date.now() - startTime;
+        await this.ocrLogger.logOCRSession({
+          originalText: text,
+          cleanedText: finalText,
+          confidence: confidence || 0,
+          contentType: options.contentType || 'unknown',
+          preset: options.preset || 'auto',
+          processingTime,
+          filteringEnabled: this.ocrFilteringEnabled,
+          cleaningOptions,
+          imageSize: options.imageSize,
+          preprocessed: options.preprocessed || false,
         });
+
+        // Mark this as OCR context for the next AI query
+        this.lastOcrText = finalText;
+        this.isOcrContext = true;
+
+        return finalText;
+      } catch (error) {
+        console.error('[OCR] Processing failed:', error);
+        throw error;
       }
-
-      // Mark this as OCR context for the next AI query
-      this.lastOcrText = finalText;
-      this.isOcrContext = true;
-
-      return finalText;
     });
 
     /* ------------ Ask ChatGPT / AI with OCR Fallback ------------ */
@@ -300,9 +330,13 @@ class AppController {
       this.registerIpc();
       this.aiManager.initialize();
     });
-    app.on('before-quit', () => this.shortcutManager.unregisterAll());
-    app.on('window-all-closed', () => {
+    app.on('before-quit', async () => {
       this.shortcutManager.unregisterAll();
+      await this.ocrLogger.shutdown();
+    });
+    app.on('window-all-closed', async () => {
+      this.shortcutManager.unregisterAll();
+      await this.ocrLogger.shutdown();
       if (process.platform !== 'darwin') app.quit();
     });
   }
