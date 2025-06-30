@@ -19,7 +19,7 @@ This document lists all available keyboard shortcuts for the application.
 | `Cmd+Shift+[` | Decrease window width |
 | `Cmd+Shift+↑` | Increase window height |
 | `Cmd+Shift+↓` | Decrease window height |
-| `Cmd+Shift+0` | Reset window to default size (800×800) |
+| `Cmd+Shift+0` | Toggle window size (800×200 ⇄ 800×800) |
 
 ## Screen Capture
 | Shortcut | Action |
@@ -64,5 +64,5 @@ This document lists all available keyboard shortcuts for the application.
 
 1. Use `Cmd+Shift+H` to quickly display all shortcuts in the console
 2. Combine movement and resizing shortcuts to precisely position and size your window
-3. Use `Cmd+Shift+0` to quickly return to the default size if you've made the window too large or small
+3. Use `Cmd+Shift+0` to toggle between small (800×200) and default (800×800) window sizes
 4. The window maintains a minimum size to ensure usability

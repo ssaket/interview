@@ -19,6 +19,7 @@ class ShortcutManager {
     this.windowManager = windowManager;
     this.aiManager = aiManager;
     this.appController = appController;
+    this.isSmallWindowMode = false; // Track window size state
   }
 
   /** Register all global shortcuts that were previously in registerShortcuts(). */
@@ -63,9 +64,22 @@ class ShortcutManager {
       const [width, height] = mainWindow.getSize();
       mainWindow.setSize(width, Math.max(minSize, height - resizeStep));
     });
-    globalShortcut.register('Command+Shift+0', () =>
-      mainWindow.setSize(defaultWidth, defaultHeight)
-    );
+    globalShortcut.register('Command+Shift+0', () => {
+      // Sync state first in case window was manually resized
+      this.syncWindowSizeState();
+
+      if (this.isSmallWindowMode) {
+        // Switch to default size
+        mainWindow.setSize(defaultWidth, defaultHeight);
+        this.isSmallWindowMode = false;
+        console.log('Window toggled to default size (800x800)');
+      } else {
+        // Switch to small size
+        mainWindow.setSize(900, 200);
+        this.isSmallWindowMode = true;
+        console.log('Window toggled to small size (900x200)');
+      }
+    });
 
     /* ─── Help ─── */
     globalShortcut.register('Command+Shift+H', () => this.showHelp());
@@ -138,7 +152,7 @@ class ShortcutManager {
     console.log('  Cmd+Shift+]           - Increase window width');
     console.log('  Cmd+Shift+[           - Decrease window width');
     console.log('  Cmd+Shift+Up/Down     - Adjust window height');
-    console.log('  Cmd+Shift+0           - Reset window size');
+    console.log('  Cmd+Shift+0           - Toggle window size (800x200 ⇄ 800x800)');
     console.log('\nWINDOW CONTROL:');
     console.log('  Cmd+B                 - Toggle window visibility');
     console.log('\nAUDIO:');
@@ -231,6 +245,25 @@ class ShortcutManager {
     this.windowManager.send('session-length', newSession.history.length);
 
     console.log(`Switched to ${next} (${newSession.history.length} messages preserved)`);
+  }
+
+  /**
+   * Sync the window size state based on current window dimensions
+   * Call this to ensure toggle state is accurate after manual resizing
+   */
+  syncWindowSizeState() {
+    const { mainWindow } = this.windowManager;
+    const [width, height] = mainWindow.getSize();
+
+    // Consider it small mode if close to small size (allow some tolerance)
+    this.isSmallWindowMode = width >= 750 && height <= 250;
+  }
+
+  /**
+   * Get current window size mode for external use
+   */
+  getWindowSizeMode() {
+    return this.isSmallWindowMode ? 'small' : 'default';
   }
 }
 
