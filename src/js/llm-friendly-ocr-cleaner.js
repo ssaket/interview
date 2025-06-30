@@ -338,7 +338,7 @@ class LLMFriendlyOCRCleaner {
         /\b(explanation|example|approach|method|solution|walkthrough)\b/i.test(line));
 
     // Check if it's code
-    scores.isCode = this.valuePatterns.some(
+    scores.isCode = configLinePattern.test(line) || this.valuePatterns.some(
       (pattern) =>
         pattern.test(line) &&
         (line.includes('def ') ||
