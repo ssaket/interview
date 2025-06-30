@@ -1,6 +1,6 @@
 const { app, ipcMain, desktopCapturer, nativeImage, screen } = require('electron');
 const WindowManager = require('./window-manager');
-const AIManager = require('./ai-manager');
+const { AIManager } = require('./ai/index');
 const ShortcutManager = require('./shortcut-manager');
 // const AudioService = require('./audio-service');  ← later
 
@@ -11,6 +11,10 @@ class AppController {
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
     this.ocrFilteringEnabled = true;
     this.burnModeEnabled = false;
+
+    // Track OCR context for fallback queries
+    this.lastOcrText = null;
+    this.isOcrContext = false;
   }
 
   /* ---------- IPC handlers ---------- */
@@ -18,13 +22,14 @@ class AppController {
     ipcMain.handle('get-ocr-filtering-state', async () => this.ocrFilteringEnabled);
     ipcMain.handle('get-burn-mode-state', async () => this.burnModeEnabled);
 
-    ipcMain.handle('get-provider-status', async () => ({
-      provider: this.aiManager.currentProvider,
-      isOllama: this.aiManager.isOllama,
-      model: this.aiManager.isOllama
-        ? this.aiManager.currentModelName
-        : process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
-    }));
+    ipcMain.handle('get-provider-status', async () => {
+      const info = this.aiManager.getProviderInfo();
+      return {
+        provider: info.name,
+        isOllama: info.isOllama,
+        model: info.model,
+      };
+    });
 
     /* ------------ Screen Capture ------------ */
     ipcMain.handle('capture-screen', async () => {
@@ -91,20 +96,34 @@ class AppController {
         });
       }
 
+      // Mark this as OCR context for the next AI query
+      this.lastOcrText = finalText;
+      this.isOcrContext = true;
+
       return finalText;
     });
 
-    /* ------------ Ask ChatGPT / AI ------------ */
+    /* ------------ Ask ChatGPT / AI with OCR Fallback ------------ */
     ipcMain.handle('ask-chatgpt', async (_event, question) => {
       try {
+        // Check if this is an OCR query
+        const isOcrQuery = this.isOcrContext && (question === this.lastOcrText || this.lastOcrText);
+
+        if (isOcrQuery) {
+          this.isOcrContext = false; // Reset flag
+          return await this.handleOcrQuery(question);
+        }
+
+        // Regular query - use current provider
         return await this.aiManager.ask(question);
       } catch (err) {
-        // Format a user‑friendly error string similar to the old implementation
-        let errorMsg =
-          `⚠️ ${this.aiManager.isOllama ? 'Ollama' : 'HuggingFace'} inference failed: ` +
-          (err.message || err);
+        const info = this.aiManager.getProviderInfo();
 
-        if (this.aiManager.isOllama) {
+        // Format a user‑friendly error string
+        let errorMsg =
+          `⚠️ ${info.isOllama ? 'Ollama' : info.name} inference failed: ` + (err.message || err);
+
+        if (info.isOllama) {
           if (err.message && err.message.includes('Ollama server not running')) {
             errorMsg = '⚠️ Ollama server not running. Please start with: ollama serve';
           }
@@ -112,10 +131,10 @@ class AppController {
             err.message &&
             (err.message.includes('model not found') || err.message.includes('Model'))
           ) {
-            errorMsg = `⚠️ ${this.aiManager.currentModelName} model not found. Please pull with: ollama pull ${this.aiManager.currentModelName}`;
+            errorMsg = `⚠️ ${info.model} model not found. Please pull with: ollama pull ${info.model}`;
           }
           if (err.message && err.message.includes('timeout')) {
-            errorMsg = `⚠️ ${this.aiManager.currentModelName} timeout. This reasoning model typically takes 60‑90 seconds for complex coding questions.`;
+            errorMsg = `⚠️ ${info.model} timeout. This reasoning model typically takes 60‑90 seconds for complex coding questions.`;
           }
         } else if (err.status === 429 || (err.response && err.response.status === 429)) {
           errorMsg = '⚠️ Rate limit exceeded. Please try again later.';
@@ -132,7 +151,8 @@ class AppController {
     ipcMain.handle('cycle-ollama-model', async () => {
       try {
         this.shortcutManager.switchOllamaModel();
-        return { success: true, model: this.aiManager.currentModelName };
+        const info = this.aiManager.getProviderInfo();
+        return { success: true, model: info.model };
       } catch (err) {
         console.error('Failed to switch Ollama model:', err);
         return { success: false, error: err.message };
@@ -154,6 +174,123 @@ class AppController {
         return { connected: false };
       }
     });
+  }
+
+  /**
+   * Handle OCR queries with Ollama first, DeepSeek fallback when burn mode enabled
+   * @param {string} question - The OCR text to query
+   * @returns {Promise<string>} Formatted response
+   */
+  async handleOcrQuery(question) {
+    const originalProvider = this.aiManager.getProviderInfo();
+    const responses = {};
+    let finalResponse = '';
+
+    console.log('[OCR Query] Processing OCR query with fallback mechanism...');
+
+    try {
+      // Step 1: Always query Ollama first for OCR (local processing)
+      console.log('[OCR Query] Querying Ollama (local)...');
+
+      // Ensure we're using Ollama for OCR
+      if (!originalProvider.isOllama) {
+        await this.aiManager.switchProvider('ollama');
+      }
+
+      // Query Ollama
+      const ollamaInfo = this.aiManager.getProviderInfo();
+      console.log(`[OCR Query] Using ${ollamaInfo.model}...`);
+
+      const ollamaResponse = await this.aiManager.ask(question);
+      responses.ollama = {
+        provider: ollamaInfo.name,
+        model: ollamaInfo.model,
+        response: ollamaResponse,
+      };
+
+      finalResponse = ollamaResponse;
+      console.log('[OCR Query] Ollama response received');
+
+      // Step 2: If burn mode enabled, also query DeepSeek
+      if (this.burnModeEnabled) {
+        console.log('[OCR Query] Burn mode enabled - querying DeepSeek...');
+
+        try {
+          // Switch to DeepSeek
+          await this.aiManager.switchProvider('deepseek', {
+            model: 'deepseek-chat', // Use chat model for OCR queries
+            apiKey: process.env.DEEPSEEK_API_KEY,
+          });
+
+          const deepseekInfo = this.aiManager.getProviderInfo();
+          console.log(`[OCR Query] Using ${deepseekInfo.model}...`);
+
+          const deepseekResponse = await this.aiManager.ask(question);
+          responses.deepseek = {
+            provider: deepseekInfo.name,
+            model: deepseekInfo.model,
+            response: deepseekResponse,
+          };
+
+          // Format dual response
+          finalResponse = this.formatDualResponse(responses.ollama, responses.deepseek);
+          console.log('[OCR Query] DeepSeek response received and formatted');
+        } catch (deepseekError) {
+          console.error('[OCR Query] DeepSeek query failed:', deepseekError.message);
+
+          // Add error note to Ollama response
+          finalResponse = `${ollamaResponse}\n\n---\n\n⚠️ **DeepSeek Error:** ${deepseekError.message}`;
+        }
+      }
+
+      // Step 3: Always switch back to Ollama after OCR processing
+      const currentProvider = this.aiManager.getProviderInfo();
+      if (!currentProvider.isOllama) {
+        try {
+          await this.aiManager.switchProvider('ollama');
+          console.log('[OCR Query] Switched back to Ollama');
+        } catch (restoreError) {
+          console.warn('[OCR Query] Failed to switch back to Ollama:', restoreError.message);
+        }
+      }
+
+      // Update session length
+      const sess = this.aiManager.getSession();
+      this.windowManager.send('session-length', sess.history.length);
+
+      return finalResponse;
+    } catch (error) {
+      console.error('[OCR Query] Error during OCR processing:', error);
+
+      // Try to restore Ollama on error
+      const currentProvider = this.aiManager.getProviderInfo();
+      if (!currentProvider.isOllama) {
+        try {
+          await this.aiManager.switchProvider('ollama');
+        } catch (restoreError) {
+          console.warn('[OCR Query] Failed to restore Ollama after error:', restoreError.message);
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Format dual response from Ollama and DeepSeek for display
+   * @param {Object} ollamaResult - Ollama response object
+   * @param {Object} deepseekResult - DeepSeek response object
+   * @returns {string} Formatted response
+   */
+  formatDualResponse(ollamaResult, deepseekResult) {
+    return (
+      `🤖 **${ollamaResult.model}** (Local)\n` +
+      `${ollamaResult.response}\n\n` +
+      `---\n\n` +
+      `🔥 **${deepseekResult.model}** (Cloud)\n` +
+      `${deepseekResult.response}\n\n` +
+      `*Burn mode: Showing responses from both local and cloud providers*`
+    );
   }
 
   start() {

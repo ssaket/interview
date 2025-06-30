@@ -170,7 +170,15 @@ async function captureScreenshot(isRegion = false) {
   UI.setOutput('Running OCR...');
   const text = await ipcRenderer.invoke('perform-ocr', image);
 
-  UI.setOutput(`Extracted:\n${text}\n\nQuerying model...`);
+  // Check burn mode status for better messaging
+  const burnModeEnabled = await ipcRenderer.invoke('get-burn-mode-state');
+
+  if (burnModeEnabled) {
+    UI.setOutput(`Extracted:\n${text}\n\n🤖 Querying Ollama (local) + 🔥 DeepSeek (cloud)...`);
+  } else {
+    UI.setOutput(`Extracted:\n${text}\n\n🤖 Querying Ollama (local)...`);
+  }
+
   const answer = await ipcRenderer.invoke('ask-chatgpt', text);
 
   lastAssistantResponse = answer;
@@ -203,7 +211,14 @@ ipcRenderer.on('ocr-filtering-changed', (event, enabled) => {
 // Listen for burn mode changes from main process
 ipcRenderer.on('burn-mode-changed', (event, enabled) => {
   UI.updateBurnModeIndicator(enabled);
-  UI.setOutput(`Burn Mode: ${enabled ? 'ON' : 'OFF'}`, 2000);
+  if (enabled) {
+    UI.setOutput(
+      `🔥 Burn Mode: ON\nOCR queries will use both Ollama (local) + DeepSeek (cloud)`,
+      3000
+    );
+  } else {
+    UI.setOutput(`🤖 Burn Mode: OFF\nOCR queries will use Ollama (local) only`, 2000);
+  }
 });
 
 // Call this when you want to start recording (e.g. hotkey or button)

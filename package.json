@@ -31,6 +31,7 @@
     "electron": "^36.5.0",
     "html-entities": "^2.6.0",
     "natural": "^8.1.0",
+    "openai": "^5.8.2",
     "tesseract.js": "^6.0.1"
   },
   "devDependencies": {

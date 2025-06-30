@@ -1,5 +1,13 @@
 const { globalShortcut } = require('electron');
-const AIManager = require('./ai-manager');
+
+// Define Ollama models for shortcut manager use
+const ollamaModels = {
+  simple: ['phi3:mini', 'codellama:7b-instruct', 'mistral'],
+  primary: 'phi3:mini',
+  all() {
+    return [...this.simple];
+  },
+};
 
 class ShortcutManager {
   /**
@@ -92,7 +100,7 @@ class ShortcutManager {
     });
 
     /* ─── AI provider / model switches ─── */
-    globalShortcut.register('Command+Shift+P', () => this.aiManager.switchProvider());
+    globalShortcut.register('Command+Shift+P', () => this.aiManager.cycleProvider());
     globalShortcut.register('Command+Shift+M', () => this.switchOllamaModel());
 
     /* ─── Misc renderer events ─── */
@@ -105,10 +113,11 @@ class ShortcutManager {
     );
     globalShortcut.register('Command+Shift+L', () => this.windowManager.toggleFormatter());
     globalShortcut.register('Command+Shift+W', () => {
-      if (this.aiManager.isOllama) {
+      const info = this.aiManager.getProviderInfo();
+      if (info.isOllama) {
         this.windowManager.send(
           'model-warmup-started',
-          `Warming up ${this.aiManager.currentModelName}... This may take 10‑30 seconds.`
+          `Warming up ${info.model}... This may take 10‑30 seconds.`
         );
       }
     });
@@ -148,25 +157,51 @@ class ShortcutManager {
   }
 
   switchOllamaModel() {
-    if (!this.aiManager.isOllama) return;
+    const info = this.aiManager.getProviderInfo();
+
+    // If not using Ollama, switch to it first with default model
+    if (!info.isOllama) {
+      console.log('[Shortcut] Switching to Ollama first...');
+      try {
+        this.aiManager.switchProvider('ollama');
+        this.windowManager.send('model-switched', {
+          model: this.aiManager.getProviderInfo().model,
+          question: '',
+          sessionLength: 0,
+          exchanges: 0,
+        });
+        console.log(`Switched to Ollama with ${this.aiManager.getProviderInfo().model}`);
+        return;
+      } catch (err) {
+        console.error('Failed to switch to Ollama:', err);
+        this.windowManager.send('model-switch-failed', { model: 'ollama', error: err.message });
+        return;
+      }
+    }
 
     const burnMode = this.appController.burnModeEnabled;
-    const allModels = burnMode
-      ? AIManager.ollamaModels.all()
-      : AIManager.ollamaModels.simple.slice();
+    const allModels = burnMode ? ollamaModels.all() : ollamaModels.simple.slice();
 
     /* 1️⃣ Determine next model */
-    const current = this.aiManager.currentModelName;
+    const current = info.model;
     const next = allModels[(allModels.indexOf(current) + 1) % allModels.length];
 
-    /* 2️⃣ Save last user prompt from current session */
+    /* 2️⃣ Save last user question from current session */
     const prevSession = this.aiManager.getSession();
-    const lastUserMsg = [...prevSession.history].reverse().find((m) => m.role === 'user');
+    const history = prevSession.history;
 
-    /* 3️⃣ Switch */
-    this.aiManager.currentModelName = next;
+    // Find the most recent user message to preserve context consistently
+    let lastUserMsg = null;
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role === 'user') {
+        lastUserMsg = history[i];
+        break;
+      }
+    }
+
+    /* 3️⃣ Switch model */
+    this.aiManager.setModel(next);
     process.env.OLLAMA_MODEL = next;
-    this.aiManager.SYSTEM_PROMPT = this.aiManager.getSystemPrompt(next);
 
     try {
       this.aiManager.initialize('ollama');
@@ -176,8 +211,9 @@ class ShortcutManager {
       throw err;
     }
 
-    /* 4️⃣ Preserve context in new session */
+    /* 4️⃣ Preserve user question in new session */
     const newSession = this.aiManager.getSession();
+
     if (lastUserMsg && newSession.history.length === 0) {
       newSession.history.push(lastUserMsg);
     }
@@ -189,9 +225,9 @@ class ShortcutManager {
       sessionLength: newSession.history.length,
       exchanges: Math.floor(newSession.history.length / 2),
     });
+
     console.log(`Switched to ${next} (${newSession.history.length} messages preserved)`);
   }
 }
-
 
 module.exports = ShortcutManager;
