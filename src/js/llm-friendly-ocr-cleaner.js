@@ -140,6 +140,10 @@ class LLMFriendlyOCRCleaner {
       /\b(how do i|what is|where is|why does)\b/i,
     ];
 
+    // Treat lines like "====", "****", comment-only lines, **or object-style `key: value` pairs**
+    // as low-value “config” noise
+    this.configLinePattern = /^(={2,}|[*\-\/#]{2,}|\s*[A-Za-z0-9_.-]+\s*:\s*\S+)/;
+
     // Programming vocabulary for scoring
     this.programmingTerms = new Set([
       'algorithm',
@@ -338,17 +342,19 @@ class LLMFriendlyOCRCleaner {
         /\b(explanation|example|approach|method|solution|walkthrough)\b/i.test(line));
 
     // Check if it's code
-    scores.isCode = configLinePattern.test(line) || this.valuePatterns.some(
-      (pattern) =>
-        pattern.test(line) &&
-        (line.includes('def ') ||
-          line.includes('function') ||
-          line.includes('=') ||
-          line.includes('()') ||
-          /^\s{2,}/.test(line) ||
-          line.includes('{') ||
-          line.includes('}'))
-    );
+    scores.isCode =
+      this.configLinePattern.test(line) ||
+      this.valuePatterns.some(
+        (pattern) =>
+          pattern.test(line) &&
+          (line.includes('def ') ||
+            line.includes('function') ||
+            line.includes('=') ||
+            line.includes('()') ||
+            /^\s{2,}/.test(line) ||
+            line.includes('{') ||
+            line.includes('}'))
+      );
 
     // Check for programming content
     const programmingWords = tokens.filter((token) => this.programmingTerms.has(token)).length;
