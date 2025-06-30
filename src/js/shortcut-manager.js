@@ -219,12 +219,16 @@ class ShortcutManager {
     }
 
     /* 5️⃣ Notify renderer */
+
     this.windowManager.send('model-switched', {
       model: next,
       question: lastUserMsg ? lastUserMsg.content : '',
       sessionLength: newSession.history.length,
       exchanges: Math.floor(newSession.history.length / 2),
     });
+
+    // Also send explicit session-length update to ensure UI is in sync
+    this.windowManager.send('session-length', newSession.history.length);
 
     console.log(`Switched to ${next} (${newSession.history.length} messages preserved)`);
   }

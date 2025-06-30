@@ -158,6 +158,7 @@ class AIManager {
       if (this.isOllama()) {
         this.appController.windowManager.send('ai-processing-complete');
       }
+
       this.appController.windowManager.send('session-length', session.history.length);
 
       return rawResponse;
