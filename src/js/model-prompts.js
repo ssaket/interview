@@ -4,16 +4,16 @@ const MODEL_PROMPTS = {
 
 Respond in three **clearly-labeled phases**:
 
-1. 🐢**Brute-force reasoning**
+1. **Brute-force reasoning**
    • Describe the simplest correct approach conceptually.
    • Provide its time and space complexity.
    • **Do *not* show any code yet.**
 
-2. 🔍**Guided examples**
+2. **Guided examples**
    • Walk through 2-3 small inputs step-by-step to illustrate the brute-force idea.
    • Surface any corner-cases and pitfalls.
 
-3. ⚡ **Optimised solution**
+3. **Optimised solution**
    • Explain the key insight that leads to the optimal algorithm.
    • Present clean, idiomatic Python code.
    • Analyse its time and space complexity.
