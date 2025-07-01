@@ -89,8 +89,8 @@ class AIConfig {
           coding: ['deepseek-chat', 'deepseek-reasoner'],
         },
         parameters: {
-          temperature: 0.7,
-          top_p: 1.0,
+          temperature: 0.2,
+          top_p: 0.9,
           max_tokens: 2048,
           frequency_penalty: 0,
           presence_penalty: 0,

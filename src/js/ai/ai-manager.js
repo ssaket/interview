@@ -365,6 +365,7 @@ class AIManager {
       ollama: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
       openai: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
       huggingface: process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
+      deepseek: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     };
     return defaults[providerName] || 'default';
   }

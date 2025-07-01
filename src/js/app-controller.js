@@ -244,6 +244,10 @@ class AppController {
       // Step 2: If burn mode enabled, also query DeepSeek
       if (this.burnModeEnabled) {
         console.log('[OCR Query] Burn mode enabled - querying DeepSeek...');
+        this.windowManager.send(
+          'ai-processing-started',
+          `deepseek is thinking... This may take 60-90 seconds for complex coding questions.`
+        );
 
         try {
           // Switch to DeepSeek
@@ -265,11 +269,13 @@ class AppController {
           // Format dual response
           finalResponse = this.formatDualResponse(responses.ollama, responses.deepseek);
           console.log('[OCR Query] DeepSeek response received and formatted');
+          this.windowManager.send('ai-processing-complete');
         } catch (deepseekError) {
           console.error('[OCR Query] DeepSeek query failed:', deepseekError.message);
 
           // Add error note to Ollama response
           finalResponse = `${ollamaResponse}\n\n---\n\n⚠️ **DeepSeek Error:** ${deepseekError.message}`;
+          windowManager.send('ai-processing-complete');
         }
       }
 
