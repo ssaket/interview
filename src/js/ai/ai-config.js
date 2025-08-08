@@ -20,15 +20,15 @@ class AIConfig {
     return {
       ollama: {
         name: 'ollama',
-        model: 'deepseek-coder:6.7b',
+        model: 'gpt-oss',
         baseUrl: 'http://localhost:11434',
         timeout: 300000, // 5 minutes
         models: {
           simple: ['deepseek-coder-v2', 'codellama:7b-instruct', 'mistral'],
-          primary: 'deepseek-coder:6.7b',
+          primary: 'gpt-oss',
         },
         parameters: {
-          temperature: 0.4,
+          temperature: 0.3,
           top_p: 0.9,
           repeat_penalty: 1.1,
           num_predict: -1,
@@ -46,7 +46,7 @@ class AIConfig {
           coding: ['gpt-4', 'gpt-3.5-turbo'],
         },
         parameters: {
-          temperature: 0.7,
+          temperature: 0.3,
           top_p: 1.0,
           max_tokens: 2048,
           frequency_penalty: 0,
@@ -70,7 +70,7 @@ class AIConfig {
           coding: ['deepseek-ai/DeepSeek-R1-0528', 'Qwen/Qwen2.5-Coder-7B-Instruct'],
         },
         parameters: {
-          temperature: 0.7,
+          temperature: 0.3,
           top_p: 0.9,
           max_tokens: 2048,
           do_sample: true,
@@ -343,19 +343,19 @@ class AIConfig {
       ollama: {
         timeout: 300000, // 5 minutes for production
         parameters: {
-          temperature: 0.4, // More conservative for production
+          temperature: 0.3, // More conservative for production
         },
       },
       openai: {
         timeout: 120000, // 2 minutes for production
         parameters: {
-          temperature: 0.4,
+          temperature: 0.3,
         },
       },
       huggingface: {
         timeout: 120000,
         parameters: {
-          temperature: 0.4,
+          temperature: 0.3,
         },
       },
     };

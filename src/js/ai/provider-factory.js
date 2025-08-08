@@ -147,20 +147,20 @@ class ProviderFactory {
   createProviderWithEnvConfig(providerName, overrides = {}) {
     const envConfigs = {
       ollama: {
-        model: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
+        model: process.env.OLLAMA_MODEL,
         baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
       },
       openai: {
-        model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+        model: process.env.OPENAI_MODEL,
         apiKey: process.env.OPENAI_API_KEY,
       },
       huggingface: {
-        model: process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
+        model: process.env.HF_MODEL,
         apiToken: process.env.HF_TOKEN,
         provider: process.env.HF_PROVIDER || 'hyperbolic',
       },
       deepseek: {
-        model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+        model: process.env.DEEPSEEK_MODEL,
         apiKey: process.env.DEEPSEEK_API_KEY,
         baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
       },
@@ -183,7 +183,7 @@ class ProviderFactory {
       ollama: {
         model: {
           required: false,
-          default: 'deepseek-coder:6.7b',
+          default: 'gpt-oss',
           description: 'Ollama model name',
         },
         baseUrl: {

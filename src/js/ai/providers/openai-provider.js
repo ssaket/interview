@@ -272,7 +272,7 @@ class OpenAIProvider extends BaseAIProvider {
    */
   getDefaultParameters() {
     return {
-      temperature: 0.7,
+      temperature: 0.3,
       top_p: 1.0,
       max_tokens: 2048,
       frequency_penalty: 0,

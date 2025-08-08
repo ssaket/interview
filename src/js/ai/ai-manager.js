@@ -327,8 +327,8 @@ class AIManager {
     const models = ollamaConfig.models || {};
 
     return {
-      simple: models.simple || [],
-      primary: models.primary || 'deepseek-coder:6.7b',
+      simple: models.simple,
+      primary: models.primary,
       all() {
         return [...this.simple];
       },
@@ -362,10 +362,10 @@ class AIManager {
    */
   _getDefaultModelForProvider(providerName) {
     const defaults = {
-      ollama: process.env.OLLAMA_MODEL || 'deepseek-coder:6.7b',
+      ollama: process.env.OLLAMA_MODEL || 'gpt-oss',
       openai: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
       huggingface: process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
-      deepseek: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      deepseek: process.env.DEEPSEEK_MODEL || 'deepseek-reasoning',
     };
     return defaults[providerName] || 'default';
   }

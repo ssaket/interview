@@ -66,7 +66,7 @@ class ShortcutManager {
         console.log('Window toggled to default size (800x800)');
       } else {
         // Switch to small size
-        mainWindow.setSize(900, 200);
+        mainWindow.setSize(resizeStep*20, resizeStep*2);
         this.isSmallWindowMode = true;
         console.log('Window toggled to small size (900x200)');
       }
@@ -122,7 +122,7 @@ class ShortcutManager {
       if (info.isOllama) {
         this.windowManager.send(
           'model-warmup-started',
-          `Warming up ${info.model}... This may take 10‑30 seconds.`
+          `Warming up ${info.model}... This may take 10-30 seconds.`
         );
       }
     });

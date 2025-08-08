@@ -148,7 +148,7 @@ class BaseAIProvider {
    */
   getDefaultParameters() {
     return {
-      temperature: 0.7,
+      temperature: 0.3,
       top_p: 0.9,
       stream: false
     };
