@@ -11,31 +11,31 @@ class ShortcutManager {
     this.aiManager = aiManager;
     this.appController = appController;
     this.isSmallWindowMode = false; // Track window size state
+    this.moveStep = 20; // Move this to instance variable for external access
   }
 
   /** Register all global shortcuts that were previously in registerShortcuts(). */
   register() {
     const { mainWindow } = this.windowManager;
-    let moveStep = 20;
     let resizeStep = 50;
     const defaultWidth = 800;
     const defaultHeight = 800;
-    const minSize = 100;
+    const minSize = 50;
 
     /* ─── Movement ─── */
     ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
       globalShortcut.register(`Command+${dir}`, () => {
         const [x, y] = mainWindow.getPosition();
-        const dx = dir === 'Left' ? -moveStep : dir === 'Right' ? moveStep : 0;
-        const dy = dir === 'Up' ? -moveStep : dir === 'Down' ? moveStep : 0;
+        const dx = dir === 'Left' ? -this.moveStep : dir === 'Right' ? this.moveStep : 0;
+        const dy = dir === 'Up' ? -this.moveStep : dir === 'Down' ? this.moveStep : 0;
         mainWindow.setPosition(x + dx, y + dy);
       });
     });
     globalShortcut.register('Command+Shift+=', () => {
-      if (moveStep < 400) moveStep *= 2;
+      if (this.moveStep < 400) this.moveStep *= 2;
     });
     globalShortcut.register('Command+Shift+-', () => {
-      if (moveStep > 20) moveStep /= 2;
+      if (this.moveStep > 20) this.moveStep /= 2;
     });
 
     /* ─── Resizing ─── */
@@ -66,7 +66,7 @@ class ShortcutManager {
         console.log('Window toggled to default size (800x800)');
       } else {
         // Switch to small size
-        mainWindow.setSize(resizeStep*20, resizeStep*2);
+        mainWindow.setSize(resizeStep * 20, resizeStep * 2);
         this.isSmallWindowMode = true;
         console.log('Window toggled to small size (900x200)');
       }
@@ -80,14 +80,19 @@ class ShortcutManager {
       mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
     );
 
-    /* ─── Audio streaming triggers (renderer only) ─── */
-    globalShortcut.register('Command+R', () => this.windowManager.send('start-audio'));
-    globalShortcut.register('Command+T', () => this.windowManager.send('stop-audio'));
+    globalShortcut.register('Command+R', () => {
+      const session = this.aiManager.getSession?.();
+      if (session) {
+        session.history = [];
+        session.cache.clear();
+      }
+      this.windowManager.send('session-reset');
+      this.windowManager.send('session-length', 0);
+    });
 
     /* ─── Session reset ─── */
     globalShortcut.register('Command+Shift+R', () => {
-      const session = this.aiManager.getSession?.();
-      if (session) session.history = [];
+      this.aiManager.clearSession();
       this.windowManager.send('session-reset');
       this.windowManager.send('session-length', 0);
     });
@@ -140,6 +145,7 @@ class ShortcutManager {
     console.log('\nWINDOW RESIZING:');
     console.log('  Cmd+Shift+=           - Increase movement step');
     console.log('  Cmd+Shift+-           - Decrease movement step');
+    console.log('  Cmd/Ctrl+Scroll       - Adjust movement step with mouse wheel');
     console.log('  Cmd+Shift+]           - Increase window width');
     console.log('  Cmd+Shift+[           - Decrease window width');
     console.log('  Cmd+Shift+Up/Down     - Adjust window height');
@@ -186,7 +192,7 @@ class ShortcutManager {
 
     const burnMode = this.appController.burnModeEnabled;
     const ollamaModels = this.aiManager.getOllamaModels();
-    const allModels = burnMode ? ollamaModels.all() : ollamaModels.simple.slice();
+    const allModels = burnMode ? ollamaModels.all() : ollamaModels.local.slice();
     this.aiManager;
 
     /* 1️⃣ Determine next model */
@@ -257,6 +263,20 @@ class ShortcutManager {
    */
   getWindowSizeMode() {
     return this.isSmallWindowMode ? 'small' : 'default';
+  }
+
+  /**
+   * Adjust movement step based on direction
+   * @param {string} direction - 'increase' or 'decrease'
+   * @returns {number} Current movement step value
+   */
+  adjustMovementStep(direction) {
+    if (direction === 'increase' && this.moveStep < 400) {
+      this.moveStep *= 2;
+    } else if (direction === 'decrease' && this.moveStep > 20) {
+      this.moveStep /= 2;
+    }
+    return this.moveStep;
   }
 }
 

@@ -354,6 +354,21 @@ ipcRenderer.on('session-length', (event, length) => {
   UI.setSession(length);
 });
 
+// Listen for movement step changes
+ipcRenderer.on('movement-step-changed', (event, step) => {
+  UI.setOutput(`Movement step: ${step}px`, 1500);
+  setTimeout(() => {
+    if (lastAssistantResponse) {
+      const { text, html } = dsFormatter.formatResponse(lastAssistantResponse, formatterEnabled);
+      if (formatterEnabled) {
+        UI.setOutputHTML(html);
+      } else {
+        UI.setOutput(text);
+      }
+    }
+  }, 1000);
+});
+
 // Listen for page scroll events
 ipcRenderer.on('scroll-page', (event, direction) => {
   const scrollAmount = UI.container.clientHeight * 0.2;
@@ -364,6 +379,21 @@ ipcRenderer.on('scroll-page', (event, direction) => {
     UI.container.scrollBy({ top: scrollAmount, behavior: 'smooth' });
   }
 });
+
+// Handle mouse scroll for movement step adjustment
+document.addEventListener('wheel', (event) => {
+  // Only handle vertical scrolling with Ctrl/Cmd modifier
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Determine scroll direction
+    const direction = event.deltaY > 0 ? 'decrease' : 'increase';
+
+    // Send to main process
+    ipcRenderer.invoke('adjust-movement-step', direction);
+  }
+}, { passive: false });
 
 // Initialize OCR filtering state when page loads
 document.addEventListener('DOMContentLoaded', () => {

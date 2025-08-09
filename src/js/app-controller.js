@@ -204,6 +204,13 @@ class AppController {
         return { connected: false };
       }
     });
+
+    /* ------------ Movement Step Adjustment ------------ */
+    ipcMain.handle('adjust-movement-step', async (_event, direction) => {
+      const currentStep = this.shortcutManager.adjustMovementStep(direction);
+      this.windowManager.send('movement-step-changed', currentStep);
+      return currentStep;
+    });
   }
 
   /**

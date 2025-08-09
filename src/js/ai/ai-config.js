@@ -24,7 +24,7 @@ class AIConfig {
         baseUrl: 'http://localhost:11434',
         timeout: 300000, // 5 minutes
         models: {
-          simple: ['deepseek-coder-v2', 'codellama:7b-instruct', 'mistral'],
+          local: ['deepseek-coder-v2', 'mistral', 'gpt-oss'],
           primary: 'gpt-oss',
         },
         parameters: {

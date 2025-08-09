@@ -327,10 +327,10 @@ class AIManager {
     const models = ollamaConfig.models || {};
 
     return {
-      simple: models.simple,
+      local: models.local,
       primary: models.primary,
       all() {
-        return [...this.simple];
+        return [this.primary];
       },
     };
   }
