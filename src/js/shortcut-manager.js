@@ -83,8 +83,7 @@ class ShortcutManager {
     globalShortcut.register('Command+R', () => {
       const session = this.aiManager.getSession?.();
       if (session) {
-        session.history = [];
-        session.cache.clear();
+       this.aiManager.clearSession();
       }
       this.windowManager.send('session-reset');
       this.windowManager.send('session-length', 0);
@@ -92,7 +91,7 @@ class ShortcutManager {
 
     /* ─── Session reset ─── */
     globalShortcut.register('Command+Shift+R', () => {
-      this.aiManager.clearSession();
+      this.aiManager.clearAllSessions();
       this.windowManager.send('session-reset');
       this.windowManager.send('session-length', 0);
     });
