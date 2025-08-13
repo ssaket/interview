@@ -225,7 +225,7 @@ class AppController {
       await this.ensureOllamaProvider();
       const ollamaInfo = this.aiManager.getProviderInfo();
 
-      const finalResponse = this.burnModeEnabled 
+      const finalResponse = this.burnModeEnabled
         ? await this.executeParallelQuery(question, ollamaInfo)
         : await this.executeSingleQuery(question, ollamaInfo);
 
@@ -312,24 +312,21 @@ class AppController {
    */
   async queryBothProviders(question, ollamaInfo) {
     const ollamaPromise = this.aiManager.ask(question);
-    
-    const deepseekPromise = (async () => {
-      await this.aiManager.switchProvider('deepseek', {
-        model: 'deepseek-chat',
-        apiKey: process.env.DEEPSEEK_API_KEY,
-      });
-      const deepseekInfo = this.aiManager.getProviderInfo();
-      console.log(`[OCR Query] Using ${deepseekInfo.model}...`);
-      return this.aiManager.ask(question);
-    })();
+    this.aiManager.switchProvider('deepseek', {
+      model: 'deepseek-chat',
+      apiKey: process.env.DEEPSEEK_API_KEY,
+    });
 
+    const deepseekInfo = this.aiManager.getProviderInfo();
+    console.log(`[OCR Query] Using ${deepseekInfo.model}...`);
+
+
+    const deepseekPromise = this.aiManager.ask(question);
     const [ollamaResponse, deepseekResponse] = await Promise.all([
       ollamaPromise,
       deepseekPromise
     ]);
 
-    const deepseekInfo = this.aiManager.getProviderInfo();
-    
     return {
       ollama: {
         provider: ollamaInfo.name,

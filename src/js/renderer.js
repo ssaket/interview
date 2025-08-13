@@ -161,6 +161,7 @@ ipcRenderer.on('formatter-toggled', (event, enabled) => {
 
 async function captureScreenshot(isRegion = false) {
   UI.setOutput(isRegion ? 'Capturing behind overlay...' : 'Capturing screen...');
+
   const image = isRegion
     ? await ipcRenderer.invoke('capture-screen-region')
     : await ipcRenderer.invoke('capture-screen');
@@ -174,9 +175,9 @@ async function captureScreenshot(isRegion = false) {
   const burnModeEnabled = await ipcRenderer.invoke('get-burn-mode-state');
 
   if (burnModeEnabled) {
-    UI.setOutput(`Extracted:\n${text}\n\n🤖 Querying Ollama (local) + 🔥 DeepSeek (cloud)...`);
+    UI.setOutput(`🤖 Querying Ollama (local) + 🔥 DeepSeek (cloud)... \n\nExtracted:\n${text}`);
   } else {
-    UI.setOutput(`Extracted:\n${text}\n\n🤖 Querying Ollama (local)...`);
+    UI.setOutput(`🤖 Querying Ollama (local)...\n\nExtracted:\n${text}`);
   }
 
   const answer = await ipcRenderer.invoke('ask-chatgpt', text);
@@ -217,7 +218,7 @@ ipcRenderer.on('burn-mode-changed', (event, enabled) => {
       3000
     );
   } else {
-    UI.setOutput(`🤖 Burn Mode: OFF\nOCR queries will use Ollama (local) only`, 2000);
+    UI.setOutput(`🤖 Burn Mode: OFF\nOCR queries will use Ollama (local) only`, 3000);
   }
 });
 
@@ -283,10 +284,8 @@ ipcRenderer.on('provider-switching', (event, data) => {
 });
 
 ipcRenderer.on('provider-switched', (event, data) => {
-  const providerName = data.isOllama ? 'Ollama' : 'HuggingFace';
   UI.setOutput(
-    `✅ Switched to ${providerName} (${data.sessionPreserved} messages preserved)`,
-    2000
+    `✅ Switched to ${data.to} from ${data.from} (${data.sessionPreserved || 0} messages preserved)`
   );
 });
 

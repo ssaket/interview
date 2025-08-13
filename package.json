@@ -5,7 +5,7 @@
   "main": "src/js/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --debug",
+    "dev": "electron . --inspect",
     "test": "npm run test:all",
     "test:all": "node tests/test-llm-friendly-cleaner.js && node tests/test-markdown-sections.js && node tests/test-session.js",
     "test:cleaner": "node tests/test-llm-friendly-cleaner.js",

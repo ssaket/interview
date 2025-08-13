@@ -59,7 +59,7 @@ class AIManager {
    * @param {string} providerName - Target provider name
    * @param {Object} config - Optional configuration overrides
    */
-  async switchProvider(providerName, config = {}) {
+  switchProvider(providerName, config = {}) {
     if (!providerName) {
       throw new Error('Provider name is required');
     }
@@ -88,13 +88,13 @@ class AIManager {
   /**
    * Cycle through available providers
    */
-  async cycleProvider() {
+  cycleProvider() {
     const availableProviders = getAvailableProviders();
     const currentIndex = availableProviders.indexOf(this.currentProviderName);
     const nextIndex = (currentIndex + 1) % availableProviders.length;
     const nextProvider = availableProviders[nextIndex];
 
-    await this.switchProvider(nextProvider);
+    this.switchProvider(nextProvider);
   }
 
   /**
@@ -127,12 +127,10 @@ class AIManager {
     );
 
     // Show processing indicator for slower providers
-    if (this.isOllama()) {
-      this.appController.windowManager.send(
-        'ai-processing-started',
-        `${this.currentModelName} is thinking... This may take 60-90 seconds for complex coding questions.`
-      );
-    }
+    this.appController.windowManager.send(
+      'ai-processing-started',
+      `${this.currentModelName} is thinking... This may take 60-90 seconds for complex coding questions.`
+    );
 
     try {
       // Build messages array
@@ -156,18 +154,13 @@ class AIManager {
       this._updateSession(session, question, rawResponse, questionHash);
 
       // Notify completion
-      if (this.isOllama()) {
-        this.appController.windowManager.send('ai-processing-complete');
-      }
-
+      this.appController.windowManager.send('ai-processing-complete');
       this.appController.windowManager.send('session-length', session.history.length);
 
       return rawResponse;
     } catch (error) {
       // Ensure processing indicator is cleared
-      if (this.isOllama()) {
-        this.appController.windowManager.send('ai-processing-complete');
-      }
+      this.appController.windowManager.send('ai-processing-complete');
       throw error;
     }
   }
