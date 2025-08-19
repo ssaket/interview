@@ -1,4 +1,4 @@
-const DeepSeekFormatter = require('./js/formatter');
+const DeepSeekFormatter = require('../src/js/formatter');
 
 console.log('🧪 TESTING: Markdown Sections Formatting');
 console.log('=========================================\n');

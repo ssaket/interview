@@ -1,4 +1,4 @@
-const { globalShortcut } = require('electron');
+const { globalShortcut, screen } = require('electron');
 
 class ShortcutManager {
   /**
@@ -36,6 +36,11 @@ class ShortcutManager {
     });
     globalShortcut.register('Command+Shift+-', () => {
       if (this.moveStep > 20) this.moveStep /= 2;
+    });
+
+    /* ─── Center window ─── */
+    globalShortcut.register('Command+Shift+C', () => {
+      this.centerWindow();
     });
 
     /* ─── Resizing ─── */
@@ -76,14 +81,24 @@ class ShortcutManager {
     globalShortcut.register('Command+Shift+H', () => this.showHelp());
 
     /* ─── Window visibility ─── */
-    globalShortcut.register('Command+B', () =>
-      mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
-    );
+    globalShortcut.register('Command+B', () => {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+        globalShortcut.unregister('Shift+X');
+        globalShortcut.unregister('Shift+Z');
+      }
+      else {
+        mainWindow.show();
+        globalShortcut.register('Shift+X', () => this.windowManager.send('scroll-page', 'up'));
+        globalShortcut.register('Shift+Z', () => this.windowManager.send('scroll-page', 'down'));
+      }
+
+    });
 
     globalShortcut.register('Command+R', () => {
       const session = this.aiManager.getSession?.();
       if (session) {
-       this.aiManager.clearSession();
+        this.aiManager.clearSession();
       }
       this.windowManager.send('session-reset');
       this.windowManager.send('session-length', 0);
@@ -120,6 +135,12 @@ class ShortcutManager {
     globalShortcut.register('Command+Shift+A', () =>
       this.windowManager.send('trigger-overlay-region-screenshot')
     );
+
+    /* ─── Stack Screenshots ─── */
+    globalShortcut.register('Command+Shift+1', () => this.windowManager.send('add-screenshot-to-stack', 'full'));
+    globalShortcut.register('Command+Shift+2', () => this.windowManager.send('add-screenshot-to-stack', 'region'));
+    globalShortcut.register('Command+Shift+3', () => this.windowManager.send('process-screenshot-stack'));
+    globalShortcut.register('Command+Shift+4', () => this.windowManager.send('clear-screenshot-stack'));
     globalShortcut.register('Command+Shift+L', () => this.windowManager.toggleFormatter());
     globalShortcut.register('Command+Shift+W', () => {
       const info = this.aiManager.getProviderInfo();
@@ -141,6 +162,7 @@ class ShortcutManager {
     console.log('\n=== KEYBOARD SHORTCUTS HELP ===');
     console.log('WINDOW MOVEMENT:');
     console.log('  Cmd+Arrow Keys        - Move window in direction');
+    console.log('  Cmd+Shift+C           - Center window on display');
     console.log('\nWINDOW RESIZING:');
     console.log('  Cmd+Shift+=           - Increase movement step');
     console.log('  Cmd+Shift+-           - Decrease movement step');
@@ -162,6 +184,9 @@ class ShortcutManager {
     console.log('\nMISC:');
     console.log('  Cmd+Shift+D           - Toggle dark/light theme');
     console.log('  Cmd+Shift+S / A       - Capture screenshot / region');
+    console.log('  Cmd+Shift+1 / 2       - Add screenshot to stack (full / region)');
+    console.log('  Cmd+Shift+3           - Process screenshot stack');
+    console.log('  Cmd+Shift+4           - Clear screenshot stack');
     console.log('  Shift+X / Shift+Z     - Scroll page up/down');
     console.log('================================\n');
   }
@@ -262,6 +287,22 @@ class ShortcutManager {
    */
   getWindowSizeMode() {
     return this.isSmallWindowMode ? 'small' : 'default';
+  }
+
+  /**
+   * Center the window on the primary display
+   */
+  centerWindow() {
+    const { mainWindow } = this.windowManager;
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+    const [windowWidth, windowHeight] = mainWindow.getSize();
+    
+    const x = Math.round((screenWidth - windowWidth) / 2);
+    const y = Math.round((screenHeight - windowHeight) / 2);
+    
+    mainWindow.setPosition(x, y);
+    console.log(`Window centered at (${x}, ${y})`);
   }
 
   /**

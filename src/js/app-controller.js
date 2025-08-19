@@ -22,6 +22,9 @@ class AppController {
     // Track OCR context for fallback queries
     this.lastOcrText = null;
     this.isOcrContext = false;
+
+    // Screenshot stack for batch processing
+    this.screenshotStack = [];
   }
 
   /* ---------- IPC handlers ---------- */
@@ -211,6 +214,203 @@ class AppController {
       this.windowManager.send('movement-step-changed', currentStep);
       return currentStep;
     });
+
+    /* ------------ Screenshot Stack Management ------------ */
+    ipcMain.handle('add-screenshot-to-stack', async (_event, type) => {
+      try {
+        let screenshotData;
+        if (type === 'full') {
+          screenshotData = await this.captureFullScreen();
+        } else if (type === 'region') {
+          screenshotData = await this.captureScreenRegion();
+        } else {
+          throw new Error('Invalid screenshot type');
+        }
+
+        const screenshot = {
+          id: Date.now(),
+          type,
+          data: screenshotData,
+          timestamp: new Date().toISOString()
+        };
+
+        this.screenshotStack.push(screenshot);
+        this.windowManager.send('screenshot-stack-updated', {
+          count: this.screenshotStack.length,
+          screenshots: this.screenshotStack.map(s => ({
+            id: s.id,
+            type: s.type,
+            timestamp: s.timestamp
+          }))
+        });
+
+        return { success: true, count: this.screenshotStack.length };
+      } catch (error) {
+        console.error('[Stack] Failed to add screenshot:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('get-screenshot-stack-count', async () => {
+      return this.screenshotStack.length;
+    });
+
+    ipcMain.handle('clear-screenshot-stack', async () => {
+      this.screenshotStack = [];
+      this.windowManager.send('screenshot-stack-updated', {
+        count: 0,
+        screenshots: []
+      });
+      return { success: true };
+    });
+
+    ipcMain.handle('process-screenshot-stack', async () => {
+      if (this.screenshotStack.length === 0) {
+        return { success: false, error: 'No screenshots in stack' };
+      }
+
+      try {
+        const combinedText = await this.processStackedScreenshots();
+        
+        // Clear stack after processing
+        this.screenshotStack = [];
+        this.windowManager.send('screenshot-stack-updated', {
+          count: 0,
+          screenshots: []
+        });
+
+        return { success: true, text: combinedText };
+      } catch (error) {
+        console.error('[Stack] Failed to process screenshots:', error);
+        return { success: false, error: error.message };
+      }
+    });
+  }
+
+  /**
+   * Capture full screen screenshot (extracted from IPC handler)
+   */
+  async captureFullScreen() {
+    const { mainWindow } = this.windowManager;
+    mainWindow.webContents.send('hide-ui');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1920, height: 1080 },
+    });
+
+    mainWindow.webContents.send('show-ui');
+    return sources[0].thumbnail.toDataURL();
+  }
+
+  /**
+   * Capture screen region screenshot (extracted from IPC handler)
+   */
+  async captureScreenRegion() {
+    const { mainWindow } = this.windowManager;
+    mainWindow.webContents.send('hide-ui');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const [windowX, windowY] = mainWindow.getPosition();
+    const [windowWidth, windowHeight] = mainWindow.getSize();
+
+    const { bounds } = screen.getPrimaryDisplay();
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: bounds.width, height: bounds.height },
+    });
+
+    mainWindow.webContents.send('show-ui');
+
+    const region = { x: windowX, y: windowY, width: windowWidth, height: windowHeight };
+    try {
+      const full = nativeImage.createFromDataURL(sources[0].thumbnail.toDataURL());
+      const cropped = full.crop(region);
+      return cropped.toDataURL();
+    } catch (err) {
+      console.error('Error cropping image:', err);
+      return sources[0].thumbnail.toDataURL();
+    }
+  }
+
+  /**
+   * Process all screenshots in the stack through OCR and combine results
+   */
+  async processStackedScreenshots() {
+    const startTime = Date.now();
+    const Tesseract = require('tesseract.js');
+    
+    const cleaningOptions = {
+      maxLines: 30,
+      preserveQuestions: true,
+      preserveCode: true,
+      removeJunk: true,
+      logResults: false,
+      applyOCRFixes: true,
+    };
+
+    let combinedText = '';
+    const ocrResults = [];
+
+    for (let i = 0; i < this.screenshotStack.length; i++) {
+      const screenshot = this.screenshotStack[i];
+      
+      try {
+        console.log(`[Stack] Processing screenshot ${i + 1}/${this.screenshotStack.length} (${screenshot.type})`);
+        
+        const {
+          data: { text, confidence },
+        } = await Tesseract.recognize(screenshot.data, 'eng');
+
+        let finalText = text;
+        if (this.ocrFilteringEnabled) {
+          const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
+          const cleaner = new LLMFriendlyOCRCleaner();
+          finalText = cleaner.cleanText(text, cleaningOptions);
+        }
+
+        ocrResults.push({
+          index: i + 1,
+          type: screenshot.type,
+          timestamp: screenshot.timestamp,
+          originalText: text,
+          cleanedText: finalText,
+          confidence: confidence || 0
+        });
+
+        combinedText += `--- Screenshot ${i + 1} (${screenshot.type}, ${new Date(screenshot.timestamp).toLocaleTimeString()}) ---\n${finalText}\n\n`;
+
+      } catch (error) {
+        console.error(`[Stack] OCR failed for screenshot ${i + 1}:`, error);
+        combinedText += `--- Screenshot ${i + 1} (${screenshot.type}) - OCR FAILED ---\nError: ${error.message}\n\n`;
+      }
+    }
+
+    // Log the combined OCR session
+    const processingTime = Date.now() - startTime;
+    await this.ocrLogger.logOCRSession({
+      originalText: ocrResults.map(r => r.originalText).join('\n\n--- SEPARATOR ---\n\n'),
+      cleanedText: combinedText,
+      confidence: ocrResults.reduce((sum, r) => sum + r.confidence, 0) / ocrResults.length,
+      contentType: 'stacked_screenshots',
+      preset: 'stack',
+      processingTime,
+      filteringEnabled: this.ocrFilteringEnabled,
+      cleaningOptions,
+      imageSize: `${this.screenshotStack.length} screenshots`,
+      stackInfo: {
+        count: this.screenshotStack.length,
+        types: this.screenshotStack.map(s => s.type),
+        timestamps: this.screenshotStack.map(s => s.timestamp)
+      }
+    });
+
+    // Mark this as OCR context for the next AI query
+    this.lastOcrText = combinedText;
+    this.isOcrContext = true;
+
+    return combinedText;
   }
 
   /**

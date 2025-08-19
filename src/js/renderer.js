@@ -34,6 +34,10 @@ const UI = {
     return document.getElementById('session-length');
   },
 
+  get stackCount() {
+    return document.getElementById('stack-count');
+  },
+
   setOutput(text, timeout = 0) {
     this.output.textContent = text;
     if (timeout > 0) {
@@ -51,6 +55,15 @@ const UI = {
 
   setSession(number) {
     this.session.textContent = `L: ${number}`;
+  },
+
+  setStackCount(count) {
+    if (count > 0) {
+      this.stackCount.textContent = `S: ${count}`;
+      this.stackCount.style.display = 'inline-block';
+    } else {
+      this.stackCount.style.display = 'none';
+    }
   },
 
   showScreenshot(src) {
@@ -393,6 +406,86 @@ document.addEventListener('wheel', (event) => {
     ipcRenderer.invoke('adjust-movement-step', direction);
   }
 }, { passive: false });
+
+// Stack screenshot functions
+async function addScreenshotToStack(type) {
+  UI.setOutput(`Adding ${type} screenshot to stack...`);
+  
+  try {
+    const result = await ipcRenderer.invoke('add-screenshot-to-stack', type);
+    if (result.success) {
+      UI.setOutput(`✅ Added to stack (${result.count} total)`, 2000);
+    } else {
+      UI.setOutput(`❌ Failed to add: ${result.error}`, 3000);
+    }
+  } catch (error) {
+    UI.setOutput(`❌ Stack error: ${error.message}`, 3000);
+  }
+}
+
+async function processScreenshotStack() {
+  UI.setOutput('Processing screenshot stack...');
+  
+  try {
+    const result = await ipcRenderer.invoke('process-screenshot-stack');
+    if (result.success) {
+      // Check burn mode status for better messaging
+      const burnModeEnabled = await ipcRenderer.invoke('get-burn-mode-state');
+      
+      if (burnModeEnabled) {
+        UI.setOutput(`🤖 Querying Ollama (local) + 🔥 DeepSeek (cloud)... \n\nExtracted from stack:\n${result.text}`);
+      } else {
+        UI.setOutput(`🤖 Querying Ollama (local)...\n\nExtracted from stack:\n${result.text}`);
+      }
+      
+      const answer = await ipcRenderer.invoke('ask-chatgpt', result.text);
+      
+      lastAssistantResponse = answer;
+      saveLastAssistantResponse(answer);
+      
+      UI.hideInstructions();
+      const { text: plain, html } = dsFormatter.formatResponse(answer, formatterEnabled);
+      if (formatterEnabled) {
+        UI.setOutputHTML(html);
+      } else {
+        UI.setOutput(plain);
+      }
+    } else {
+      UI.setOutput(`❌ Processing failed: ${result.error}`, 3000);
+    }
+  } catch (error) {
+    UI.setOutput(`❌ Stack processing error: ${error.message}`, 3000);
+  }
+}
+
+async function clearScreenshotStack() {
+  try {
+    const result = await ipcRenderer.invoke('clear-screenshot-stack');
+    if (result.success) {
+      UI.setOutput('📸 Screenshot stack cleared', 1500);
+    }
+  } catch (error) {
+    UI.setOutput(`❌ Clear error: ${error.message}`, 3000);
+  }
+}
+
+// Listen for stack screenshot events
+ipcRenderer.on('add-screenshot-to-stack', async (event, type) => {
+  await addScreenshotToStack(type);
+});
+
+ipcRenderer.on('process-screenshot-stack', async () => {
+  await processScreenshotStack();
+});
+
+ipcRenderer.on('clear-screenshot-stack', async () => {
+  await clearScreenshotStack();
+});
+
+// Listen for stack updates from main process
+ipcRenderer.on('screenshot-stack-updated', (event, data) => {
+  UI.setStackCount(data.count);
+});
 
 // Initialize OCR filtering state when page loads
 document.addEventListener('DOMContentLoaded', () => {
