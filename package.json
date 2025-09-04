@@ -15,7 +15,12 @@
     "format": "prettier --write \"src/**/*.{js,css,html}\"",
     "analyze:ocr": "node scripts/analyze-ocr-logs.js",
     "analyze:ocr:7d": "node scripts/analyze-ocr-logs.js 7",
-    "analyze:ocr:30d": "node scripts/analyze-ocr-logs.js 30"
+    "analyze:ocr:30d": "node scripts/analyze-ocr-logs.js 30",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "dist": "npm run build"
   },
   "keywords": [
     "electron",
@@ -31,14 +36,68 @@
     "axios": "^1.10.0",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",
-    "electron": "^36.5.0",
     "html-entities": "^2.6.0",
     "natural": "^8.1.0",
     "openai": "^5.8.2",
     "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
+    "electron": "^36.5.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^8.0.0",
     "prettier": "^3.0.0"
+  },
+  "build": {
+    "appId": "com.interview.deepseek-overlay",
+    "productName": "DeepSeek Overlay Helper",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "!tests/**/*",
+      "!scripts/**/*",
+      "!logs/**/*",
+      "!.env",
+      "!*.md"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "tar.gz",
+          "arch": ["x64"]
+        }
+      ]
+    }
   }
 }

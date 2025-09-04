@@ -3,3 +3,5 @@ package-lock.json
 .env
 eng.traineddata
 logs
+dist
+.DS_Store

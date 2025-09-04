@@ -12,6 +12,8 @@ class ShortcutManager {
     this.appController = appController;
     this.isSmallWindowMode = false; // Track window size state
     this.moveStep = 20; // Move this to instance variable for external access
+    this.mouseTrackingEnabled = false; // Track mouse position following state
+    this.lastMousePosition = { x: 0, y: 0 }; // Store last mouse position
   }
 
   /** Register all global shortcuts that were previously in registerShortcuts(). */
@@ -151,9 +153,18 @@ class ShortcutManager {
         );
       }
     });
+
+    /* ─── Mouse tracking toggle ─── */
+    globalShortcut.register('Control+Shift+=', () => {
+      this.toggleMouseTracking();
+    });
   }
 
   unregisterAll() {
+    // Stop mouse tracking if active
+    this.stopMouseTracking();
+    this.mouseTrackingEnabled = false;
+    
     globalShortcut.unregisterAll();
   }
 
@@ -163,6 +174,7 @@ class ShortcutManager {
     console.log('WINDOW MOVEMENT:');
     console.log('  Cmd+Arrow Keys        - Move window in direction');
     console.log('  Cmd+Shift+C           - Center window on display');
+    console.log('  Ctrl+Shift+=          - Toggle mouse tracking (window follows cursor)');
     console.log('\nWINDOW RESIZING:');
     console.log('  Cmd+Shift+=           - Increase movement step');
     console.log('  Cmd+Shift+-           - Decrease movement step');
@@ -317,6 +329,60 @@ class ShortcutManager {
       this.moveStep /= 2;
     }
     return this.moveStep;
+  }
+
+  /**
+   * Toggle mouse tracking mode - when enabled, window follows mouse cursor
+   */
+  toggleMouseTracking() {
+    this.mouseTrackingEnabled = !this.mouseTrackingEnabled;
+    
+    if (this.mouseTrackingEnabled) {
+      this.startMouseTracking();
+      console.log('Mouse tracking enabled - window will follow cursor');
+    } else {
+      this.stopMouseTracking();
+      console.log('Mouse tracking disabled');
+    }
+  }
+
+  /**
+   * Start tracking mouse position and moving window accordingly
+   */
+  startMouseTracking() {
+    const { screen } = require('electron');
+    
+    // Set up interval to check mouse position
+    this.mouseTrackingInterval = setInterval(() => {
+      const mousePos = screen.getCursorScreenPoint();
+      const { mainWindow } = this.windowManager;
+      
+      // Check if mouse position has changed significantly
+      if (Math.abs(mousePos.x - this.lastMousePosition.x) > 5 || 
+          Math.abs(mousePos.y - this.lastMousePosition.y) > 5) {
+        
+        // Get window size to center it on mouse cursor
+        const [windowWidth, windowHeight] = mainWindow.getSize();
+        const newX = mousePos.x - Math.floor(windowWidth / 2);
+        const newY = mousePos.y - Math.floor(windowHeight / 2);
+        
+        // Update window position
+        mainWindow.setPosition(newX, newY);
+        
+        // Update last mouse position
+        this.lastMousePosition = { x: mousePos.x, y: mousePos.y };
+      }
+    }, 50); // Check every 50ms for smooth tracking
+  }
+
+  /**
+   * Stop tracking mouse position
+   */
+  stopMouseTracking() {
+    if (this.mouseTrackingInterval) {
+      clearInterval(this.mouseTrackingInterval);
+      this.mouseTrackingInterval = null;
+    }
   }
 }
 

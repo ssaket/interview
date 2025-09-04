@@ -319,7 +319,7 @@ class DeepSeekProvider extends BaseAIProvider {
         max_tokens: 2048
       },
       'deepseek-reasoner': {
-        temperature: 0.3, // Lower temperature for more focused reasoning
+        temperature: 0.1, // Lower temperature for more focused reasoning
         top_p: 0.9,
         max_tokens: 4096  // Higher token limit for detailed reasoning
       }

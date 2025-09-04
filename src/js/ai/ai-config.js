@@ -24,7 +24,7 @@ class AIConfig {
         baseUrl: 'http://localhost:11434',
         timeout: 300000, // 5 minutes
         models: {
-          local: ['deepseek-coder-v2', 'mistral', 'gpt-oss'],
+          local: ['deepseek-coder-v2', 'qwen3:4b-instruct-2507-fp16', 'gpt-oss'],
           primary: 'gpt-oss',
         },
         parameters: {
@@ -89,7 +89,7 @@ class AIConfig {
           coding: ['deepseek-chat', 'deepseek-reasoner'],
         },
         parameters: {
-          temperature: 0.2,
+          temperature: 0.0,
           top_p: 0.9,
           max_tokens: 2048,
           frequency_penalty: 0,

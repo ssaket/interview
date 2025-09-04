@@ -271,7 +271,7 @@ class AppController {
 
       try {
         const combinedText = await this.processStackedScreenshots();
-        
+
         // Clear stack after processing
         this.screenshotStack = [];
         this.windowManager.send('screenshot-stack-updated', {
@@ -340,7 +340,7 @@ class AppController {
   async processStackedScreenshots() {
     const startTime = Date.now();
     const Tesseract = require('tesseract.js');
-    
+
     const cleaningOptions = {
       maxLines: 30,
       preserveQuestions: true,
@@ -355,10 +355,10 @@ class AppController {
 
     for (let i = 0; i < this.screenshotStack.length; i++) {
       const screenshot = this.screenshotStack[i];
-      
+
       try {
         console.log(`[Stack] Processing screenshot ${i + 1}/${this.screenshotStack.length} (${screenshot.type})`);
-        
+
         const {
           data: { text, confidence },
         } = await Tesseract.recognize(screenshot.data, 'eng');
@@ -513,7 +513,7 @@ class AppController {
   async queryBothProviders(question, ollamaInfo) {
     const ollamaPromise = this.aiManager.ask(question);
     this.aiManager.switchProvider('deepseek', {
-      model: 'deepseek-chat',
+      model: 'deepseek-reasoner',
       apiKey: process.env.DEEPSEEK_API_KEY,
     });
 
@@ -521,7 +521,7 @@ class AppController {
     console.log(`[OCR Query] Using ${deepseekInfo.model}...`);
 
 
-    const deepseekPromise = this.aiManager.ask(question);
+    const deepseekPromise = this.aiManager.ask(question, { parameters: { temperature: 0.0 } });
     const [ollamaResponse, deepseekResponse] = await Promise.all([
       ollamaPromise,
       deepseekPromise
@@ -585,6 +585,23 @@ class AppController {
       this.shortcutManager.unregisterAll();
       await this.ocrLogger.shutdown();
       if (process.platform !== 'darwin') app.quit();
+    });
+    
+    // Handle abrupt termination signals
+    process.on('SIGINT', () => {
+      console.log('Received SIGINT, cleaning up shortcuts...');
+      this.shortcutManager.unregisterAll();
+      process.exit(0);
+    });
+    process.on('SIGTERM', () => {
+      console.log('Received SIGTERM, cleaning up shortcuts...');
+      this.shortcutManager.unregisterAll();
+      process.exit(0);
+    });
+    process.on('uncaughtException', (error) => {
+      console.error('Uncaught exception, cleaning up shortcuts:', error);
+      this.shortcutManager.unregisterAll();
+      process.exit(1);
     });
   }
 }
