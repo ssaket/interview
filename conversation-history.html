@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek Overlay - Conversation History</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #2d2d2d, #404040);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .header h1 {
+            color: #4a9eff;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .provider-info {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .info-badge {
+            background: #333;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            border: 1px solid #555;
+        }
+
+        .info-badge.provider {
+            background: #4a9eff;
+            color: white;
+        }
+
+        .stats {
+            text-align: center;
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .conversation {
+            background: #2d2d2d;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .message.user {
+            background: #1e3a5f;
+            border-left: 4px solid #4a9eff;
+            margin-left: 0;
+            margin-right: 60px;
+        }
+
+        .message.assistant {
+            background: #2a4a2a;
+            border-left: 4px solid #4ade80;
+            margin-left: 60px;
+            margin-right: 0;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+
+        .role {
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .message.user .role {
+            color: #4a9eff;
+        }
+
+        .message.assistant .role {
+            color: #4ade80;
+        }
+
+        .timestamp {
+            color: #888;
+            font-size: 0.8em;
+        }
+
+        .content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 1em;
+        }
+
+        .content code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+
+        .content pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-family: 'Monaco', 'Consolas', monospace;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+            font-size: 1.1em;
+        }
+
+        .empty-state .icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            color: #555;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: #4a9eff;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(74, 158, 255, 0.3);
+        }
+
+        .btn:hover {
+            background: #3a8ee6;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(74, 158, 255, 0.4);
+        }
+
+        .btn.secondary {
+            background: #666;
+            box-shadow: 0 2px 10px rgba(102, 102, 102, 0.3);
+        }
+
+        .btn.secondary:hover {
+            background: #777;
+            box-shadow: 0 4px 15px rgba(102, 102, 102, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .provider-info {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .message.user {
+                margin-right: 20px;
+            }
+            
+            .message.assistant {
+                margin-left: 20px;
+            }
+            
+            .controls {
+                position: relative;
+                bottom: auto;
+                right: auto;
+                justify-content: center;
+                margin-top: 30px;
+            }
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #4a9eff;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #333;
+            border-top: 3px solid #4a9eff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Conversation History</h1>
+            <div class="provider-info">
+                <div class="info-badge provider" id="provider-badge">Loading...</div>
+                <div class="info-badge" id="model-badge">Loading...</div>
+                <div class="info-badge" id="session-badge">Loading...</div>
+            </div>
+            <div class="stats" id="stats">
+                <span id="last-updated">Never updated</span> • 
+                <span id="message-count">0 messages</span>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>Loading conversation history...</div>
+        </div>
+
+        <div class="conversation" id="conversation">
+            <div class="empty-state" id="empty-state">
+                <div class="icon">💬</div>
+                <div>No conversation history yet.</div>
+                <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                    Start a conversation with the DeepSeek Overlay app to see messages here.
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn secondary" onclick="clearHistory()">Clear History</button>
+            <button class="btn" onclick="refreshHistory()">Refresh</button>
+        </div>
+    </div>
+
+    <script>
+        let currentSession = null;
+        let refreshInterval = null;
+
+        // Configuration
+        const CONFIG = {
+            refreshInterval: 2000, // 2 seconds
+            maxRetries: 3,
+            retryDelay: 1000
+        };
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadConversationHistory();
+            startAutoRefresh();
+        });
+
+        async function loadConversationHistory() {
+            showLoading(true);
+            
+            try {
+                const historyData = await fetchHistoryData();
+                displayHistory(historyData);
+                updateHeader(historyData);
+                updateStats(historyData);
+            } catch (error) {
+                console.error('Failed to load conversation history:', error);
+                showError('Failed to load conversation history');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function fetchHistoryData() {
+            // Try to read from the data file created by the app
+            try {
+                const response = await fetch('./conversation-data.json?' + Date.now());
+                if (!response.ok) {
+                    throw new Error('Data file not found');
+                }
+                return await response.json();
+            } catch (error) {
+                console.warn('Could not load from data file:', error.message);
+                return getEmptyHistory();
+            }
+        }
+
+        function getEmptyHistory() {
+            return {
+                provider: 'Unknown',
+                model: 'Unknown',
+                history: [],
+                lastUpdated: null,
+                sessionStats: {
+                    historyLength: 0,
+                    cacheSize: 0,
+                    isActive: false
+                }
+            };
+        }
+
+        function displayHistory(historyData) {
+            const conversationElement = document.getElementById('conversation');
+            const emptyStateElement = document.getElementById('empty-state');
+
+            if (!historyData.history || historyData.history.length === 0) {
+                emptyStateElement.style.display = 'block';
+                conversationElement.innerHTML = '';
+                conversationElement.appendChild(emptyStateElement);
+                return;
+            }
+
+            emptyStateElement.style.display = 'none';
+            conversationElement.innerHTML = '';
+
+            historyData.history.forEach((message, index) => {
+                const messageElement = createMessageElement(message, index);
+                conversationElement.appendChild(messageElement);
+            });
+
+            // Scroll to bottom
+            conversationElement.scrollTop = conversationElement.scrollHeight;
+        }
+
+        function createMessageElement(message, index) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${message.role}`;
+
+            const timestamp = new Date().toLocaleString();
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <div class="role">${message.role === 'user' ? '👤 User' : '🤖 Assistant'}</div>
+                    <div class="timestamp">${timestamp}</div>
+                </div>
+                <div class="content">${formatContent(message.content)}</div>
+            `;
+
+            return messageDiv;
+        }
+
+        function formatContent(content) {
+            if (!content) return '';
+            
+            // Basic markdown-like formatting
+            content = content
+                .replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>')
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+            return content;
+        }
+
+        function updateHeader(historyData) {
+            document.getElementById('provider-badge').textContent = `Provider: ${historyData.provider}`;
+            document.getElementById('model-badge').textContent = `Model: ${historyData.model}`;
+            document.getElementById('session-badge').textContent = `Session: ${historyData.sessionStats.isActive ? 'Active' : 'Inactive'}`;
+        }
+
+        function updateStats(historyData) {
+            const lastUpdated = historyData.lastUpdated 
+                ? new Date(historyData.lastUpdated).toLocaleString()
+                : 'Never';
+            
+            document.getElementById('last-updated').textContent = `Updated: ${lastUpdated}`;
+            document.getElementById('message-count').textContent = `${historyData.history.length} messages`;
+        }
+
+        function showLoading(show) {
+            const loadingElement = document.getElementById('loading');
+            if (show) {
+                loadingElement.classList.add('show');
+            } else {
+                loadingElement.classList.remove('show');
+            }
+        }
+
+        function showError(message) {
+            const conversationElement = document.getElementById('conversation');
+            conversationElement.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">❌</div>
+                    <div>${message}</div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn" onclick="loadConversationHistory()">Try Again</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function startAutoRefresh() {
+            refreshInterval = setInterval(() => {
+                loadConversationHistory();
+            }, CONFIG.refreshInterval);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        }
+
+        function refreshHistory() {
+            loadConversationHistory();
+        }
+
+        function clearHistory() {
+            if (confirm('Are you sure you want to clear the conversation history? This action cannot be undone.')) {
+                // This would need to be implemented in the main app
+                alert('Clear history functionality needs to be implemented in the main application.');
+            }
+        }
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                startAutoRefresh();
+                loadConversationHistory();
+            }
+        });
+
+        // Handle window focus/blur
+        window.addEventListener('focus', function() {
+            startAutoRefresh();
+            loadConversationHistory();
+        });
+
+        window.addEventListener('blur', function() {
+            stopAutoRefresh();
+        });
+    </script>
+</body>
+</html>

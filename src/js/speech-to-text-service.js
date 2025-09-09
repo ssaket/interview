@@ -13,6 +13,10 @@ class SpeechToTextService {
     this.onStatusChange = null;
     this.tempAudioPath = null;
     
+    // Language configuration
+    this.language = process.env.ASSEMBLYAI_LANGUAGE || 'en'; // Default to English
+    this.useLanguageDetection = process.env.ASSEMBLYAI_AUTO_DETECT === 'true';
+    
     this.initializeClient();
   }
 
@@ -138,13 +142,27 @@ class SpeechToTextService {
       }
 
       // Upload and transcribe
-      const transcript = await this.client.transcripts.transcribe({
+      const transcribeConfig = {
         audio: this.tempAudioPath,
-        language_detection: true,
         punctuate: true,
         format_text: true,
-        speaker_labels: false
-      });
+        speaker_labels: false,
+        // Enhanced English-specific optimizations
+        auto_highlights: this.language === 'en', // Only available for English
+        filter_profanity: true,
+        dual_channel: false,
+      };
+
+      // Set language configuration
+      if (this.useLanguageDetection) {
+        transcribeConfig.language_detection = true;
+        console.log('[SpeechToTextService] Using automatic language detection');
+      } else {
+        transcribeConfig.language_code = this.language;
+        console.log(`[SpeechToTextService] Using specified language: ${this.language}`);
+      }
+
+      const transcript = await this.client.transcripts.transcribe(transcribeConfig);
 
       // Clean up temp file
       try {
@@ -204,8 +222,137 @@ class SpeechToTextService {
     return {
       isRecording: this.isRecording,
       hasApiKey: this.isApiKeyConfigured(),
-      isInitialized: !!this.client
+      isInitialized: !!this.client,
+      language: this.language,
+      useLanguageDetection: this.useLanguageDetection,
+      languageConfig: this.getLanguageConfigDescription()
     };
+  }
+
+  /**
+   * Get a human-readable description of the language configuration
+   * @returns {string} Language configuration description
+   */
+  getLanguageConfigDescription() {
+    if (this.useLanguageDetection) {
+      return 'Automatic language detection enabled';
+    } else {
+      const languageNames = {
+        'en': 'English',
+        'es': 'Spanish',
+        'fr': 'French',
+        'de': 'German',
+        'it': 'Italian',
+        'pt': 'Portuguese',
+        'nl': 'Dutch',
+        'af': 'Afrikaans',
+        'sq': 'Albanian',
+        'am': 'Amharic',
+        'ar': 'Arabic',
+        'hy': 'Armenian',
+        'as': 'Assamese',
+        'az': 'Azerbaijani',
+        'ba': 'Bashkir',
+        'eu': 'Basque',
+        'be': 'Belarusian',
+        'bn': 'Bengali',
+        'bs': 'Bosnian',
+        'br': 'Breton',
+        'bg': 'Bulgarian',
+        'ca': 'Catalan',
+        'zh': 'Chinese',
+        'hr': 'Croatian',
+        'cs': 'Czech',
+        'da': 'Danish',
+        'et': 'Estonian',
+        'fo': 'Faroese',
+        'fi': 'Finnish',
+        'gl': 'Galician',
+        'ka': 'Georgian',
+        'el': 'Greek',
+        'gu': 'Gujarati',
+        'ht': 'Haitian Creole',
+        'ha': 'Hausa',
+        'haw': 'Hawaiian',
+        'he': 'Hebrew',
+        'hi': 'Hindi',
+        'hu': 'Hungarian',
+        'is': 'Icelandic',
+        'id': 'Indonesian',
+        'ga': 'Irish',
+        'ja': 'Japanese',
+        'jw': 'Javanese',
+        'kn': 'Kannada',
+        'kk': 'Kazakh',
+        'km': 'Khmer',
+        'ko': 'Korean',
+        'lo': 'Lao',
+        'la': 'Latin',
+        'lv': 'Latvian',
+        'ln': 'Lingala',
+        'lt': 'Lithuanian',
+        'lb': 'Luxembourgish',
+        'mk': 'Macedonian',
+        'mg': 'Malagasy',
+        'ms': 'Malay',
+        'ml': 'Malayalam',
+        'mt': 'Maltese',
+        'mi': 'Maori',
+        'mr': 'Marathi',
+        'mn': 'Mongolian',
+        'my': 'Myanmar',
+        'ne': 'Nepali',
+        'no': 'Norwegian',
+        'nn': 'Norwegian Nynorsk',
+        'oc': 'Occitan',
+        'pa': 'Panjabi',
+        'ps': 'Pashto',
+        'fa': 'Persian',
+        'pl': 'Polish',
+        'ro': 'Romanian',
+        'ru': 'Russian',
+        'sa': 'Sanskrit',
+        'sr': 'Serbian',
+        'sn': 'Shona',
+        'sd': 'Sindhi',
+        'si': 'Sinhala',
+        'sk': 'Slovak',
+        'sl': 'Slovenian',
+        'so': 'Somali',
+        'su': 'Sundanese',
+        'sw': 'Swahili',
+        'sv': 'Swedish',
+        'tg': 'Tajik',
+        'ta': 'Tamil',
+        'tt': 'Tatar',
+        'te': 'Telugu',
+        'th': 'Thai',
+        'bo': 'Tibetan',
+        'tr': 'Turkish',
+        'tk': 'Turkmen',
+        'uk': 'Ukrainian',
+        'ur': 'Urdu',
+        'uz': 'Uzbek',
+        'vi': 'Vietnamese',
+        'cy': 'Welsh',
+        'yi': 'Yiddish',
+        'yo': 'Yoruba'
+      };
+      
+      const languageName = languageNames[this.language] || this.language.toUpperCase();
+      return `Fixed language: ${languageName} (${this.language})`;
+    }
+  }
+
+  /**
+   * Set the language for transcription
+   * @param {string} languageCode - ISO 639-1 language code (e.g., 'en', 'es', 'fr')
+   * @param {boolean} useAutoDetection - Whether to use automatic language detection
+   */
+  setLanguage(languageCode, useAutoDetection = false) {
+    this.language = languageCode;
+    this.useLanguageDetection = useAutoDetection;
+    console.log(`[SpeechToTextService] Language updated to: ${this.getLanguageConfigDescription()}`);
   }
 }
 

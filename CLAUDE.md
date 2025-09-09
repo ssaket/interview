@@ -46,6 +46,8 @@ The AI system uses Strategy and Factory patterns for extensible provider managem
 - **RegionSelector** (`src/js/region-selector.js`) - Screen region selection
 - **Formatter** (`src/js/formatter.js`) - AI response formatting and code highlighting
 - **OCRLogger** (`src/js/ocr-logger.js`) - OCR session logging and analysis
+- **ConversationHistoryService** (`src/js/conversation-history-service.js`) - Web-viewable conversation history export
+- **ConversationWebSocketServer** (`src/js/conversation-websocket-server.js`) - Real-time WebSocket server for live updates
 
 ### OCR and Text Processing
 - **LLMFriendlyOCRCleaner** (`src/js/llm-friendly-ocr-cleaner.js`) - Simple text cleaning to remove obvious UI junk while preserving useful content
@@ -79,6 +81,8 @@ DEEPSEEK_MODEL=deepseek-chat
 
 # AssemblyAI Configuration (for speech-to-text)
 ASSEMBLYAI_API_KEY=your_assemblyai_api_key
+ASSEMBLYAI_LANGUAGE=en
+ASSEMBLYAI_AUTO_DETECT=false
 ```
 
 ## Key Patterns and Conventions
@@ -128,6 +132,9 @@ When adding new AI providers:
 - `Cmd+R` - Start speech recording
 - `Cmd+T` - Stop speech recording and transcribe with AssemblyAI
 
+### Conversation History
+- `Cmd+Shift+V` - Open live conversation history in browser (WebSocket-powered)
+
 ## Testing Approach
 
 The project uses Node.js-based testing without external frameworks:
@@ -156,6 +163,25 @@ The project uses Node.js-based testing without external frameworks:
 - Test with various AI responses to ensure compatibility
 - Update tests as needed
 
+### Conversation History Management
+- **Real-time WebSocket Updates**: Conversation history is broadcast instantly via WebSocket after each AI query
+- **Live Browser URL**: Use `Cmd+Shift+V` to open the live conversation history at `http://localhost:[port]`
+- **WebSocket Server**: Automatically starts on app launch, serves HTML and provides real-time updates
+- **Connection Status**: Browser page shows live connection status with automatic reconnection
+- **Fallback Support**: Falls back to static file-based viewing if WebSocket server fails
+- **Full Context**: History includes provider info, session stats, and complete conversation context
+- **Session Clearing**: `Cmd+Shift+R` clears both app session and broadcasts update to connected browsers
+
+### Speech-to-Text Language Configuration
+- **English Optimization**: By default, speech recognition is configured for English (`ASSEMBLYAI_LANGUAGE=en`)
+- **Language Options**: Support for 90+ languages including Spanish (`es`), French (`fr`), German (`de`), etc.
+- **Auto Detection**: Set `ASSEMBLYAI_AUTO_DETECT=true` to enable automatic language detection
+- **English Features**: When using English, additional features are enabled:
+  - Auto highlights of important phrases
+  - Profanity filtering
+  - Enhanced punctuation and formatting
+- **Runtime Changes**: Language can be changed programmatically via IPC without restart
+
 ## File Structure Context
 
 ```
@@ -170,11 +196,16 @@ src/js/
 ├── llm-friendly-ocr-cleaner.js # OCR text cleaning
 ├── ocr-logger.js          # OCR performance logging
 ├── shortcut-manager.js    # Keyboard shortcuts
+├── conversation-history-service.js # Conversation history export service
+├── conversation-websocket-server.js # WebSocket server for real-time updates
 └── window-manager.js      # Electron window management
 
 tests/                     # Node.js test files
 docs/                      # Additional documentation
 logs/ocr/                  # OCR processing logs for analysis
+conversation-history.html  # Static conversation history viewer (fallback)
+conversation-history-websocket.html # WebSocket-powered live viewer (served by server)
+conversation-data.json     # Exported conversation data (auto-generated)
 ```
 
 ## Important Implementation Notes

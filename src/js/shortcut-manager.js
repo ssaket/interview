@@ -148,6 +148,17 @@ class ShortcutManager {
       }
     });
 
+    /* ─── Conversation History ─── */
+    globalShortcut.register('Command+Shift+V', () => {
+      this.appController.conversationHistoryService.openInBrowser().catch(error => {
+        console.error('Failed to open conversation history:', error);
+        this.windowManager.send('show-notification', {
+          type: 'error',
+          message: 'Failed to open conversation history'
+        });
+      });
+    });
+
     /* ─── Mouse tracking toggle ─── */
     globalShortcut.register('Control+Shift+=', () => {
       this.toggleMouseTracking();

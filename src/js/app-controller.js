@@ -5,11 +5,15 @@ const { AIManager } = require('./ai/index');
 const ShortcutManager = require('./shortcut-manager');
 const OCRLogger = require('./ocr-logger');
 const SpeechToTextService = require('./speech-to-text-service');
+const ConversationHistoryService = require('./conversation-history-service');
+const ConversationWebSocketServer = require('./conversation-websocket-server');
 
 class AppController {
   constructor() {
     this.windowManager = new WindowManager();
     this.aiManager = new AIManager(this);
+    this.conversationHistoryService = new ConversationHistoryService(this.aiManager, this);
+    this.conversationWebSocketServer = new ConversationWebSocketServer(this.conversationHistoryService);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
     this.ocrLogger = new OCRLogger({
       logDir: path.join(process.cwd(), 'logs', 'ocr'),
@@ -26,8 +30,14 @@ class AppController {
     // Screenshot stack for batch processing
     this.screenshotStack = [];
 
+    // Link conversation history service and WebSocket server
+    this.conversationHistoryService.setWebSocketServer(this.conversationWebSocketServer);
+
     // Set up speech service callbacks
     this.setupSpeechCallbacks();
+
+    // Start WebSocket server
+    this.startWebSocketServer();
   }
 
   /* ---------- IPC handlers ---------- */
@@ -333,6 +343,76 @@ class AppController {
     ipcMain.handle('get-speech-status', async () => {
       return this.speechService.getStatus();
     });
+
+    ipcMain.handle('set-speech-language', async (_event, languageCode, useAutoDetection = false) => {
+      try {
+        this.speechService.setLanguage(languageCode, useAutoDetection);
+        return { success: true, config: this.speechService.getLanguageConfigDescription() };
+      } catch (error) {
+        console.error('Failed to set speech language:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    /* ------------ Conversation History ------------ */
+    ipcMain.handle('open-conversation-history', async () => {
+      try {
+        await this.conversationHistoryService.openInBrowser();
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to open conversation history:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('get-conversation-stats', async () => {
+      return this.conversationHistoryService.getHistoryStats();
+    });
+
+    ipcMain.handle('clear-conversation-history', async () => {
+      try {
+        this.aiManager.clearSession();
+        await this.conversationHistoryService.clearHistoryFile();
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to clear conversation history:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('export-conversation-history', async () => {
+      try {
+        await this.conversationHistoryService.exportHistory();
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to export conversation history:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('get-websocket-server-info', async () => {
+      return this.conversationWebSocketServer.getStats();
+    });
+
+    ipcMain.handle('start-websocket-server', async () => {
+      try {
+        const url = await this.conversationWebSocketServer.start();
+        return { success: true, url };
+      } catch (error) {
+        console.error('Failed to start WebSocket server:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('stop-websocket-server', async () => {
+      try {
+        await this.conversationWebSocketServer.stop();
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to stop WebSocket server:', error);
+        return { success: false, error: error.message };
+      }
+    });
   }
 
   /**
@@ -526,20 +606,58 @@ class AppController {
     
     // Handle abrupt termination signals
     process.on('SIGINT', () => {
-      console.log('Received SIGINT, cleaning up shortcuts...');
-      this.shortcutManager.unregisterAll();
+      console.log('Received SIGINT, cleaning up...');
+      this.cleanup();
       process.exit(0);
     });
     process.on('SIGTERM', () => {
-      console.log('Received SIGTERM, cleaning up shortcuts...');
-      this.shortcutManager.unregisterAll();
+      console.log('Received SIGTERM, cleaning up...');
+      this.cleanup();
       process.exit(0);
     });
     process.on('uncaughtException', (error) => {
-      console.error('Uncaught exception, cleaning up shortcuts:', error);
-      this.shortcutManager.unregisterAll();
+      console.error('Uncaught exception, cleaning up:', error);
+      this.cleanup();
       process.exit(1);
     });
+  }
+
+  /**
+   * Cleanup resources before shutdown
+   */
+  async cleanup() {
+    console.log('[AppController] Cleaning up resources...');
+    
+    try {
+      this.shortcutManager.unregisterAll();
+      await this.stopWebSocketServer();
+    } catch (error) {
+      console.error('[AppController] Error during cleanup:', error);
+    }
+  }
+
+  /**
+   * Start the WebSocket server for conversation history
+   */
+  async startWebSocketServer() {
+    try {
+      const url = await this.conversationWebSocketServer.start();
+      console.log(`[AppController] WebSocket server started at ${url}`);
+    } catch (error) {
+      console.error('[AppController] Failed to start WebSocket server:', error);
+    }
+  }
+
+  /**
+   * Stop the WebSocket server
+   */
+  async stopWebSocketServer() {
+    try {
+      await this.conversationWebSocketServer.stop();
+      console.log('[AppController] WebSocket server stopped');
+    } catch (error) {
+      console.error('[AppController] Failed to stop WebSocket server:', error);
+    }
   }
 }
 

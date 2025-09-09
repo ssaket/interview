@@ -49,22 +49,68 @@
     </div>
     <div id="container">
       <div id="shortcuts">
-        <p>Press ⌘+Shift+S to capture screen</p>
-        <p>Press ⌘+Shift+A to capture behind overlay</p>
-        <p>Press ⌘+Shift+1/2 to add to stack (full/region)</p>
-        <p>Press ⌘+Shift+3 to process stack</p>
-        <p>Press ⌘+Shift+4 to clear stack</p>
-        <p>Press ⌘+Shift+F to toggle OCR filtering</p>
-        <p>Press ⌘+Shift+P to switch AI provider</p>
-        <p>Press ⌘+Shift+M to switch Ollama model</p>
-        <p>Press ⌘+Shift+W to warm up Ollama model</p>
-        <p>Use ⌘+←/→/↑/↓ to move window</p>
-        <p>Use ⌘/Ctrl+Scroll to adjust movement step</p>
-        <p>Press ⌘+Shift+0 to toggle window size</p>
-        <p>Press ⌘+B to hide/show app</p>
-        <p>Press ⌘+Shift+R to reset session</p>
-        <p>Press ⌘+R to start speech recording</p>
-        <p>Press ⌘+T to stop and transcribe</p>
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">SCREEN CAPTURE</h3>
+          <p><strong>⌘+Shift+S</strong> - Capture full screen</p>
+          <p><strong>⌘+Shift+A</strong> - Capture region behind overlay</p>
+          <p><strong>⌘+Shift+1</strong> - Add full screen to stack</p>
+          <p><strong>⌘+Shift+2</strong> - Add region to stack</p>
+          <p><strong>⌘+Shift+3</strong> - Process screenshot stack</p>
+          <p><strong>⌘+Shift+4</strong> - Clear screenshot stack</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">SPEECH-TO-TEXT</h3>
+          <p><strong>⌘+R</strong> - Start speech recording</p>
+          <p><strong>⌘+T</strong> - Stop recording and transcribe</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">AI FLOWS</h3>
+          <p><strong>⌘+Shift+P</strong> - Cycle AI flows: <span style="color: #44aa44;">●</span> LOCAL → <span style="color: #4488ff;">●</span> CLOUD → <span style="color: #ff8844;">●</span> HYBRID</p>
+          <div style="margin-left: 20px; font-size: 14px; color: #666;">
+            <p><span style="color: #44aa44;">● LOCAL</span> - Ollama local models only (default)</p>
+            <p><span style="color: #4488ff;">● CLOUD</span> - DeepSeek API only</p>
+            <p><span style="color: #ff8844;">● HYBRID</span> - Fast local response + DeepSeek analysis</p>
+          </div>
+          <p><strong>⌘+Shift+M</strong> - Switch Ollama model</p>
+          <p><strong>⌘+Shift+W</strong> - Warm up Ollama model</p>
+          <p><strong>⌘+Shift+R</strong> - Reset AI session</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">WINDOW CONTROL</h3>
+          <p><strong>⌘+←/→/↑/↓</strong> - Move window</p>
+          <p><strong>⌘+Shift+C</strong> - Center window on screen</p>
+          <p><strong>⌘+Shift+0</strong> - Toggle window size (small ⟷ large)</p>
+          <p><strong>⌘+Shift+[/]</strong> - Adjust window width</p>
+          <p><strong>⌘+Shift+↑/↓</strong> - Adjust window height</p>
+          <p><strong>⌘+Shift+=/−</strong> - Adjust movement step size</p>
+          <p><strong>Ctrl+Shift+=</strong> - Toggle mouse tracking mode</p>
+          <p><strong>⌘+B</strong> - Hide/show application</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">SETTINGS</h3>
+          <p><strong>⌘+Shift+F</strong> - Toggle OCR text filtering</p>
+          <p><strong>⌘+Shift+D</strong> - Toggle dark/light theme</p>
+          <p><strong>⌘+Shift+L</strong> - Toggle response formatter</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">NAVIGATION</h3>
+          <p><strong>Shift+X/Z</strong> - Scroll page up/down</p>
+          <p><strong>⌘+Shift+H</strong> - Show help in console</p>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">STATUS INDICATORS</h3>
+          <div style="font-size: 14px; color: #666;">
+            <p><span style="color: #00ff00;">●</span> OCR Filtering (green when enabled)</p>
+            <p><span style="color: #0088ff;">●</span> Speech Recording (red=recording, orange=processing, blue=transcribing)</p>
+            <p><span style="color: #44aa44;">●</span> AI Flow (green=LOCAL, blue=CLOUD, orange=HYBRID)</p>
+          </div>
+        </div>
       </div>
       <div id="transcription-results" style="display: none; margin: 10px 0;">
         <strong>Transcription:</strong>

@@ -153,6 +153,11 @@ class AIManager {
       // Update session
       this._updateSession(session, question, rawResponse, questionHash);
 
+      // Export conversation history for web viewing
+      if (this.appController.conversationHistoryService) {
+        this.appController.conversationHistoryService.exportHistory();
+      }
+
       // Notify completion
       this.appController.windowManager.send('ai-processing-complete');
       this.appController.windowManager.send('session-length', session.history.length);
@@ -195,6 +200,11 @@ class AIManager {
     const rawResponse = this._extractResponseContent(response);
     const questionHash = crypto.createHash('md5').update(question).digest('hex');
     this._updateSession(session, question, rawResponse, questionHash);
+
+    // Export conversation history for web viewing
+    if (this.appController.conversationHistoryService) {
+      this.appController.conversationHistoryService.exportHistory();
+    }
 
     return rawResponse;
   }
