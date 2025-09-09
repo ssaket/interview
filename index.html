@@ -33,6 +33,18 @@
           margin-left: 5px;
         "
       ></div>
+      <div
+        id="speech-indicator"
+        style="
+          /* display: inline-block; */
+          width: 8px;
+          height: 8px;
+          background-color: #0088ff;
+          border-radius: 50%;
+          margin-left: 5px;
+          display: none;
+        "
+      ></div>
     </div>
     <div id="container">
       <div id="shortcuts">
@@ -52,9 +64,6 @@
         <p>Press ⌘+Shift+R to reset session</p>
         <p>Press ⌘+R to start speech recording</p>
         <p>Press ⌘+T to stop and transcribe</p>
-      </div>
-      <div id="speech-status" style="display: none; margin: 10px 0;">
-        <strong>Speech Status:</strong> <span id="speech-status-text">Ready</span>
       </div>
       <div id="transcription-results" style="display: none; margin: 10px 0;">
         <strong>Transcription:</strong>

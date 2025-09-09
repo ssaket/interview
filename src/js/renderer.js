@@ -38,12 +38,8 @@ const UI = {
     return document.getElementById('stack-count');
   },
 
-  get speechStatus() {
-    return document.getElementById('speech-status');
-  },
-
-  get speechStatusText() {
-    return document.getElementById('speech-status-text');
+  get speechIndicator() {
+    return document.getElementById('speech-indicator');
   },
 
   get transcriptionResults() {
@@ -119,9 +115,43 @@ const UI = {
   },
 
   updateSpeechStatus(status, message) {
-    if (this.speechStatus && this.speechStatusText) {
-      this.speechStatusText.textContent = message;
-      this.speechStatus.style.display = 'block';
+    if (this.speechIndicator) {
+      switch(status) {
+        case 'recording':
+          this.speechIndicator.style.backgroundColor = '#ff4444'; // Red for recording
+          this.speechIndicator.style.display = 'inline-block';
+          break;
+        case 'processing':
+          this.speechIndicator.style.backgroundColor = '#ff8800'; // Orange for processing
+          this.speechIndicator.style.display = 'inline-block';
+          break;
+        case 'transcribing':
+          this.speechIndicator.style.backgroundColor = '#0088ff'; // Blue for transcribing
+          this.speechIndicator.style.display = 'inline-block';
+          break;
+        case 'completed':
+          this.speechIndicator.style.backgroundColor = '#44aa44'; // Green for completed
+          this.speechIndicator.style.display = 'inline-block';
+          // Hide the indicator after 2 seconds for completed state
+          setTimeout(() => {
+            if (this.speechIndicator) {
+              this.speechIndicator.style.display = 'none';
+            }
+          }, 2000);
+          break;
+        case 'error':
+          this.speechIndicator.style.backgroundColor = '#aa4444'; // Dark red for error
+          this.speechIndicator.style.display = 'inline-block';
+          // Hide the indicator after 5 seconds for error state
+          setTimeout(() => {
+            if (this.speechIndicator) {
+              this.speechIndicator.style.display = 'none';
+            }
+          }, 5000);
+          break;
+        default:
+          this.speechIndicator.style.display = 'none';
+      }
     }
   },
 
@@ -148,8 +178,8 @@ const UI = {
   },
 
   hideSpeechUI() {
-    if (this.speechStatus) {
-      this.speechStatus.style.display = 'none';
+    if (this.speechIndicator) {
+      this.speechIndicator.style.display = 'none';
     }
     if (this.transcriptionResults) {
       this.transcriptionResults.style.display = 'none';
@@ -231,6 +261,11 @@ ipcRenderer.on('formatter-toggled', (event, enabled) => {
 });
 
 async function captureScreenshot(isRegion = false) {
+  // Hide transcription section when taking a screenshot
+  if (UI.transcriptionResults) {
+    UI.transcriptionResults.style.display = 'none';
+  }
+  
   UI.setOutput(isRegion ? 'Capturing behind overlay...' : 'Capturing screen...');
 
   const image = isRegion
@@ -467,6 +502,11 @@ document.addEventListener('wheel', (event) => {
 
 // Stack screenshot functions
 async function addScreenshotToStack(type) {
+  // Hide transcription section when adding screenshot to stack
+  if (UI.transcriptionResults) {
+    UI.transcriptionResults.style.display = 'none';
+  }
+  
   UI.setOutput(`Adding ${type} screenshot to stack...`);
   
   try {
@@ -548,7 +588,7 @@ ipcRenderer.on('screenshot-stack-updated', (event, data) => {
 // Speech-to-text event handlers
 ipcRenderer.on('start-speech-recording', async () => {
   try {
-    UI.updateSpeechStatus('recording', 'Starting speech recording...');
+    UI.updateSpeechStatus('recording', 'Initializing microphone and beginning audio capture...');
     await ipcRenderer.invoke('start-speech-recording');
   } catch (error) {
     UI.updateSpeechStatus('error', `Failed to start recording: ${error.message}`);
@@ -557,7 +597,7 @@ ipcRenderer.on('start-speech-recording', async () => {
 
 ipcRenderer.on('stop-speech-recording', async () => {
   try {
-    UI.updateSpeechStatus('processing', 'Stopping recording...');
+    UI.updateSpeechStatus('processing', 'Stopping recording and preparing audio for transcription...');
     await ipcRenderer.invoke('stop-speech-recording');
   } catch (error) {
     UI.updateSpeechStatus('error', `Failed to stop recording: ${error.message}`);
@@ -575,7 +615,7 @@ ipcRenderer.on('transcription-received', async (event, transcriptionText, metada
   if (transcriptionText && transcriptionText.trim()) {
     try {
       UI.hideInstructions();
-      UI.setOutput('🎤 Querying AI with transcribed speech...');
+      UI.setOutput('QUERYING AI: Processing transcribed speech with AI provider...');
       
       const answer = await ipcRenderer.invoke('ask-chatgpt', transcriptionText);
       
