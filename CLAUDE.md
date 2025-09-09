@@ -76,6 +76,9 @@ HF_MODEL=deepseek-ai/DeepSeek-R1-0528
 # DeepSeek Configuration
 DEEPSEEK_API_KEY=your_deepseek_api_key
 DEEPSEEK_MODEL=deepseek-chat
+
+# AssemblyAI Configuration (for speech-to-text)
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key
 ```
 
 ## Key Patterns and Conventions
@@ -121,9 +124,9 @@ When adding new AI providers:
 - `Cmd+Shift+W` - Manual model warmup (Ollama)
 - `Cmd+Shift+F` - Toggle OCR filtering
 
-### Audio
-- `Cmd+R` - Start audio recording
-- `Cmd+T` - Stop audio recording
+### Speech-to-Text
+- `Cmd+R` - Start speech recording
+- `Cmd+T` - Stop speech recording and transcribe with AssemblyAI
 
 ## Testing Approach
 

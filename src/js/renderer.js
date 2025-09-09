@@ -38,6 +38,26 @@ const UI = {
     return document.getElementById('stack-count');
   },
 
+  get speechStatus() {
+    return document.getElementById('speech-status');
+  },
+
+  get speechStatusText() {
+    return document.getElementById('speech-status-text');
+  },
+
+  get transcriptionResults() {
+    return document.getElementById('transcription-results');
+  },
+
+  get transcriptionText() {
+    return document.getElementById('transcription-text');
+  },
+
+  get transcriptionMeta() {
+    return document.getElementById('transcription-meta');
+  },
+
   setOutput(text, timeout = 0) {
     this.output.textContent = text;
     if (timeout > 0) {
@@ -95,6 +115,44 @@ const UI = {
   updateBurnModeIndicator(enabled) {
     if (this.burnModeIndicator) {
       this.burnModeIndicator.style.display = enabled ? 'inline-block' : 'none';
+    }
+  },
+
+  updateSpeechStatus(status, message) {
+    if (this.speechStatus && this.speechStatusText) {
+      this.speechStatusText.textContent = message;
+      this.speechStatus.style.display = 'block';
+    }
+  },
+
+  showTranscription(text, metadata) {
+    if (this.transcriptionResults && this.transcriptionText && this.transcriptionMeta) {
+      this.transcriptionText.textContent = text;
+      
+      let metaInfo = '';
+      if (metadata) {
+        if (metadata.confidence) {
+          metaInfo += `Confidence: ${(metadata.confidence * 100).toFixed(1)}%`;
+        }
+        if (metadata.duration) {
+          metaInfo += ` | Duration: ${metadata.duration.toFixed(1)}s`;
+        }
+        if (metadata.language) {
+          metaInfo += ` | Language: ${metadata.language}`;
+        }
+      }
+      
+      this.transcriptionMeta.textContent = metaInfo;
+      this.transcriptionResults.style.display = 'block';
+    }
+  },
+
+  hideSpeechUI() {
+    if (this.speechStatus) {
+      this.speechStatus.style.display = 'none';
+    }
+    if (this.transcriptionResults) {
+      this.transcriptionResults.style.display = 'none';
     }
   },
 
@@ -485,6 +543,59 @@ ipcRenderer.on('clear-screenshot-stack', async () => {
 // Listen for stack updates from main process
 ipcRenderer.on('screenshot-stack-updated', (event, data) => {
   UI.setStackCount(data.count);
+});
+
+// Speech-to-text event handlers
+ipcRenderer.on('start-speech-recording', async () => {
+  try {
+    UI.updateSpeechStatus('recording', 'Starting speech recording...');
+    await ipcRenderer.invoke('start-speech-recording');
+  } catch (error) {
+    UI.updateSpeechStatus('error', `Failed to start recording: ${error.message}`);
+  }
+});
+
+ipcRenderer.on('stop-speech-recording', async () => {
+  try {
+    UI.updateSpeechStatus('processing', 'Stopping recording...');
+    await ipcRenderer.invoke('stop-speech-recording');
+  } catch (error) {
+    UI.updateSpeechStatus('error', `Failed to stop recording: ${error.message}`);
+  }
+});
+
+ipcRenderer.on('speech-status-update', (event, status, message) => {
+  UI.updateSpeechStatus(status, message);
+});
+
+ipcRenderer.on('transcription-received', async (event, transcriptionText, metadata) => {
+  UI.showTranscription(transcriptionText, metadata);
+  
+  // Automatically query AI with the transcribed text
+  if (transcriptionText && transcriptionText.trim()) {
+    try {
+      UI.hideInstructions();
+      UI.setOutput('🎤 Querying AI with transcribed speech...');
+      
+      const answer = await ipcRenderer.invoke('ask-chatgpt', transcriptionText);
+      
+      lastAssistantResponse = answer;
+      saveLastAssistantResponse(answer);
+      
+      const { text: plain, html } = dsFormatter.formatResponse(answer, formatterEnabled);
+      if (formatterEnabled) {
+        UI.setOutputHTML(html);
+      } else {
+        UI.setOutput(plain);
+      }
+    } catch (error) {
+      UI.setOutput(`❌ AI Query error: ${error.message}`, 3000);
+    }
+  }
+});
+
+ipcRenderer.on('speech-error', (event, error) => {
+  UI.updateSpeechStatus('error', error);
 });
 
 // Initialize OCR filtering state when page loads

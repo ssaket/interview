@@ -98,12 +98,11 @@ class ShortcutManager {
     });
 
     globalShortcut.register('Command+R', () => {
-      const session = this.aiManager.getSession?.();
-      if (session) {
-        this.aiManager.clearSession();
-      }
-      this.windowManager.send('session-reset');
-      this.windowManager.send('session-length', 0);
+      this.windowManager.send('start-speech-recording');
+    });
+
+    globalShortcut.register('Command+T', () => {
+      this.windowManager.send('stop-speech-recording');
     });
 
     /* ─── Session reset ─── */
@@ -185,8 +184,9 @@ class ShortcutManager {
     console.log('  Cmd+Shift+0           - Toggle window size (800x200 ⇄ 800x800)');
     console.log('\nWINDOW CONTROL:');
     console.log('  Cmd+B                 - Toggle window visibility');
-    console.log('\nAUDIO:');
-    console.log('  Cmd+R / Cmd+T         - Start / Stop audio');
+    console.log('\nSPEECH-TO-TEXT:');
+    console.log('  Cmd+R                 - Start speech recording');
+    console.log('  Cmd+T                 - Stop speech recording and transcribe');
     console.log('\nSESSION / OCR / PROVIDER:');
     console.log('  Cmd+Shift+R           - Reset session');
     console.log('  Cmd+Shift+F           - Toggle OCR filtering');

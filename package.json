@@ -33,11 +33,13 @@
   "license": "ISC",
   "dependencies": {
     "@huggingface/inference": "^4.0.6",
+    "assemblyai": "^4.16.0",
     "axios": "^1.10.0",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",
     "html-entities": "^2.6.0",
     "natural": "^8.1.0",
+    "node-record-lpcm16": "^1.0.1",
     "openai": "^5.8.2",
     "tesseract.js": "^6.0.1"
   },
@@ -67,11 +69,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     },
@@ -79,11 +87,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -91,11 +103,15 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "tar.gz",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     }

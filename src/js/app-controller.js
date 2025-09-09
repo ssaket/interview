@@ -4,7 +4,7 @@ const WindowManager = require('./window-manager');
 const { AIManager } = require('./ai/index');
 const ShortcutManager = require('./shortcut-manager');
 const OCRLogger = require('./ocr-logger');
-// const AudioService = require('./audio-service');  ← later
+const SpeechToTextService = require('./speech-to-text-service');
 
 class AppController {
   constructor() {
@@ -16,6 +16,7 @@ class AppController {
       enableLogging: true,
       maxLogAge: 90, // Keep logs for 90 days
     });
+    this.speechService = new SpeechToTextService();
     this.ocrFilteringEnabled = true;
     this.burnModeEnabled = false;
 
@@ -25,6 +26,9 @@ class AppController {
 
     // Screenshot stack for batch processing
     this.screenshotStack = [];
+
+    // Set up speech service callbacks
+    this.setupSpeechCallbacks();
   }
 
   /* ---------- IPC handlers ---------- */
@@ -284,6 +288,31 @@ class AppController {
         console.error('[Stack] Failed to process screenshots:', error);
         return { success: false, error: error.message };
       }
+    });
+
+    /* ------------ Speech-to-Text ------------ */
+    ipcMain.handle('start-speech-recording', async () => {
+      try {
+        await this.speechService.startRecording();
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to start speech recording:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('stop-speech-recording', async () => {
+      try {
+        this.speechService.stopRecording();
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to stop speech recording:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('get-speech-status', async () => {
+      return this.speechService.getStatus();
     });
   }
 
@@ -568,6 +597,26 @@ class AppController {
       `${deepseekResult.response}\n\n` +
       `*Burn mode: Showing responses from both local and cloud providers*`
     );
+  }
+
+  /**
+   * Set up callbacks for the speech-to-text service
+   */
+  setupSpeechCallbacks() {
+    this.speechService.setCallbacks({
+      onTranscriptReceived: (text, metadata) => {
+        console.log('Transcription received:', text);
+        this.windowManager.send('transcription-received', text, metadata);
+      },
+      onError: (error) => {
+        console.error('Speech service error:', error);
+        this.windowManager.send('speech-error', error);
+      },
+      onStatusChange: (status, message) => {
+        console.log('Speech status change:', status, message);
+        this.windowManager.send('speech-status-update', status, message);
+      }
+    });
   }
 
   start() {

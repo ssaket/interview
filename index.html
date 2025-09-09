@@ -50,6 +50,16 @@
         <p>Press ⌘+Shift+0 to toggle window size</p>
         <p>Press ⌘+B to hide/show app</p>
         <p>Press ⌘+Shift+R to reset session</p>
+        <p>Press ⌘+R to start speech recording</p>
+        <p>Press ⌘+T to stop and transcribe</p>
+      </div>
+      <div id="speech-status" style="display: none; margin: 10px 0;">
+        <strong>Speech Status:</strong> <span id="speech-status-text">Ready</span>
+      </div>
+      <div id="transcription-results" style="display: none; margin: 10px 0;">
+        <strong>Transcription:</strong>
+        <div id="transcription-text" style="margin-top: 5px; font-family: monospace; white-space: pre-wrap;"></div>
+        <div id="transcription-meta" style="margin-top: 5px; font-size: 0.8em; color: #666;"></div>
       </div>
       <div id="output">Waiting for action...</div>
       <img id="screenshot" style="display: none" />
