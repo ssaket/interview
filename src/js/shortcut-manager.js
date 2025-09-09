@@ -118,14 +118,9 @@ class ShortcutManager {
       this.windowManager.send('ocr-filtering-changed', this.appController.ocrFilteringEnabled);
     });
 
-    /* ─── Burn mode toggle ─── */
-    globalShortcut.register('Command+Shift+Q', () => {
-      this.appController.burnModeEnabled = !this.appController.burnModeEnabled;
-      this.windowManager.send('burn-mode-changed', this.appController.burnModeEnabled);
-    });
 
-    /* ─── AI provider / model switches ─── */
-    globalShortcut.register('Command+Shift+P', () => this.aiManager.cycleProvider());
+    /* ─── AI flow switches ─── */
+    globalShortcut.register('Command+Shift+P', () => this.cycleAiFlow());
     globalShortcut.register('Command+Shift+M', () => this.switchOllamaModel());
 
     /* ─── Misc renderer events ─── */
@@ -226,9 +221,8 @@ class ShortcutManager {
       }
     }
 
-    const burnMode = this.appController.burnModeEnabled;
     const ollamaModels = this.aiManager.getOllamaModels();
-    const allModels = burnMode ? ollamaModels.all() : ollamaModels.local.slice();
+    const allModels = ollamaModels.local.slice();
     this.aiManager;
 
     /* 1️⃣ Determine next model */
@@ -383,6 +377,13 @@ class ShortcutManager {
       clearInterval(this.mouseTrackingInterval);
       this.mouseTrackingInterval = null;
     }
+  }
+
+  /**
+   * Cycle through AI flows: LOCAL -> CLOUD -> HYBRID -> LOCAL
+   */
+  cycleAiFlow() {
+    this.windowManager.send('cycle-ai-flow');
   }
 }
 

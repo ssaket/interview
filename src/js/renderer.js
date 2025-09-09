@@ -6,6 +6,184 @@ const path = require('path');
 const DeepSeekFormatter = require(path.join(__dirname, 'src', 'js', 'formatter.js'));
 const dsFormatter = new DeepSeekFormatter();
 
+// --- Flow Manager ---
+const FlowManager = {
+  currentFlow: null,
+  flows: {
+    SCREENSHOT: 'screenshot',
+    SPEECH: 'speech',
+    IDLE: 'idle'
+  },
+  
+  aiFlows: {
+    LOCAL: 'local',      // Ollama local models only (default)
+    CLOUD: 'cloud',      // DeepSeek API only
+    HYBRID: 'hybrid'     // Fast local + background DeepSeek append
+  },
+  
+  currentAiFlow: 'local', // Default to local
+
+  setFlow(flowType) {
+    if (this.currentFlow !== flowType) {
+      this.clearCurrentFlow();
+      this.currentFlow = flowType;
+      this.activateFlow(flowType);
+    }
+  },
+
+  clearCurrentFlow() {
+    if (this.currentFlow === this.flows.SPEECH) {
+      this.clearSpeechFlow();
+    } else if (this.currentFlow === this.flows.SCREENSHOT) {
+      this.clearScreenshotFlow();
+    }
+  },
+
+  activateFlow(flowType) {
+    // Each flow can initialize its UI state here if needed
+    switch(flowType) {
+      case this.flows.SPEECH:
+        // Speech flow is active - transcription can be shown
+        break;
+      case this.flows.SCREENSHOT:
+        // Screenshot flow is active - hide speech UI
+        this.clearSpeechFlow();
+        break;
+      case this.flows.IDLE:
+        // Idle state - both flows can coexist
+        break;
+    }
+  },
+
+  clearSpeechFlow() {
+    if (UI.speechIndicator) {
+      UI.speechIndicator.style.display = 'none';
+    }
+    if (UI.transcriptionResults) {
+      UI.transcriptionResults.style.display = 'none';
+    }
+  },
+
+  clearScreenshotFlow() {
+    UI.hideScreenshot();
+  },
+
+  isFlowActive(flowType) {
+    return this.currentFlow === flowType;
+  },
+
+  // AI Flow Management
+  setAiFlow(aiFlowType) {
+    if (Object.values(this.aiFlows).includes(aiFlowType)) {
+      this.currentAiFlow = aiFlowType;
+      console.log(`[FlowManager] AI flow set to: ${aiFlowType.toUpperCase()}`);
+      this.updateAiFlowIndicator(aiFlowType);
+    }
+  },
+
+  updateAiFlowIndicator(flowType) {
+    if (UI.aiFlowIndicator) {
+      const colors = {
+        [this.aiFlows.LOCAL]: '#44aa44',   // Green for local
+        [this.aiFlows.CLOUD]: '#4488ff',   // Blue for cloud
+        [this.aiFlows.HYBRID]: '#ff8844'   // Orange for hybrid
+      };
+      
+      const titles = {
+        [this.aiFlows.LOCAL]: 'AI Flow: LOCAL (Ollama only)',
+        [this.aiFlows.CLOUD]: 'AI Flow: CLOUD (DeepSeek API)',
+        [this.aiFlows.HYBRID]: 'AI Flow: HYBRID (Local + DeepSeek)'
+      };
+      
+      UI.aiFlowIndicator.style.backgroundColor = colors[flowType] || colors[this.aiFlows.LOCAL];
+      UI.aiFlowIndicator.title = titles[flowType] || titles[this.aiFlows.LOCAL];
+    }
+  },
+
+  getAiFlow() {
+    return this.currentAiFlow;
+  },
+
+  async queryAI(text, options = {}) {
+    const flowType = this.currentAiFlow;
+    
+    switch(flowType) {
+      case this.aiFlows.LOCAL:
+        return await this.queryLocal(text, options);
+      
+      case this.aiFlows.CLOUD:
+        return await this.queryCloud(text, options);
+      
+      case this.aiFlows.HYBRID:
+        return await this.queryHybrid(text, options);
+      
+      default:
+        return await this.queryLocal(text, options);
+    }
+  },
+
+  async queryLocal(text, options = {}) {
+    console.log('[AI Flow] LOCAL: Querying Ollama...');
+    UI.setOutput('LOCAL AI: Processing with Ollama local model...');
+    
+    const answer = await ipcRenderer.invoke('ask-chatgpt', text);
+    return answer;
+  },
+
+  async queryCloud(text, options = {}) {
+    console.log('[AI Flow] CLOUD: Querying DeepSeek API...');
+    UI.setOutput('CLOUD AI: Processing with DeepSeek API...');
+    
+    // Switch to DeepSeek provider temporarily
+    const originalProvider = await ipcRenderer.invoke('get-provider-status');
+    await ipcRenderer.invoke('switch-to-deepseek');
+    
+    try {
+      const answer = await ipcRenderer.invoke('ask-chatgpt', text);
+      return answer;
+    } finally {
+      // Switch back to original provider if needed
+      if (originalProvider.provider !== 'deepseek') {
+        await ipcRenderer.invoke('switch-to-ollama');
+      }
+    }
+  },
+
+  async queryHybrid(text, options = {}) {
+    console.log('[AI Flow] HYBRID: Fast local + background cloud...');
+    UI.setOutput('HYBRID AI: Getting fast local response, DeepSeek processing in background...');
+    
+    // Fast local prompt - make it more concise for speed
+    const fastPrompt = `Brief answer: ${text}`;
+    
+    // Start local query immediately for fast response
+    const localPromise = this.queryLocal(fastPrompt, options);
+    
+    // Start background DeepSeek query
+    const cloudPromise = this.queryCloud(text, options).catch(error => {
+      console.warn('[AI Flow] HYBRID: Cloud query failed:', error.message);
+      return `\n\n---\n**DeepSeek Error:** ${error.message}`;
+    });
+    
+    // Return local response first
+    const localResponse = await localPromise;
+    
+    // Update UI with local response immediately
+    const { text: plainLocal, html: htmlLocal } = dsFormatter.formatResponse(localResponse, formatterEnabled);
+    if (formatterEnabled) {
+      UI.setOutputHTML(htmlLocal + '\n\n<div style="opacity:0.7;">🔄 DeepSeek processing...</div>');
+    } else {
+      UI.setOutput(plainLocal + '\n\n🔄 DeepSeek processing...');
+    }
+    
+    // Wait for cloud response and append
+    const cloudResponse = await cloudPromise;
+    const combinedResponse = `${localResponse}\n\n---\n\n**DeepSeek Analysis:**\n${cloudResponse}`;
+    
+    return combinedResponse;
+  }
+};
+
 // --- UI Controller ---
 const UI = {
   get output() {
@@ -19,9 +197,6 @@ const UI = {
   },
   get ocrIndicator() {
     return document.getElementById('ocr-filter-indicator');
-  },
-  get burnModeIndicator() {
-    return document.getElementById('burn-mode-indicator');
   },
   get title() {
     return document.querySelector('h2');
@@ -40,6 +215,10 @@ const UI = {
 
   get speechIndicator() {
     return document.getElementById('speech-indicator');
+  },
+
+  get aiFlowIndicator() {
+    return document.getElementById('ai-flow-indicator');
   },
 
   get transcriptionResults() {
@@ -108,11 +287,6 @@ const UI = {
     ocrFilteringEnabled = enabled;
   },
 
-  updateBurnModeIndicator(enabled) {
-    if (this.burnModeIndicator) {
-      this.burnModeIndicator.style.display = enabled ? 'inline-block' : 'none';
-    }
-  },
 
   updateSpeechStatus(status, message) {
     if (this.speechIndicator) {
@@ -226,11 +400,6 @@ async function initOcrFilteringState() {
   UI.updateOcrIndicator(state);
 }
 
-//Initialize Burn Mode state
-async function initBurnModeState() {
-  const state = await ipcRenderer.invoke('get-burn-mode-state');
-  UI.updateBurnModeIndicator(state);
-}
 
 function saveLastAssistantResponse(response) {
   if (response) {
@@ -261,10 +430,8 @@ ipcRenderer.on('formatter-toggled', (event, enabled) => {
 });
 
 async function captureScreenshot(isRegion = false) {
-  // Hide transcription section when taking a screenshot
-  if (UI.transcriptionResults) {
-    UI.transcriptionResults.style.display = 'none';
-  }
+  // Activate screenshot flow
+  FlowManager.setFlow(FlowManager.flows.SCREENSHOT);
   
   UI.setOutput(isRegion ? 'Capturing behind overlay...' : 'Capturing screen...');
 
@@ -277,16 +444,7 @@ async function captureScreenshot(isRegion = false) {
   UI.setOutput('Running OCR...');
   const text = await ipcRenderer.invoke('perform-ocr', image);
 
-  // Check burn mode status for better messaging
-  const burnModeEnabled = await ipcRenderer.invoke('get-burn-mode-state');
-
-  if (burnModeEnabled) {
-    UI.setOutput(`🤖 Querying Ollama (local) + 🔥 DeepSeek (cloud)... \n\nExtracted:\n${text}`);
-  } else {
-    UI.setOutput(`🤖 Querying Ollama (local)...\n\nExtracted:\n${text}`);
-  }
-
-  const answer = await ipcRenderer.invoke('ask-chatgpt', text);
+  const answer = await FlowManager.queryAI(text);
 
   lastAssistantResponse = answer;
   saveLastAssistantResponse(answer);
@@ -299,6 +457,9 @@ async function captureScreenshot(isRegion = false) {
   } else {
     UI.setOutput(plain);
   }
+  
+  // Return to idle state after screenshot processing is complete
+  FlowManager.setFlow(FlowManager.flows.IDLE);
 }
 
 ipcRenderer.on('trigger-screenshot', async () => {
@@ -423,7 +584,7 @@ ipcRenderer.on('model-switched', (event, data) => {
   // ask-chatgpt to answer a question with the new model
   if (data.question) {
     const question = data.question;
-    ipcRenderer.invoke('ask-chatgpt', question).then((response) => {
+    FlowManager.queryAI(question).then((response) => {
       lastAssistantResponse = response;
       saveLastAssistantResponse(response);
       const { text, html } = dsFormatter.formatResponse(response, formatterEnabled);
@@ -502,10 +663,8 @@ document.addEventListener('wheel', (event) => {
 
 // Stack screenshot functions
 async function addScreenshotToStack(type) {
-  // Hide transcription section when adding screenshot to stack
-  if (UI.transcriptionResults) {
-    UI.transcriptionResults.style.display = 'none';
-  }
+  // Activate screenshot flow
+  FlowManager.setFlow(FlowManager.flows.SCREENSHOT);
   
   UI.setOutput(`Adding ${type} screenshot to stack...`);
   
@@ -527,16 +686,9 @@ async function processScreenshotStack() {
   try {
     const result = await ipcRenderer.invoke('process-screenshot-stack');
     if (result.success) {
-      // Check burn mode status for better messaging
-      const burnModeEnabled = await ipcRenderer.invoke('get-burn-mode-state');
+      UI.setOutput(`Processing ${result.text.split('---').length} screenshots with AI...`);
       
-      if (burnModeEnabled) {
-        UI.setOutput(`🤖 Querying Ollama (local) + 🔥 DeepSeek (cloud)... \n\nExtracted from stack:\n${result.text}`);
-      } else {
-        UI.setOutput(`🤖 Querying Ollama (local)...\n\nExtracted from stack:\n${result.text}`);
-      }
-      
-      const answer = await ipcRenderer.invoke('ask-chatgpt', result.text);
+      const answer = await FlowManager.queryAI(result.text);
       
       lastAssistantResponse = answer;
       saveLastAssistantResponse(answer);
@@ -588,6 +740,8 @@ ipcRenderer.on('screenshot-stack-updated', (event, data) => {
 // Speech-to-text event handlers
 ipcRenderer.on('start-speech-recording', async () => {
   try {
+    // Activate speech flow
+    FlowManager.setFlow(FlowManager.flows.SPEECH);
     UI.updateSpeechStatus('recording', 'Initializing microphone and beginning audio capture...');
     await ipcRenderer.invoke('start-speech-recording');
   } catch (error) {
@@ -609,7 +763,10 @@ ipcRenderer.on('speech-status-update', (event, status, message) => {
 });
 
 ipcRenderer.on('transcription-received', async (event, transcriptionText, metadata) => {
-  UI.showTranscription(transcriptionText, metadata);
+  // Only show transcription if speech flow is still active or idle
+  if (FlowManager.isFlowActive(FlowManager.flows.SPEECH) || FlowManager.currentFlow === FlowManager.flows.IDLE) {
+    UI.showTranscription(transcriptionText, metadata);
+  }
   
   // Automatically query AI with the transcribed text
   if (transcriptionText && transcriptionText.trim()) {
@@ -617,7 +774,7 @@ ipcRenderer.on('transcription-received', async (event, transcriptionText, metada
       UI.hideInstructions();
       UI.setOutput('QUERYING AI: Processing transcribed speech with AI provider...');
       
-      const answer = await ipcRenderer.invoke('ask-chatgpt', transcriptionText);
+      const answer = await FlowManager.queryAI(transcriptionText);
       
       lastAssistantResponse = answer;
       saveLastAssistantResponse(answer);
@@ -628,8 +785,12 @@ ipcRenderer.on('transcription-received', async (event, transcriptionText, metada
       } else {
         UI.setOutput(plain);
       }
+      
+      // After AI response, return to idle state
+      FlowManager.setFlow(FlowManager.flows.IDLE);
     } catch (error) {
       UI.setOutput(`❌ AI Query error: ${error.message}`, 3000);
+      FlowManager.setFlow(FlowManager.flows.IDLE);
     }
   }
 });
@@ -638,10 +799,30 @@ ipcRenderer.on('speech-error', (event, error) => {
   UI.updateSpeechStatus('error', error);
 });
 
+// AI Flow cycling
+ipcRenderer.on('cycle-ai-flow', () => {
+  const flows = Object.values(FlowManager.aiFlows);
+  const currentIndex = flows.indexOf(FlowManager.currentAiFlow);
+  const nextIndex = (currentIndex + 1) % flows.length;
+  const nextFlow = flows[nextIndex];
+  
+  FlowManager.setAiFlow(nextFlow);
+  
+  // Display flow change notification
+  const flowNames = {
+    [FlowManager.aiFlows.LOCAL]: 'LOCAL (Ollama only)',
+    [FlowManager.aiFlows.CLOUD]: 'CLOUD (DeepSeek API)',
+    [FlowManager.aiFlows.HYBRID]: 'HYBRID (Local + DeepSeek)'
+  };
+  
+  UI.setOutput(`AI FLOW: Switched to ${flowNames[nextFlow]}`, 3000);
+});
+
 // Initialize OCR filtering state when page loads
 document.addEventListener('DOMContentLoaded', () => {
   initOcrFilteringState();
-  initBurnModeState();
+  // Initialize AI flow indicator
+  FlowManager.updateAiFlowIndicator(FlowManager.currentAiFlow);
   // Initialize theme and set last response if available
   initTheme();
   if (lastAssistantResponse) {

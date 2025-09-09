@@ -18,7 +18,6 @@ class AppController {
     });
     this.speechService = new SpeechToTextService();
     this.ocrFilteringEnabled = true;
-    this.burnModeEnabled = false;
 
     // Track OCR context for fallback queries
     this.lastOcrText = null;
@@ -34,7 +33,6 @@ class AppController {
   /* ---------- IPC handlers ---------- */
   registerIpc() {
     ipcMain.handle('get-ocr-filtering-state', async () => this.ocrFilteringEnabled);
-    ipcMain.handle('get-burn-mode-state', async () => this.burnModeEnabled);
 
     ipcMain.handle('get-provider-status', async () => {
       const info = this.aiManager.getProviderInfo();
@@ -209,6 +207,27 @@ class AppController {
         return { connected: ok };
       } catch {
         return { connected: false };
+      }
+    });
+
+    /* ------------ AI Flow Management ------------ */
+    ipcMain.handle('switch-to-deepseek', async () => {
+      try {
+        await this.aiManager.switchProvider('deepseek');
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to switch to DeepSeek:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('switch-to-ollama', async () => {
+      try {
+        await this.aiManager.switchProvider('ollama');
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to switch to Ollama:', error);
+        return { success: false, error: error.message };
       }
     });
 
@@ -443,55 +462,20 @@ class AppController {
   }
 
   /**
-   * Handle OCR queries with Ollama first, DeepSeek fallback when burn mode enabled
+   * Handle OCR queries using the current AI manager
    * @param {string} question - The OCR text to query
    * @returns {Promise<string>} Formatted response
    */
   async handleOcrQuery(question) {
-    console.log('[OCR Query] Processing OCR query with fallback mechanism...');
+    console.log('[OCR Query] Processing OCR query...');
 
     try {
-      await this.ensureOllamaProvider();
-      const ollamaInfo = this.aiManager.getProviderInfo();
-
-      const finalResponse = this.burnModeEnabled
-        ? await this.executeParallelQuery(question, ollamaInfo)
-        : await this.executeSingleQuery(question, ollamaInfo);
-
-      await this.restoreOllamaProvider();
+      const response = await this.aiManager.ask(question);
       this.updateSessionLength();
-
-      return finalResponse;
+      return response;
     } catch (error) {
       console.error('[OCR Query] Error during OCR processing:', error);
-      await this.restoreOllamaProvider();
       throw error;
-    }
-  }
-
-  /**
-   * Ensure Ollama provider is active for OCR processing
-   */
-  async ensureOllamaProvider() {
-    const currentProvider = this.aiManager.getProviderInfo();
-    if (!currentProvider.isOllama) {
-      await this.aiManager.switchProvider('ollama');
-    }
-    console.log('[OCR Query] Querying Ollama (local)...');
-  }
-
-  /**
-   * Restore Ollama provider after OCR processing
-   */
-  async restoreOllamaProvider() {
-    const currentProvider = this.aiManager.getProviderInfo();
-    if (!currentProvider.isOllama) {
-      try {
-        await this.aiManager.switchProvider('ollama');
-        console.log('[OCR Query] Switched back to Ollama');
-      } catch (restoreError) {
-        console.warn('[OCR Query] Failed to switch back to Ollama:', restoreError.message);
-      }
     }
   }
 
@@ -501,102 +485,6 @@ class AppController {
   updateSessionLength() {
     const sess = this.aiManager.getSession();
     this.windowManager.send('session-length', sess.history.length);
-  }
-
-  /**
-   * Execute single model query (Ollama only)
-   */
-  async executeSingleQuery(question, ollamaInfo) {
-    const ollamaResponse = await this.aiManager.ask(question);
-    console.log('[OCR Query] Ollama response received');
-    return ollamaResponse;
-  }
-
-  /**
-   * Execute parallel queries to both Ollama and DeepSeek
-   */
-  async executeParallelQuery(question, ollamaInfo) {
-    console.log('[OCR Query] Burn mode enabled - querying both models in parallel...');
-    this.windowManager.send(
-      'ai-processing-started',
-      'both models are thinking... This may take 60-90 seconds for complex coding questions.'
-    );
-
-    try {
-      const responses = await this.queryBothProviders(question, ollamaInfo);
-      const finalResponse = this.formatDualResponse(responses.ollama, responses.deepseek);
-      console.log('[OCR Query] Both responses received and formatted');
-      this.windowManager.send('ai-processing-complete');
-      return finalResponse;
-    } catch (error) {
-      console.error('[OCR Query] Parallel query failed:', error.message);
-      const fallbackResponse = await this.handleParallelQueryError(question, ollamaInfo, error);
-      this.windowManager.send('ai-processing-complete');
-      return fallbackResponse;
-    }
-  }
-
-  /**
-   * Query both Ollama and DeepSeek providers in parallel
-   */
-  async queryBothProviders(question, ollamaInfo) {
-    const ollamaPromise = this.aiManager.ask(question);
-    this.aiManager.switchProvider('deepseek', {
-      model: 'deepseek-reasoner',
-      apiKey: process.env.DEEPSEEK_API_KEY,
-    });
-
-    const deepseekInfo = this.aiManager.getProviderInfo();
-    console.log(`[OCR Query] Using ${deepseekInfo.model}...`);
-
-
-    const deepseekPromise = this.aiManager.ask(question, { parameters: { temperature: 0.0 } });
-    const [ollamaResponse, deepseekResponse] = await Promise.all([
-      ollamaPromise,
-      deepseekPromise
-    ]);
-
-    return {
-      ollama: {
-        provider: ollamaInfo.name,
-        model: ollamaInfo.model,
-        response: ollamaResponse,
-      },
-      deepseek: {
-        provider: deepseekInfo.name,
-        model: deepseekInfo.model,
-        response: deepseekResponse,
-      }
-    };
-  }
-
-  /**
-   * Handle error during parallel query execution
-   */
-  async handleParallelQueryError(question, ollamaInfo, error) {
-    try {
-      const ollamaResponse = await this.aiManager.ask(question);
-      return `${ollamaResponse}\n\n---\n\n⚠️ **Parallel Query Error:** ${error.message}`;
-    } catch (fallbackError) {
-      return `⚠️ **Query Failed:** ${fallbackError.message}`;
-    }
-  }
-
-  /**
-   * Format dual response from Ollama and DeepSeek for display
-   * @param {Object} ollamaResult - Ollama response object
-   * @param {Object} deepseekResult - DeepSeek response object
-   * @returns {string} Formatted response
-   */
-  formatDualResponse(ollamaResult, deepseekResult) {
-    return (
-      `🤖 **${ollamaResult.model}** (Local)\n` +
-      `${ollamaResult.response}\n\n` +
-      `---\n\n` +
-      `🔥 **${deepseekResult.model}** (Cloud)\n` +
-      `${deepseekResult.response}\n\n` +
-      `*Burn mode: Showing responses from both local and cloud providers*`
-    );
   }
 
   /**
