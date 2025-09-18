@@ -26,18 +26,17 @@ This is an Electron-based DeepSeek Overlay Helper application that captures scre
 
 ## Core Architecture
 
-### AI System (Modern Object-Oriented)
-The AI system uses Strategy and Factory patterns for extensible provider management:
+### AI System (Simplified Function-Based)
+The AI system uses simple functions instead of complex class hierarchies for better maintainability:
 
-- **AIManager** (`src/js/ai/ai-manager.js`) - Main AI controller with session management
-- **ProviderFactory** (`src/js/ai/provider-factory.js`) - Creates AI provider instances
+- **SimpleAIManager** (`src/js/ai/simple-ai-manager.js`) - Main AI controller with session management
+- **SimpleAI** (`src/js/ai/simple-ai.js`) - Direct HTTP functions for all AI providers
 - **AIConfig** (`src/js/ai/ai-config.js`) - Centralized configuration management
-- **Providers** (`src/js/ai/providers/`) - Individual AI provider implementations
-  - `base-provider.js` - Abstract base class for all providers
-  - `ollama-provider.js` - Local Ollama integration
-  - `openai-provider.js` - OpenAI API integration
-  - `huggingface-provider.js` - HuggingFace Inference API
-  - `deepseek-provider.js` - DeepSeek API integration
+- **Supported Providers**:
+  - Ollama - Local AI models
+  - OpenAI - GPT models via API
+  - HuggingFace - Inference API
+  - DeepSeek V3.1 - With think mode support for enhanced reasoning
 
 ### Application Structure
 - **AppController** (`src/js/app-controller.js`) - Main application controller
@@ -75,7 +74,7 @@ HF_TOKEN=your_huggingface_token
 HF_PROVIDER=hyperbolic
 HF_MODEL=deepseek-ai/DeepSeek-R1-0528
 
-# DeepSeek Configuration
+# DeepSeek Configuration (V3.1 with Think Mode)
 DEEPSEEK_API_KEY=your_deepseek_api_key
 DEEPSEEK_MODEL=deepseek-chat
 
@@ -88,11 +87,16 @@ ASSEMBLYAI_AUTO_DETECT=false
 ## Key Patterns and Conventions
 
 ### AI Provider Development
-When adding new AI providers:
-1. Extend `BaseAIProvider` class
-2. Implement required methods: `chatCompletion()`, `warmup()`, `getConfig()`
-3. Register with ProviderFactory
-4. Add configuration template to AIConfig
+The system now uses simple functions instead of classes:
+1. Add provider configuration to `ai-config.js`
+2. Implement handler function in `simple-ai.js` (follow existing patterns)
+3. Most providers use OpenAI-compatible APIs for easy integration
+
+### DeepSeek V3.1
+DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
+- **Think mode**: Uses `<think>` tags automatically for step-by-step reasoning
+- **Optimized parameters**: Lower temperature (0.1) and higher token limits (4096)
+- **Version**: Automatically uses V3.1 API features
 
 ### Session Management
 - Sessions are maintained per provider-model combination

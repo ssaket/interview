@@ -124,7 +124,7 @@ async function handleOpenAI(config, messages, parameters) {
 }
 
 /**
- * Handle DeepSeek requests (OpenAI-compatible)
+ * Handle DeepSeek requests (V3.1 with think mode support)
  */
 async function handleDeepSeek(config, messages, parameters) {
   if (!config.apiKey) {
@@ -137,6 +137,7 @@ async function handleDeepSeek(config, messages, parameters) {
     baseUrl = baseUrl.replace(/\/$/, '') + '/v1';
   }
 
+  // Build request body for V3.1
   const requestBody = {
     model: config.model,
     messages: messages,
@@ -163,7 +164,8 @@ async function handleDeepSeek(config, messages, parameters) {
     return {
       ...response.data,
       provider: 'deepseek',
-      model: config.model
+      model: config.model,
+      version: '3.1'
     };
   } catch (error) {
     throw formatError('deepseek', error);

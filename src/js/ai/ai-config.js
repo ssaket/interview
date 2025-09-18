@@ -79,7 +79,7 @@ class AIConfig {
         },
         deepseek: {
           name: 'deepseek',
-          model: 'deepseek-chat',
+          model: 'deepseek-reasoner',
           baseUrl: 'https://api.deepseek.com',
           timeout: 120000,
           models: {
@@ -89,12 +89,13 @@ class AIConfig {
             coding: ['deepseek-chat', 'deepseek-reasoner'],
           },
           parameters: {
-            temperature: 0.0,
+            temperature: 0.1,
             top_p: 0.9,
-            max_tokens: 2048,
+            max_tokens: 4096,
             frequency_penalty: 0,
             presence_penalty: 0,
           },
+          version: '3.1',
         },
       }
     };
