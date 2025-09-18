@@ -1,5 +1,6 @@
 const axios = require('axios');
 const BaseAIProvider = require('./base-provider');
+const aiConfig = require('../ai-config');
 
 /**
  * DeepSeek AI Provider
@@ -8,18 +9,12 @@ const BaseAIProvider = require('./base-provider');
  * Supports both DeepSeek-Chat (V3) and DeepSeek-Reasoner (R1) models
  */
 class DeepSeekProvider extends BaseAIProvider {
-  constructor(config = {}) {
-    super({
-      name: 'deepseek',
-      model: config.model || 'deepseek-chat',
-      apiKey: config.apiKey || process.env.DEEPSEEK_API_KEY,
-      baseUrl: config.baseUrl || process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
-      timeout: config.timeout || 120000, // 2 minute timeout
-      ...config
-    });
+  constructor(overrides = {}) {
+    const config = aiConfig.getProviderConfig('deepseek', overrides);
+    super(config);
 
-    this.apiKey = this.config.apiKey;
-    this.baseUrl = this.config.baseUrl;
+    this.apiKey = config.apiKey;
+    this.baseUrl = config.baseUrl;
 
     if (!this.apiKey) {
       throw new Error('DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable or pass it in config.');

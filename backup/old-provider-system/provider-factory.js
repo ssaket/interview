@@ -139,38 +139,13 @@ class ProviderFactory {
   }
 
   /**
-   * Create a provider with automatic configuration from environment
+   * Create a provider with configuration overrides
    * @param {string} providerName - Provider name
    * @param {Object} overrides - Configuration overrides
    * @returns {BaseAIProvider} Provider instance
    */
-  createProviderWithEnvConfig(providerName, overrides = {}) {
-    const envConfigs = {
-      ollama: {
-        model: process.env.OLLAMA_MODEL,
-        baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-      },
-      openai: {
-        model: process.env.OPENAI_MODEL,
-        apiKey: process.env.OPENAI_API_KEY,
-      },
-      huggingface: {
-        model: process.env.HF_MODEL,
-        apiToken: process.env.HF_TOKEN,
-        provider: process.env.HF_PROVIDER || 'hyperbolic',
-      },
-      deepseek: {
-        model: process.env.DEEPSEEK_MODEL,
-        apiKey: process.env.DEEPSEEK_API_KEY,
-        baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
-      },
-    };
-
-    const normalizedName = providerName.toLowerCase();
-    const envConfig = envConfigs[normalizedName] || {};
-    const finalConfig = { ...envConfig, ...overrides };
-
-    return this.createProvider(providerName, finalConfig);
+  createProviderWithConfig(providerName, overrides = {}) {
+    return this.createProvider(providerName, overrides);
   }
 
   /**

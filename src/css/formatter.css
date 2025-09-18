@@ -163,3 +163,45 @@ li {
     line-height: 1.6;
     color: #ddd;
 }
+
+/* Math formula styles */
+.math-inline {
+    display: inline;
+    margin: 0 2px;
+}
+
+.math-block {
+    display: block;
+    text-align: center;
+    margin: 16px 0;
+    padding: 8px;
+}
+
+/* KaTeX overrides for better theming */
+.katex {
+    font-size: 1.1em !important;
+}
+
+.katex-display {
+    margin: 1em 0 !important;
+    text-align: center !important;
+}
+
+/* Theme-aware math colors */
+[data-theme="dark"] .katex {
+    color: var(--text-color) !important;
+}
+
+[data-theme="light"] .katex {
+    color: #333 !important;
+}
+
+/* Math error styling */
+.math-inline[title*="error"], 
+.math-block[title*="error"] {
+    background-color: rgba(214, 51, 132, 0.1);
+    border: 1px solid rgba(214, 51, 132, 0.3);
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-family: 'Monaco', 'Consolas', monospace;
+}

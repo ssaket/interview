@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { createProvider, getAvailableProviders } = require('./provider-factory');
 const MODEL_PROMPTS = require('../model-prompts');
-const { getProviderConfig } = require('./ai-config');
+const aiConfig = require('./ai-config');
 
 /**
  * Modern Object-Oriented AI Manager
@@ -14,7 +14,7 @@ class AIManager {
     this.appController = appController;
 
     // Configuration
-    this.currentProviderName = process.env.AI_PROVIDER || 'ollama';
+    this.currentProviderName = aiConfig.getDefaultProvider();
     this.currentModelName = this._getDefaultModelForProvider(this.currentProviderName);
 
     // Provider management
@@ -326,7 +326,7 @@ class AIManager {
    * @returns {Object} Ollama models config with simple array and all() method
    */
   getOllamaModels() {
-    const ollamaConfig = getProviderConfig('ollama');
+    const ollamaConfig = aiConfig.getProviderConfig('ollama');
     const models = ollamaConfig.models || {};
 
     return {
@@ -364,13 +364,7 @@ class AIManager {
    * @private
    */
   _getDefaultModelForProvider(providerName) {
-    const defaults = {
-      ollama: process.env.OLLAMA_MODEL || 'gpt-oss',
-      openai: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
-      huggingface: process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
-      deepseek: process.env.DEEPSEEK_MODEL || 'deepseek-reasoning',
-    };
-    return defaults[providerName] || 'default';
+    return aiConfig.getPrimaryModel(providerName);
   }
 
   /**

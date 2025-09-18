@@ -1,4 +1,5 @@
 const BaseAIProvider = require('./base-provider');
+const aiConfig = require('../ai-config');
 
 /**
  * HuggingFace AI Provider
@@ -7,20 +8,13 @@ const BaseAIProvider = require('./base-provider');
  * Supports both HuggingFace Hub and third-party providers like Hyperbolic
  */
 class HuggingFaceProvider extends BaseAIProvider {
-  constructor(config = {}) {
-    super({
-      name: 'huggingface',
-      model: config.model || process.env.HF_MODEL || 'deepseek-ai/DeepSeek-R1-0528',
-      apiToken: config.apiToken || process.env.HF_TOKEN,
-      provider: config.provider || process.env.HF_PROVIDER || 'hyperbolic',
-      baseUrl: config.baseUrl || 'https://api-inference.huggingface.co',
-      timeout: config.timeout || 120000, // 2 minute timeout
-      ...config
-    });
+  constructor(overrides = {}) {
+    const config = aiConfig.getProviderConfig('huggingface', overrides);
+    super(config);
 
-    this.apiToken = this.config.apiToken;
-    this.provider = this.config.provider;
-    this.baseUrl = this.config.baseUrl;
+    this.apiToken = config.apiToken;
+    this.provider = config.provider;
+    this.baseUrl = config.baseUrl;
 
     // Lazy load the HuggingFace client
     this._client = null;

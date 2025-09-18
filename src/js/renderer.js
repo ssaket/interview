@@ -144,7 +144,7 @@ const FlowManager = {
     } finally {
       // Switch back to original provider if needed
       if (originalProvider.provider !== 'deepseek') {
-        await ipcRenderer.invoke('switch-to-ollama');
+        await ipcRenderer.invoke('switch-to-provider', originalProvider.provider);
       }
     }
   },
@@ -246,6 +246,48 @@ const UI = {
 
   setOutputHTML(html) {
     this.output.innerHTML = html;
+    // Render math formulas after setting HTML content
+    this.renderMathFormulas();
+  },
+
+  /**
+   * Render math formulas using KaTeX
+   */
+  renderMathFormulas() {
+    if (typeof katex === 'undefined') {
+      console.warn('KaTeX not loaded, math formulas will not be rendered');
+      return;
+    }
+
+    // Find all math elements and render them
+    const mathElements = this.output.querySelectorAll('.math-inline, .math-block');
+    
+    mathElements.forEach(element => {
+      const formula = element.getAttribute('data-formula');
+      const displayMode = element.hasAttribute('data-display');
+      
+      if (formula) {
+        try {
+          // Render the math formula directly into the element
+          katex.render(formula, element, {
+            displayMode: displayMode,
+            throwOnError: false,
+            strict: false
+          });
+          
+          // Add styling classes
+          if (displayMode) {
+            element.classList.add('katex-display');
+          }
+        } catch (error) {
+          console.warn('Failed to render math formula:', formula, error);
+          // Fallback: show the raw formula
+          element.textContent = displayMode ? `$$${formula}$$` : `$${formula}$`;
+          element.style.color = '#d63384'; // Bootstrap danger color
+          element.title = `Math rendering error: ${error.message}`;
+        }
+      }
+    });
   },
 
   setSession(number) {
@@ -301,6 +343,10 @@ const UI = {
           break;
         case 'transcribing':
           this.speechIndicator.style.backgroundColor = '#0088ff'; // Blue for transcribing
+          this.speechIndicator.style.display = 'inline-block';
+          break;
+        case 'ai-processing':
+          this.speechIndicator.style.backgroundColor = '#8800ff'; // Purple for AI processing
           this.speechIndicator.style.display = 'inline-block';
           break;
         case 'completed':
@@ -768,30 +814,12 @@ ipcRenderer.on('transcription-received', async (event, transcriptionText, metada
     UI.showTranscription(transcriptionText, metadata);
   }
   
-  // Automatically query AI with the transcribed text
+  // Note: AI processing is now handled automatically by the app-controller's handleSpeechToAI method
+  // This avoids duplicate requests and provides better integration with session history
+  
+  // Return to idle state after showing transcription
   if (transcriptionText && transcriptionText.trim()) {
-    try {
-      UI.hideInstructions();
-      UI.setOutput('QUERYING AI: Processing transcribed speech with AI provider...');
-      
-      const answer = await FlowManager.queryAI(transcriptionText);
-      
-      lastAssistantResponse = answer;
-      saveLastAssistantResponse(answer);
-      
-      const { text: plain, html } = dsFormatter.formatResponse(answer, formatterEnabled);
-      if (formatterEnabled) {
-        UI.setOutputHTML(html);
-      } else {
-        UI.setOutput(plain);
-      }
-      
-      // After AI response, return to idle state
-      FlowManager.setFlow(FlowManager.flows.IDLE);
-    } catch (error) {
-      UI.setOutput(`❌ AI Query error: ${error.message}`, 3000);
-      FlowManager.setFlow(FlowManager.flows.IDLE);
-    }
+    FlowManager.setFlow(FlowManager.flows.IDLE);
   }
 });
 
@@ -819,6 +847,59 @@ ipcRenderer.on('cycle-ai-flow', () => {
 });
 
 // Initialize OCR filtering state when page loads
+// Speech-to-AI integrated workflow event handlers
+ipcRenderer.on('speech-to-ai-started', (event, data) => {
+  console.log('Speech-to-AI workflow started:', data);
+  
+  // Show speech context indicator
+  if (data.hasSessionHistory) {
+    UI.setOutput(`🎤💬 Processing speech with conversation context: "${data.text}"`);
+  } else {
+    UI.setOutput(`🎤 Processing speech with AI: "${data.text}"`);
+  }
+  
+  // Update speech indicator to show AI processing
+  UI.updateSpeechStatus('ai-processing', `AI is processing: "${data.text}"`);
+});
+
+ipcRenderer.on('speech-to-ai-completed', (event, data) => {
+  console.log('Speech-to-AI workflow completed:', data);
+  
+  // Store the assistant response
+  lastAssistantResponse = data.aiResponse;
+  saveLastAssistantResponse(data.aiResponse);
+  
+  // Display the AI response
+  UI.hideInstructions();
+  const { text: plain, html } = dsFormatter.formatResponse(data.aiResponse, formatterEnabled);
+  if (formatterEnabled) {
+    UI.setOutputHTML(html);
+  } else {
+    UI.setOutput(plain);
+  }
+  
+  // Show completion status with confidence
+  const confidenceText = data.confidence ? ` (${(data.confidence * 100).toFixed(1)}% confidence)` : '';
+  UI.updateSpeechStatus('completed', `✅ Speech processed${confidenceText}`);
+  
+  // Reset speech indicator after a delay
+  setTimeout(() => {
+    UI.updateSpeechStatus('idle', 'Speech ready');
+  }, 3000);
+});
+
+ipcRenderer.on('speech-to-ai-error', (event, data) => {
+  console.error('Speech-to-AI workflow error:', data);
+  
+  UI.setOutput(`❌ Failed to process speech: ${data.error}`, 5000);
+  UI.updateSpeechStatus('error', `Failed: ${data.error}`);
+  
+  // Reset after error display
+  setTimeout(() => {
+    UI.updateSpeechStatus('idle', 'Speech ready');
+  }, 5000);
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   initOcrFilteringState();
   // Initialize AI flow indicator

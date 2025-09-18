@@ -130,7 +130,12 @@ When adding new AI providers:
 
 ### Speech-to-Text
 - `Cmd+R` - Start speech recording
-- `Cmd+T` - Stop speech recording and transcribe with AssemblyAI
+- `Cmd+T` - Stop speech recording and auto-submit to AI with OCR context
+
+### OCR + Speech Integrated Workflow
+- Take screenshot → OCR extracts text → AI processes with session context
+- Use speech for follow-up questions → AI maintains conversation history automatically
+- All context preserved in AI session (no separate OCR context needed)
 
 ### Conversation History
 - `Cmd+Shift+V` - Open live conversation history in browser (WebSocket-powered)
@@ -163,6 +168,15 @@ The project uses Node.js-based testing without external frameworks:
 - Test with various AI responses to ensure compatibility
 - Update tests as needed
 
+### Math Formula Support
+- **LaTeX Rendering**: Full support for LaTeX math formulas using KaTeX
+- **Inline Math**: Use `$formula$` for inline mathematical expressions
+- **Block Math**: Use `$$formula$$` for centered display equations
+- **Advanced Features**: Supports complex formulas, integrals, summations, fractions, Greek letters
+- **Theme Integration**: Math formulas automatically adapt to light/dark themes
+- **Error Handling**: Invalid formulas show in red with error tooltips
+- **Examples**: `$E = mc^2$`, `$$\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}$$`
+
 ### Conversation History Management
 - **Real-time WebSocket Updates**: Conversation history is broadcast instantly via WebSocket after each AI query
 - **Live Browser URL**: Use `Cmd+Shift+V` to open the live conversation history at `http://localhost:[port]`
@@ -181,6 +195,14 @@ The project uses Node.js-based testing without external frameworks:
   - Profanity filtering
   - Enhanced punctuation and formatting
 - **Runtime Changes**: Language can be changed programmatically via IPC without restart
+
+### OCR + Speech Integrated Features
+- **Session-Based Context**: All conversation history (OCR + speech + text) maintained in AI session
+- **Automatic Context Inheritance**: Speech input automatically benefits from previous conversation context
+- **No Manual Context Management**: AI session handles all context automatically (up to 20 messages)
+- **Visual Indicators**: UI shows when speech is processing with conversation context (purple indicator)
+- **Seamless Workflow**: Screenshot → Ask question via speech → Get contextual AI response
+- **Simplified Architecture**: Uses existing session system instead of separate OCR context tracking
 
 ## File Structure Context
 

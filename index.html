@@ -6,6 +6,8 @@
     <link rel="stylesheet" href="src/css/main.css" />
     <link rel="stylesheet" href="src/css/formatter.css" />
     <link rel="stylesheet" href="src/css/themes.css" />
+    <!-- KaTeX CSS for math formula rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
   </head>
   <body>
     <div id="header">
@@ -120,6 +122,9 @@
       <div id="output">Waiting for action...</div>
       <img id="screenshot" style="display: none" />
     </div>
+    <!-- KaTeX JavaScript for math formula rendering -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpVOOVVP1WkQRkgOFjFtYbCUi8Duu/6WAgIjTXCODd0KvjY" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgJE3YDMOYs6EBRkQ7r7z4xZCKMqr2zzK3zJqI5nEeCqrLJmNnGe4tOa" crossorigin="anonymous"></script>
     <script src="src/js/renderer.js"></script>
   </body>
 </html>

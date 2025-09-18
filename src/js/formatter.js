@@ -2,6 +2,8 @@ class DeepSeekFormatter {
   constructor() {
     this.codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
     this.thinkingRegex = /<think>[\s\S]*?<\/think>/gi;
+    this.blockMathRegex = /\$\$([^$]+)\$\$/g;
+    this.inlineMathRegex = /(?<!\$)\$([^$\n]+)\$(?!\$)/g;
   }
 
   /**
@@ -70,6 +72,9 @@ class DeepSeekFormatter {
         // Wrap consecutive <li> in <ul>
         cleaned = cleaned.replace(/(<li>.*?<\/li>)/gs, '<ul>$1</ul>');
 
+        // Process math formulas before other formatting
+        cleaned = this.processMathFormulas(cleaned);
+
         // Bold, italic, inline code
         cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         cleaned = cleaned.replace(/\*(.*?)\*/g, '<em>$1</em>');
@@ -113,6 +118,67 @@ class DeepSeekFormatter {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Process LaTeX math formulas and convert them to rendered HTML
+   * @param {string} text - Text containing math formulas
+   * @returns {string} Text with math formulas converted to HTML
+   */
+  processMathFormulas(text) {
+    // Store original formulas to preserve them
+    const mathReplacements = [];
+    let replacementIndex = 0;
+
+    // Handle block math ($$...$$ - display mode)
+    text = text.replace(this.blockMathRegex, (match, formula) => {
+      const placeholder = `__MATH_BLOCK_${replacementIndex}__`;
+      mathReplacements[replacementIndex] = {
+        type: 'block',
+        formula: formula.trim(),
+        placeholder
+      };
+      replacementIndex++;
+      return placeholder;
+    });
+
+    // Handle inline math ($...$ - inline mode)
+    text = text.replace(this.inlineMathRegex, (match, formula) => {
+      const placeholder = `__MATH_INLINE_${replacementIndex}__`;
+      mathReplacements[replacementIndex] = {
+        type: 'inline',
+        formula: formula.trim(),
+        placeholder
+      };
+      replacementIndex++;
+      return placeholder;
+    });
+
+    // Replace placeholders with rendered math HTML
+    mathReplacements.forEach(math => {
+      const renderedMath = this.renderMathFormula(math.formula, math.type === 'block');
+      text = text.replace(math.placeholder, renderedMath);
+    });
+
+    return text;
+  }
+
+  /**
+   * Render a LaTeX math formula to HTML
+   * @param {string} formula - LaTeX formula
+   * @param {boolean} displayMode - True for block display, false for inline
+   * @returns {string} Rendered HTML
+   */
+  renderMathFormula(formula, displayMode = false) {
+    // Escape the formula for safety
+    const escapedFormula = this.escapeHtml(formula);
+    
+    // For now, return a styled span that can be rendered by KaTeX on the frontend
+    // The actual rendering will happen in the browser using KaTeX
+    const className = displayMode ? 'math-block' : 'math-inline';
+    const displayAttr = displayMode ? ' data-display="true"' : '';
+    
+    return `<span class="${className}" data-formula="${escapedFormula}"${displayAttr}>${escapedFormula}</span>`;
   }
 
   highlightCode(code, lang) {

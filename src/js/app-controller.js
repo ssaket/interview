@@ -1,7 +1,7 @@
 const { app, ipcMain, desktopCapturer, nativeImage, screen } = require('electron');
 const path = require('path');
 const WindowManager = require('./window-manager');
-const { AIManager } = require('./ai/index');
+const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
 const OCRLogger = require('./ocr-logger');
 const SpeechToTextService = require('./speech-to-text-service');
@@ -11,7 +11,7 @@ const ConversationWebSocketServer = require('./conversation-websocket-server');
 class AppController {
   constructor() {
     this.windowManager = new WindowManager();
-    this.aiManager = new AIManager(this);
+    this.aiManager = new SimpleAIManager(this);
     this.conversationHistoryService = new ConversationHistoryService(this.aiManager, this);
     this.conversationWebSocketServer = new ConversationWebSocketServer(this.conversationHistoryService);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
@@ -23,7 +23,7 @@ class AppController {
     this.speechService = new SpeechToTextService();
     this.ocrFilteringEnabled = true;
 
-    // Track OCR context for fallback queries
+    // Track OCR context for initial query detection
     this.lastOcrText = null;
     this.isOcrContext = false;
 
@@ -137,7 +137,7 @@ class AppController {
           preprocessed: options.preprocessed || false,
         });
 
-        // Mark this as OCR context for the next AI query
+        // Mark this as OCR context for the next query (simple flag for UI)
         this.lastOcrText = finalText;
         this.isOcrContext = true;
 
@@ -148,18 +148,19 @@ class AppController {
       }
     });
 
-    /* ------------ Ask ChatGPT / AI with OCR Fallback ------------ */
+    /* ------------ Ask ChatGPT / AI ------------ */
     ipcMain.handle('ask-chatgpt', async (_event, question) => {
       try {
-        // Check if this is an OCR query
-        const isOcrQuery = this.isOcrContext && (question === this.lastOcrText || this.lastOcrText);
+        // Check if this is the initial OCR query (question matches OCR text)
+        const isInitialOcrQuery = this.isOcrContext && (question === this.lastOcrText);
 
-        if (isOcrQuery) {
-          this.isOcrContext = false; // Reset flag
+        if (isInitialOcrQuery) {
+          // Initial OCR query - clear OCR flag since we're now in session history
+          this.clearOcrContext();
           return await this.handleOcrQuery(question);
         }
 
-        // Regular query - use current provider
+        // Regular query - AI session handles all conversation context automatically
         return await this.aiManager.ask(question);
       } catch (err) {
         const info = this.aiManager.getProviderInfo();
@@ -237,6 +238,16 @@ class AppController {
         return { success: true };
       } catch (error) {
         console.error('Failed to switch to Ollama:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('switch-to-provider', async (_event, providerName) => {
+      try {
+        await this.aiManager.switchProvider(providerName);
+        return { success: true };
+      } catch (error) {
+        console.error(`Failed to switch to ${providerName}:`, error);
         return { success: false, error: error.message };
       }
     });
@@ -352,6 +363,27 @@ class AppController {
         console.error('Failed to set speech language:', error);
         return { success: false, error: error.message };
       }
+    });
+
+    ipcMain.handle('speech-to-ai', async (_event, speechText, options = {}) => {
+      try {
+        const metadata = {
+          confidence: options.confidence || 1.0,
+          duration: options.duration || 0,
+          language: options.language || 'en'
+        };
+        
+        await this.handleSpeechToAI(speechText, metadata);
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to process speech-to-AI:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('clear-ocr-context', async () => {
+      this.clearOcrContext();
+      return { success: true };
     });
 
     /* ------------ Conversation History ------------ */
@@ -572,9 +604,14 @@ class AppController {
    */
   setupSpeechCallbacks() {
     this.speechService.setCallbacks({
-      onTranscriptReceived: (text, metadata) => {
+      onTranscriptReceived: async (text, metadata) => {
         console.log('Transcription received:', text);
         this.windowManager.send('transcription-received', text, metadata);
+        
+        // Auto-submit speech to AI if we have OCR context or ongoing conversation
+        if (text && text.trim()) {
+          await this.handleSpeechToAI(text, metadata);
+        }
       },
       onError: (error) => {
         console.error('Speech service error:', error);
@@ -585,6 +622,47 @@ class AppController {
         this.windowManager.send('speech-status-update', status, message);
       }
     });
+  }
+
+  /**
+   * Handle speech-to-text result by sending it to AI
+   * @param {string} speechText - Transcribed speech text
+   * @param {Object} metadata - Speech metadata (confidence, duration, etc.)
+   */
+  async handleSpeechToAI(speechText, metadata) {
+    try {
+      console.log(`[AppController] Processing speech input: "${speechText}"`);
+      
+      // Notify UI that we're processing speech as AI query
+      this.windowManager.send('speech-to-ai-started', {
+        text: speechText,
+        confidence: metadata.confidence,
+        hasSessionHistory: this.aiManager.getSession().history.length > 0
+      });
+
+      // Simply send the speech text as a regular AI query
+      // The AI session already maintains conversation history including any previous OCR/screenshot context
+      const aiResponse = await this.aiManager.ask(speechText);
+
+      // Notify UI with the AI response
+      this.windowManager.send('speech-to-ai-completed', {
+        speechText: speechText,
+        aiResponse: aiResponse,
+        confidence: metadata.confidence,
+        duration: metadata.duration
+      });
+
+      console.log('[AppController] Speech-to-AI workflow completed successfully');
+      
+    } catch (error) {
+      console.error('[AppController] Speech-to-AI processing failed:', error);
+      
+      // Send error to UI
+      this.windowManager.send('speech-to-ai-error', {
+        speechText: speechText,
+        error: error.message || error.toString()
+      });
+    }
   }
 
   start() {
@@ -620,6 +698,15 @@ class AppController {
       this.cleanup();
       process.exit(1);
     });
+  }
+
+  /**
+   * Clear OCR context flag
+   */
+  clearOcrContext() {
+    this.isOcrContext = false;
+    this.lastOcrText = null;
+    console.log('[AppController] OCR context flag cleared');
   }
 
   /**

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const BaseAIProvider = require('./base-provider');
+const aiConfig = require('../ai-config');
 
 /**
  * OpenAI AI Provider
@@ -7,18 +8,12 @@ const BaseAIProvider = require('./base-provider');
  * Provides integration with OpenAI's GPT models via their API
  */
 class OpenAIProvider extends BaseAIProvider {
-  constructor(config = {}) {
-    super({
-      name: 'openai',
-      model: config.model || 'gpt-3.5-turbo',
-      apiKey: config.apiKey || process.env.OPENAI_API_KEY,
-      baseUrl: config.baseUrl || 'https://api.openai.com/v1',
-      timeout: config.timeout || 120000, // 2 minute timeout for OpenAI
-      ...config
-    });
+  constructor(overrides = {}) {
+    const config = aiConfig.getProviderConfig('openai', overrides);
+    super(config);
 
-    this.apiKey = this.config.apiKey;
-    this.baseUrl = this.config.baseUrl;
+    this.apiKey = config.apiKey;
+    this.baseUrl = config.baseUrl;
 
     if (!this.apiKey) {
       throw new Error('OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass it in config.');

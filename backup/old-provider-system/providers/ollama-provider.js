@@ -1,5 +1,6 @@
 const axios = require('axios');
 const BaseAIProvider = require('./base-provider');
+const aiConfig = require('../ai-config');
 
 /**
  * Ollama AI Provider
@@ -7,16 +8,10 @@ const BaseAIProvider = require('./base-provider');
  * Provides integration with Ollama local AI models
  */
 class OllamaProvider extends BaseAIProvider {
-  constructor(config = {}) {
-    super({
-      name: 'ollama',
-      model: config.model || process.env.OLLAMA_MODEL,
-      baseUrl: config.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-      timeout: config.timeout || 300000, // 5 minute timeout for reasoning models
-      ...config
-    });
-
-    this.baseUrl = this.config.baseUrl;
+  constructor(overrides = {}) {
+    const config = aiConfig.getProviderConfig('ollama', overrides);
+    super(config);
+    this.baseUrl = config.baseUrl;
   }
 
   /**

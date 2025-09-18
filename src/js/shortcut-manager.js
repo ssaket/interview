@@ -3,7 +3,7 @@ const { globalShortcut, screen } = require('electron');
 class ShortcutManager {
   /**
    * @param {WindowManager} windowManager
-   * @param {AIManager}     aiManager
+   * @param {SimpleAIManager}     aiManager
    * @param {AppController} appController   – for toggling OCR / burn‑mode flags
    */
   constructor(windowManager, aiManager, appController) {
