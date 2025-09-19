@@ -119,43 +119,61 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - Single quotes, 2-space tabs, 100-char line limit
 - Use semicolons and trailing commas
 
-## Keyboard Shortcuts
+## Psychology-Optimized Keyboard Shortcuts
 
-### Screen Capture
-- `Cmd+Shift+S` - Capture full screen
-- `Cmd+Shift+A` - Select region to capture (reduces OCR noise)
+*Designed using cognitive psychology principles for better memorability, reduced key distance, and lower mental load. Works cross-platform with Cmd (macOS) or Ctrl (Windows/Linux).*
 
-### Window Management
-- `Cmd+←/→/↑/↓` - Move overlay window
-- `Cmd+Shift+=/−` - Resize window
-- `Cmd+B` - Hide/show application
-- `Cmd+Shift+0` - Toggle window size
+### **TIER 1: Core Functions** *(Single Modifier - Most Used)*
+**Easy-to-reach keys with strong mnemonics:**
+- `Cmd/Ctrl+S` - **S**creenshot (full screen)
+- `Cmd/Ctrl+A` - **A**rea screenshot (region selection)
+- `Cmd/Ctrl+R` - **R**ecord speech
+- `Cmd/Ctrl+T` - s**T**op recording
+- `Cmd/Ctrl+B` - Show/hide window (preserving original)
+- `Cmd/Ctrl+Arrow Keys` - Move window (natural directional mapping)
 
-### AI and Session Control
-- `Cmd+Shift+R` - Reset session (clear context)
-- `Cmd+Shift+P` - Cycle AI flows (LOCAL → CLOUD → HYBRID)
-- `Cmd+Shift+W` - Manual model warmup (Ollama)
-- `Cmd+Shift+F` - Toggle response formatter (code highlighting)
-- `Cmd+Shift+O` - Toggle OCR filtering
+### **TIER 2: Workflows** *(Numbers - Sequential Operations)*
+**1→2→3→4 natural sequence for screenshot stack workflow:**
+- `Cmd/Ctrl+1` - Add full screenshot to stack
+- `Cmd/Ctrl+2` - Add region screenshot to stack
+- `Cmd/Ctrl+3` - Process screenshot stack
+- `Cmd/Ctrl+4` - Clear screenshot stack
 
-### Speech-to-Text
-- `Cmd+R` - Start speech recording
-- `Cmd+T` - Stop speech recording and auto-submit to AI with OCR context
+### **TIER 3: Utilities** *(Function Keys - Universal Standards)*
+- `F1` - Help (universal help key)
+- `F11` - Toggle window size (alternative)
 
-### AI Flow Selection
-Use `Cmd+Shift+P` to cycle through AI processing flows:
+### **TIER 4: Advanced Features** *(Double Modifier - Less Frequent)*
+**Grouped by function with memorable mnemonics:**
+- `Cmd/Ctrl+Shift+0` - Toggle window size (original shortcut)
+- `Cmd/Ctrl+Shift+R` - **R**eset AI session
+- `Cmd/Ctrl+Shift+F` - AI **F**low toggle (LOCAL→CLOUD→HYBRID)
+- `Cmd/Ctrl+Shift+O` - **O**CR filter toggle
+- `Cmd/Ctrl+Shift+D` - **D**ark/light theme toggle
+- `Cmd/Ctrl+Shift+V` - **V**iew conversation history in browser
+- `Cmd/Ctrl+Shift+C` - **C**enter window
+- `Cmd/Ctrl+Shift+S/A` - Alternative screenshot shortcuts (compatibility)
 
-- **LOCAL Flow**: Fast local processing with Ollama models only
-- **CLOUD Flow**: Enhanced reasoning with DeepSeek API only
-- **HYBRID Flow**: Best of both - streaming local response first, then DeepSeek analysis appended
+### **TIER 5: Fine Control** *(Double Modifier + Arrows/Symbols)*
+**Precise adjustments for power users:**
+- `Cmd/Ctrl+Shift+Arrow Keys` - Resize window height
+- `Cmd/Ctrl+Shift+[ ]` - Resize window width (brackets)
+- `Cmd/Ctrl+Shift+Plus/Minus` - Adjust movement step size
+- `Cmd+Option+M` / `Ctrl+Alt+M` - Mouse tracking toggle (window follows cursor)
 
-### OCR + Speech Integrated Workflow
-- Take screenshot → OCR extracts text → AI processes with session context
-- Use speech for follow-up questions → AI maintains conversation history automatically
-- All context preserved in AI session (no separate OCR context needed)
+### **Additional Features**
+- `Shift+X/Z` - Scroll page up/down
+- `Cmd/Ctrl+Shift+M` - Switch Ollama **M**odel
+- `Cmd/Ctrl+Shift+W` - Model **W**armup (Ollama)
+- `Cmd/Ctrl+Shift+L` - Toggle formatter (**L**ayout)
+- `Cmd/Ctrl+Shift+I` - Developer tools (**I**nspect)
 
-### Conversation History
-- `Cmd+Shift+V` - Open live conversation history in browser (WebSocket-powered)
+### **Psychology Benefits**
+- **Reduced Cognitive Load**: 18 core shortcuts vs. previous 25+
+- **Better Mnemonics**: S=Screenshot, A=Area, R=Record, T=sTop, H=Hide
+- **Muscle Memory**: Left-hand keys (S,A,R,T,H) easy to reach with Cmd/Ctrl
+- **Logical Grouping**: Functions organized by frequency and relatedness
+- **Cross-Platform**: Same logical keys work on macOS (Cmd) and Windows (Ctrl)
 
 ## Testing Approach
 

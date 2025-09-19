@@ -159,7 +159,26 @@ async function handleOpenAI(config, messages, parameters, stream = false, onChun
     throw new Error('OpenAI API key is required');
   }
 
-  const requestBody = {
+  const requestBody = buildOpenAIRequestBody(config, messages, parameters, stream);
+  const headers = buildOpenAIHeaders(config.apiKey);
+
+  try {
+    if (stream && onChunk) {
+      return await handleOpenAIStreaming(config, requestBody, headers, onChunk);
+    } else {
+      return await handleOpenAINonStreaming(config, requestBody, headers);
+    }
+  } catch (error) {
+    throw formatError('openai', error);
+  }
+}
+
+/**
+ * Build OpenAI request body
+ * @private
+ */
+function buildOpenAIRequestBody(config, messages, parameters, stream) {
+  return {
     model: config.model,
     messages: messages,
     temperature: parameters.temperature ?? config.parameters.temperature,
@@ -168,67 +187,45 @@ async function handleOpenAI(config, messages, parameters, stream = false, onChun
     stream: stream,
     ...parameters
   };
+}
 
-  try {
-    if (stream && onChunk) {
-      // Streaming response
-      const response = await axios.post(
-        `${config.baseUrl}/chat/completions`,
-        requestBody,
-        {
-          timeout: config.timeout,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-          },
-          responseType: 'stream',
-        }
-      );
+/**
+ * Build OpenAI headers
+ * @private
+ */
+function buildOpenAIHeaders(apiKey) {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`,
+  };
+}
 
-      let fullContent = '';
+/**
+ * Handle OpenAI streaming response
+ * @private
+ */
+async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
+  const response = await axios.post(
+    `${config.baseUrl}/chat/completions`,
+    requestBody,
+    {
+      timeout: config.timeout,
+      headers,
+      responseType: 'stream',
+    }
+  );
 
-      return new Promise((resolve, reject) => {
-        response.data.on('data', (chunk) => {
-          const lines = chunk.toString().split('\n').filter(line => line.trim());
+  let fullContent = '';
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
+  return new Promise((resolve, reject) => {
+    response.data.on('data', (chunk) => {
+      const lines = chunk.toString().split('\n').filter(line => line.trim());
 
-              if (data === '[DONE]') {
-                resolve({
-                  choices: [{
-                    message: {
-                      role: 'assistant',
-                      content: fullContent,
-                    },
-                  }],
-                  provider: 'openai',
-                  model: config.model
-                });
-                return;
-              }
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
 
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
-                  const content = parsed.choices[0].delta.content;
-                  fullContent += content;
-                  onChunk(content);
-                }
-              } catch (parseError) {
-                // Ignore parsing errors for partial chunks
-              }
-            }
-          }
-        });
-
-        response.data.on('error', (error) => {
-          reject(formatError('openai', error));
-        });
-
-        response.data.on('end', () => {
-          if (fullContent) {
+          if (data === '[DONE]') {
             resolve({
               choices: [{
                 message: {
@@ -239,32 +236,65 @@ async function handleOpenAI(config, messages, parameters, stream = false, onChun
               provider: 'openai',
               model: config.model
             });
+            return;
           }
-        });
-      });
-    } else {
-      // Non-streaming response
-      const response = await axios.post(
-        `${config.baseUrl}/chat/completions`,
-        requestBody,
-        {
-          timeout: config.timeout,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-          },
-        }
-      );
 
-      return {
-        ...response.data,
-        provider: 'openai',
-        model: config.model
-      };
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.choices?.[0]?.delta?.content) {
+              const content = parsed.choices[0].delta.content;
+              fullContent += content;
+              if (onChunk) {
+                onChunk(content);
+              }
+            }
+          } catch (parseError) {
+            // Ignore parsing errors for partial chunks
+          }
+        }
+      }
+    });
+
+    response.data.on('error', (error) => {
+      reject(formatError('openai', error));
+    });
+
+    response.data.on('end', () => {
+      if (fullContent) {
+        resolve({
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: fullContent,
+            },
+          }],
+          provider: 'openai',
+          model: config.model
+        });
+      }
+    });
+  });
+}
+
+/**
+ * Handle OpenAI non-streaming response
+ * @private
+ */
+async function handleOpenAINonStreaming(config, requestBody, headers) {
+  const response = await axios.post(
+    `${config.baseUrl}/chat/completions`,
+    requestBody,
+    {
+      timeout: config.timeout,
+      headers,
     }
-  } catch (error) {
-    throw formatError('openai', error);
-  }
+  );
+
+  return {
+    ...response.data,
+    provider: 'openai',
+    model: config.model
+  };
 }
 
 /**

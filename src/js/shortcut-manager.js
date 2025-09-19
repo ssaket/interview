@@ -4,7 +4,7 @@ class ShortcutManager {
   /**
    * @param {WindowManager} windowManager
    * @param {SimpleAIManager}     aiManager
-   * @param {AppController} appController   – for toggling OCR / burn‑mode flags
+   * @param {AppController} appController   – for toggling OCR flags
    */
   constructor(windowManager, aiManager, appController) {
     this.windowManager = windowManager;
@@ -16,7 +16,7 @@ class ShortcutManager {
     this.lastMousePosition = { x: 0, y: 0 }; // Store last mouse position
   }
 
-  /** Register all global shortcuts that were previously in registerShortcuts(). */
+  /** Register all global shortcuts using psychology-based design principles. */
   register() {
     const { mainWindow } = this.windowManager;
     let resizeStep = 50;
@@ -24,144 +24,117 @@ class ShortcutManager {
     const defaultHeight = 800;
     const minSize = 50;
 
-    /* ─── Movement ─── */
+    // Cross-platform modifier keys (Cmd on macOS, Ctrl on Windows/Linux)
+    const primary = process.platform === 'darwin' ? 'Command' : 'Control';
+    const secondary = process.platform === 'darwin' ? 'Command+Shift' : 'Control+Shift';
+
+    /* ═══ TIER 1: CORE FUNCTIONS (Primary Modifier - Most Used) ═══ */
+
+    // Screenshot Functions (S = Screenshot, A = Area)
+    globalShortcut.register(`${primary}+S`, () => {
+      this.windowManager.send('trigger-screenshot');
+    });
+
+    globalShortcut.register(`${primary}+A`, () => {
+      this.windowManager.send('trigger-screenshot-region');
+    });
+
+    // Recording Functions (R = Record, T = sTop)
+    globalShortcut.register(`${primary}+R`, () => {
+      this.windowManager.send('start-speech-recording');
+    });
+
+    globalShortcut.register(`${primary}+T`, () => {
+      this.windowManager.send('stop-speech-recording');
+    });
+
+    // Window Management (B = show/hide - preserving original)
+    globalShortcut.register(`${primary}+B`, () => {
+      this.toggleWindowVisibility();
+    });
+
+    // Window Movement (Arrow Keys = natural directional mapping)
     ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
-      globalShortcut.register(`Command+${dir}`, () => {
+      globalShortcut.register(`${primary}+${dir}`, () => {
         const [x, y] = mainWindow.getPosition();
         const dx = dir === 'Left' ? -this.moveStep : dir === 'Right' ? this.moveStep : 0;
         const dy = dir === 'Up' ? -this.moveStep : dir === 'Down' ? this.moveStep : 0;
         mainWindow.setPosition(x + dx, y + dy);
       });
     });
-    globalShortcut.register('Command+Shift+=', () => {
-      if (this.moveStep < 400) this.moveStep *= 2;
-    });
-    globalShortcut.register('Command+Shift+-', () => {
-      if (this.moveStep > 20) this.moveStep /= 2;
+
+    /* ═══ TIER 2: WORKFLOW SEQUENCES (Numbers - Sequential Operations) ═══ */
+
+    // Screenshot Stack Workflow (1→2→3→4 natural sequence)
+    globalShortcut.register(`${primary}+1`, () => {
+      this.windowManager.send('add-screenshot-to-stack', 'full');
     });
 
-    /* ─── Center window ─── */
-    globalShortcut.register('Command+Shift+C', () => {
-      this.centerWindow();
+    globalShortcut.register(`${primary}+2`, () => {
+      this.windowManager.send('add-screenshot-to-stack', 'region');
     });
 
-    /* ─── Resizing ─── */
-    globalShortcut.register('Command+Shift+]', () => {
-      const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(width + resizeStep, height);
+    globalShortcut.register(`${primary}+3`, () => {
+      this.windowManager.send('process-screenshot-stack');
     });
-    globalShortcut.register('Command+Shift+[', () => {
-      const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
+
+    globalShortcut.register(`${primary}+4`, () => {
+      this.windowManager.send('clear-screenshot-stack');
     });
-    globalShortcut.register('Command+Shift+Down', () => {
-      const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(width, height + resizeStep);
-    });
-    globalShortcut.register('Command+Shift+Up', () => {
-      const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(width, Math.max(minSize, height - resizeStep));
-    });
-    globalShortcut.register('Command+Shift+0', () => {
-      // Sync state first in case window was manually resized
+
+    /* ═══ TIER 3: UTILITIES (Function Keys - Universal Standards) ═══ */
+
+    // Help (F1 = universal help key)
+    globalShortcut.register('F1', () => this.showHelp());
+
+    // Toggle Window Size (preserving original Cmd+Shift+0)
+    globalShortcut.register(`${secondary}+0`, () => {
       this.syncWindowSizeState();
-
       if (this.isSmallWindowMode) {
-        // Switch to default size
         mainWindow.setSize(defaultWidth, defaultHeight);
         this.isSmallWindowMode = false;
-        console.log('Window toggled to default size (800x800)');
       } else {
-        // Switch to small size
         mainWindow.setSize(resizeStep * 20, resizeStep * 2);
         this.isSmallWindowMode = true;
-        console.log('Window toggled to small size (900x200)');
       }
     });
 
-    /* ─── Help ─── */
-    globalShortcut.register('Command+Shift+H', () => this.showHelp());
-
-    /* ─── Window visibility ─── */
-    globalShortcut.register('Command+B', () => {
-      this.toggleWindowVisibility();
+    // Keep F11 as alternative for those who expect it
+    globalShortcut.register('F11', () => {
+      this.syncWindowSizeState();
+      if (this.isSmallWindowMode) {
+        mainWindow.setSize(defaultWidth, defaultHeight);
+        this.isSmallWindowMode = false;
+      } else {
+        mainWindow.setSize(resizeStep * 20, resizeStep * 2);
+        this.isSmallWindowMode = true;
+      }
     });
 
-    globalShortcut.register('Command+R', () => {
-      this.windowManager.send('start-speech-recording');
-    });
+    /* ═══ TIER 4: ADVANCED FEATURES (Secondary Modifier - Less Frequent) ═══ */
 
-    globalShortcut.register('Command+T', () => {
-      this.windowManager.send('stop-speech-recording');
-    });
-
-    /* ─── Session reset ─── */
-    globalShortcut.register('Command+Shift+R', () => {
+    // Session & AI Management
+    globalShortcut.register(`${secondary}+R`, () => {
       this.aiManager.clearAllSessions();
       this.windowManager.send('session-reset');
       this.windowManager.send('session-length', 0);
     });
 
-    /* ─── OCR filtering toggle ─── */
-    globalShortcut.register('Command+Shift+O', () => {
+    globalShortcut.register(`${secondary}+F`, () => {
+      this.cycleAiFlow();
+    });
+
+    globalShortcut.register(`${secondary}+O`, () => {
       this.appController.ocrFilteringEnabled = !this.appController.ocrFilteringEnabled;
       this.windowManager.send('ocr-filtering-changed', this.appController.ocrFilteringEnabled);
     });
 
-    /* ─── Formatter toggle ─── */
-    globalShortcut.register('Command+Shift+F', () => {
-      this.windowManager.toggleFormatter();
+    // UI Controls (preserving original key mappings)
+    globalShortcut.register(`${secondary}+D`, () => {
+      this.windowManager.send('toggle-theme');
     });
 
-
-    /* ─── AI flow switches ─── */
-    const aiFlowShortcut = globalShortcut.register('Command+Shift+P', () => this.cycleAiFlow());
-    console.log('[ShortcutManager] Command+Shift+P registration:', aiFlowShortcut ? 'SUCCESS' : 'FAILED');
-
-    // Alternative shortcut for testing AI flow cycling
-    const altAiFlowShortcut = globalShortcut.register('Command+Shift+L', () => {
-      console.log('[ShortcutManager] Command+Shift+L pressed - alternative AI flow cycling');
-      this.cycleAiFlow();
-    });
-    console.log('[ShortcutManager] Command+Shift+L (alternative) registration:', altAiFlowShortcut ? 'SUCCESS' : 'FAILED');
-
-    globalShortcut.register('Command+Shift+M', () => this.switchOllamaModel());
-    globalShortcut.register('Command+Shift+Y', () => this.toggleSystemPrompts());
-
-    /* ─── Misc renderer events ─── */
-    globalShortcut.register('Command+Shift+D', () => this.windowManager.send('toggle-theme'));
-
-    // Developer tools shortcut
-    globalShortcut.register('Command+Shift+I', () => {
-      console.log('[ShortcutManager] Opening developer tools');
-      this.windowManager.openDevTools();
-    });
-
-    globalShortcut.register('Shift+X', () => this.windowManager.send('scroll-page', 'up'));
-    globalShortcut.register('Shift+Z', () => this.windowManager.send('scroll-page', 'down'));
-    globalShortcut.register('Command+Shift+S', () => this.windowManager.send('trigger-screenshot'));
-    globalShortcut.register('Command+Shift+A', () =>
-      this.windowManager.send('trigger-overlay-region-screenshot')
-    );
-
-    /* ─── Stack Screenshots ─── */
-    globalShortcut.register('Command+Shift+1', () => this.windowManager.send('add-screenshot-to-stack', 'full'));
-    globalShortcut.register('Command+Shift+2', () => this.windowManager.send('add-screenshot-to-stack', 'region'));
-    globalShortcut.register('Command+Shift+3', () => this.windowManager.send('process-screenshot-stack'));
-    globalShortcut.register('Command+Shift+4', () => this.windowManager.send('clear-screenshot-stack'));
-    globalShortcut.register('Command+Shift+L', () => this.windowManager.toggleFormatter());
-    globalShortcut.register('Command+Shift+W', () => {
-      const info = this.aiManager.getProviderInfo();
-      if (info.isOllama) {
-        this.windowManager.send(
-          'model-warmup-started',
-          `Warming up ${info.model}... This may take 10-30 seconds.`
-        );
-      }
-    });
-
-    /* ─── Conversation History ─── */
-    globalShortcut.register('Command+Shift+V', () => {
+    globalShortcut.register(`${secondary}+V`, () => {
       this.appController.conversationHistoryService.openInBrowser().catch(error => {
         console.error('Failed to open conversation history:', error);
         this.windowManager.send('show-notification', {
@@ -171,10 +144,121 @@ class ShortcutManager {
       });
     });
 
-    /* ─── Mouse tracking toggle ─── */
-    globalShortcut.register('Control+Shift+=', () => {
-      this.toggleMouseTracking();
+    globalShortcut.register(`${secondary}+C`, () => {
+      this.centerWindow();
     });
+
+    // Developer Tools
+    globalShortcut.register(`${secondary}+I`, () => {
+      console.log('[ShortcutManager] Opening developer tools');
+      this.windowManager.openDevTools();
+    });
+
+    /* ═══ TIER 5: FINE CONTROL (Secondary Modifier + Arrows/Symbols) ═══ */
+
+    // Window Resizing (Secondary + Arrows for precise control)
+    globalShortcut.register(`${secondary}+Right`, () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(width + resizeStep, height);
+    });
+
+    globalShortcut.register(`${secondary}+Left`, () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
+    });
+
+    globalShortcut.register(`${secondary}+Down`, () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(width, height + resizeStep);
+    });
+
+    globalShortcut.register(`${secondary}+Up`, () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(width, Math.max(minSize, height - resizeStep));
+    });
+
+    // Movement Step Adjustment
+    globalShortcut.register(`${secondary}+Plus`, () => {
+      if (this.moveStep < 400) this.moveStep *= 2;
+    });
+
+    globalShortcut.register(`${secondary}+-`, () => {
+      if (this.moveStep > 20) this.moveStep /= 2;
+    });
+
+    /* ═══ WINDOW WIDTH ADJUSTMENT (Preserving Original Brackets) ═══ */
+
+    // Window Width Controls (preserving original [ ] keys)
+    globalShortcut.register(`${secondary}+]`, () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(width + resizeStep, height);
+    });
+
+    globalShortcut.register(`${secondary}+[`, () => {
+      const [width, height] = mainWindow.getSize();
+      mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
+    });
+
+    /* ═══ ALTERNATIVE SCREENSHOT SHORTCUTS (Compatibility) ═══ */
+
+    // Alternative screenshot shortcuts for users who expect them
+    globalShortcut.register(`${secondary}+S`, () => {
+      this.windowManager.send('trigger-screenshot');
+    });
+
+    globalShortcut.register(`${secondary}+A`, () => {
+      this.windowManager.send('trigger-screenshot-region');
+    });
+
+    /* ═══ LEGACY/ADDITIONAL FEATURES ═══ */
+
+    // Page Scrolling (for completeness)
+    globalShortcut.register('Shift+X', () => this.windowManager.send('scroll-page', 'up'));
+    globalShortcut.register('Shift+Z', () => this.windowManager.send('scroll-page', 'down'));
+
+    // Additional Model Management
+    globalShortcut.register(`${secondary}+M`, () => this.switchOllamaModel());
+    globalShortcut.register(`${secondary}+Y`, () => this.toggleSystemPrompts());
+    globalShortcut.register(`${secondary}+W`, () => {
+      const info = this.aiManager.getProviderInfo();
+      if (info.isOllama) {
+        this.windowManager.send(
+          'model-warmup-started',
+          `Warming up ${info.model}... This may take 10-30 seconds.`
+        );
+      }
+    });
+
+    // Formatter Toggle
+    globalShortcut.register(`${secondary}+L`, () => {
+      this.windowManager.toggleFormatter();
+    });
+
+    // Mouse Tracking (for power users) - trying alternative key since = fails
+    // Try multiple key combinations until one works (avoiding conflicts with existing shortcuts)
+    const mouseTrackingKeys = process.platform === 'darwin'
+      ? ['Command+Shift+Equal', 'Command+Option+M', 'Command+Shift+Q', 'Command+Shift+K']
+      : ['Control+Shift+Equal', 'Control+Alt+M', 'Control+Shift+Q', 'Control+Shift+K'];
+
+    let mouseRegistered = false;
+    for (const key of mouseTrackingKeys) {
+      try {
+        mouseRegistered = globalShortcut.register(key, () => {
+          console.log(`[ShortcutManager] Mouse tracking shortcut triggered: ${key}`);
+          this.toggleMouseTracking();
+        });
+        if (mouseRegistered) {
+          console.log(`[ShortcutManager] Mouse tracking registration SUCCESS with: ${key}`);
+          break;
+        }
+      } catch (err) {
+        console.log(`[ShortcutManager] Failed to register ${key}: ${err.message}`);
+      }
+    }
+
+    if (!mouseRegistered) {
+      console.log('[ShortcutManager] WARNING: No mouse tracking shortcut could be registered');
+    }
   }
 
   unregisterAll() {
@@ -187,39 +271,42 @@ class ShortcutManager {
 
   /* ---------- Helpers ---------- */
   showHelp() {
-    console.log('\n=== KEYBOARD SHORTCUTS HELP ===');
-    console.log('WINDOW MOVEMENT:');
-    console.log('  Cmd+Arrow Keys        - Move window in direction');
-    console.log('  Cmd+Shift+C           - Center window on display');
-    console.log('  Ctrl+Shift+=          - Toggle mouse tracking (window follows cursor)');
-    console.log('\nWINDOW RESIZING:');
-    console.log('  Cmd+Shift+=           - Increase movement step');
-    console.log('  Cmd+Shift+-           - Decrease movement step');
-    console.log('  Cmd/Ctrl+Scroll       - Adjust movement step with mouse wheel');
-    console.log('  Cmd+Shift+]           - Increase window width');
-    console.log('  Cmd+Shift+[           - Decrease window width');
-    console.log('  Cmd+Shift+Up/Down     - Adjust window height');
-    console.log('  Cmd+Shift+0           - Toggle window size (800x200 ⇄ 800x800)');
-    console.log('\nWINDOW CONTROL:');
-    console.log('  Cmd+B                 - Toggle window visibility');
-    console.log('\nSPEECH-TO-TEXT:');
-    console.log('  Cmd+R                 - Start speech recording');
-    console.log('  Cmd+T                 - Stop speech recording and transcribe');
-    console.log('\nSESSION / OCR / PROVIDER:');
-    console.log('  Cmd+Shift+R           - Reset session');
-    console.log('  Cmd+Shift+F           - Toggle OCR filtering');
-    console.log('  Cmd+Shift+P           - Switch AI provider');
-    console.log('  Cmd+Shift+M           - Switch Ollama model');
-    console.log('  Cmd+Shift+Y           - Toggle system prompts');
-    console.log('  Cmd+Shift+Q           - Toggle burn mode');
-    console.log('\nMISC:');
-    console.log('  Cmd+Shift+D           - Toggle dark/light theme');
-    console.log('  Cmd+Shift+S / A       - Capture screenshot / region');
-    console.log('  Cmd+Shift+1 / 2       - Add screenshot to stack (full / region)');
-    console.log('  Cmd+Shift+3           - Process screenshot stack');
-    console.log('  Cmd+Shift+4           - Clear screenshot stack');
-    console.log('  Shift+X / Shift+Z     - Scroll page up/down');
-    console.log('================================\n');
+    const mod = process.platform === 'darwin' ? 'Cmd' : 'Ctrl';
+    console.log('\n=== PSYCHOLOGY-OPTIMIZED SHORTCUTS ===');
+    console.log(`TIER 1 - CORE FUNCTIONS (${mod} + Key):`);
+    console.log(`  ${mod}+S                 - Screenshot (full screen)`);
+    console.log(`  ${mod}+A                 - Area screenshot (region)`);
+    console.log(`  ${mod}+R                 - Record speech`);
+    console.log(`  ${mod}+T                 - sTop recording`);
+    console.log(`  ${mod}+B                 - Show/hide window`);
+    console.log(`  ${mod}+Arrow Keys        - Move window`);
+    console.log('\nTIER 2 - WORKFLOWS (Numbers):');
+    console.log(`  ${mod}+1                 - Add full screenshot to stack`);
+    console.log(`  ${mod}+2                 - Add region screenshot to stack`);
+    console.log(`  ${mod}+3                 - Process screenshot stack`);
+    console.log(`  ${mod}+4                 - Clear screenshot stack`);
+    console.log('\nTIER 3 - UTILITIES (Function Keys):');
+    console.log('  F1                     - Show this help');
+    console.log('  F11                    - Toggle window size (alternative)');
+    console.log(`\nTIER 4 - ADVANCED (${mod}+Shift + Key):`);
+    console.log(`  ${mod}+Shift+0           - Toggle window size`);
+    console.log(`  ${mod}+Shift+R           - Reset AI session`);
+    console.log(`  ${mod}+Shift+F           - Toggle AI flow`);
+    console.log(`  ${mod}+Shift+O           - Toggle OCR filtering`);
+    console.log(`  ${mod}+Shift+D           - Toggle theme`);
+    console.log(`  ${mod}+Shift+V           - Conversation history`);
+    console.log(`  ${mod}+Shift+C           - Center window`);
+    console.log(`  ${mod}+Shift+S/A         - Alternative screenshot shortcuts`);
+    console.log(`\nTIER 5 - FINE CONTROL (${mod}+Shift + Symbols/Arrows):`);
+    console.log(`  ${mod}+Shift+Arrows      - Resize window height`);
+    console.log(`  ${mod}+Shift+[ ]         - Resize window width`);
+    console.log(`  ${mod}+Shift+Plus/-      - Adjust movement step`);
+    const mouseKey = process.platform === 'darwin' ? 'Cmd+Option+M' : 'Ctrl+Alt+M';
+    console.log(`  ${mouseKey}           - Mouse tracking toggle`);
+    console.log('\nOTHER:');
+    console.log('  Shift+X/Z              - Scroll page up/down');
+    console.log(`  ${mod}+Shift+M/Y/W/L/I   - Model/System/Warmup/Format/DevTools`);
+    console.log('=====================================\n');
   }
 
   switchOllamaModel() {
@@ -400,28 +487,37 @@ class ShortcutManager {
    */
   startMouseTracking() {
     const { screen } = require('electron');
-    
-    // Set up interval to check mouse position
+
+    console.log('Mouse tracking enabled - LEFT CLICK anywhere to take region screenshot + AI query');
+    this.windowManager.send('show-notification', {
+      type: 'info',
+      message: 'Mouse tracking ON - Click anywhere to screenshot + AI query'
+    });
+
+    // Set up interval to check mouse position and clicks
     this.mouseTrackingInterval = setInterval(() => {
       const mousePos = screen.getCursorScreenPoint();
       const { mainWindow } = this.windowManager;
-      
+
       // Check if mouse position has changed significantly
-      if (Math.abs(mousePos.x - this.lastMousePosition.x) > 5 || 
+      if (Math.abs(mousePos.x - this.lastMousePosition.x) > 5 ||
           Math.abs(mousePos.y - this.lastMousePosition.y) > 5) {
-        
+
         // Get window size to center it on mouse cursor
         const [windowWidth, windowHeight] = mainWindow.getSize();
         const newX = mousePos.x - Math.floor(windowWidth / 2);
         const newY = mousePos.y - Math.floor(windowHeight / 2);
-        
+
         // Update window position
         mainWindow.setPosition(newX, newY);
-        
+
         // Update last mouse position
         this.lastMousePosition = { x: mousePos.x, y: mousePos.y };
       }
     }, 50); // Check every 50ms for smooth tracking
+
+    // Add click detection via renderer process
+    this.windowManager.send('mouse-tracking-started');
   }
 
   /**
@@ -432,6 +528,25 @@ class ShortcutManager {
       clearInterval(this.mouseTrackingInterval);
       this.mouseTrackingInterval = null;
     }
+
+    // Stop click detection
+    this.windowManager.send('mouse-tracking-stopped');
+  }
+
+  /**
+   * Handle left click during mouse tracking - take screenshot and query AI
+   */
+  handleMouseTrackingClick() {
+    console.log('[ShortcutManager] Triggering region screenshot + AI query from mouse tracking');
+
+    // Disable mouse tracking temporarily
+    this.stopMouseTracking();
+    this.mouseTrackingEnabled = false;
+
+    // Trigger region screenshot
+    this.windowManager.send('trigger-screenshot-region-with-ai');
+
+    console.log('Mouse tracking disabled - region screenshot triggered');
   }
 
   /**

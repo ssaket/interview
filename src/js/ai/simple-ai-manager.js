@@ -262,129 +262,178 @@ class SimpleAIManager {
    * @returns {Promise<string>} The AI's response content
    */
   async ask(question, options = {}) {
-    // Handle hybrid flow with sequential streaming
-    if (options.flow === 'hybrid') {
-      return await this.askHybrid(question, options);
+    const flow = options.flow;
+
+    // Handle special flows with streaming
+    if (flow && ['local', 'cloud', 'hybrid'].includes(flow)) {
+      return await this._executeFlow(question, options, flow);
     }
 
-    // Handle hybrid flow model selection (legacy)
-    if (options.flow === 'hybrid' && this.currentProvider === 'ollama') {
-      const aiConfig = require('./ai-config');
-      const hybridModel = aiConfig.getHybridModel('ollama');
-      const originalModel = this.currentModel;
-
-      console.log(`[SimpleAIManager] Using hybrid model: ${hybridModel} (was: ${originalModel})`);
-
-      // Temporarily switch to hybrid model
-      this.setModel(hybridModel);
-
-      try {
-        const response = await this.query(question, options);
-        return response.content;
-      } finally {
-        // Restore original model
-        this.setModel(originalModel);
-      }
-    }
-
+    // Default non-streaming query
     const response = await this.query(question, options);
     return response.content;
   }
 
   /**
-   * Hybrid AI flow: stream local response first, then stream DeepSeek analysis
-   * @param {string} question - The question to ask
-   * @param {Object} options - Additional options including onChunk callback
-   * @returns {Promise<string>} Combined response content
+   * Unified flow execution handler
+   * @private
    */
-  async askHybrid(question, options = {}) {
-    console.log('[SimpleAIManager] Starting hybrid flow with streaming...');
+  async _executeFlow(question, options, flow) {
+    console.log(`[SimpleAIManager] Starting ${flow} flow with streaming...`);
 
-    let combinedResponse = '';
-    const onChunk = options.onChunk;
-
-    // Store original state outside try block
-    const originalProvider = this.currentProvider;
-    const originalModel = this.currentModel;
+    const state = this._saveCurrentState();
 
     try {
-      // Phase 1: Stream local Ollama response
-      console.log('[SimpleAIManager] Phase 1: Streaming local response...');
-
-      if (onChunk) {
-        onChunk('🚀 **Local AI Response:**\n\n');
+      if (flow === 'hybrid') {
+        return await this._executeHybridFlow(question, options);
+      } else {
+        return await this._executeSingleProviderFlow(question, options, flow);
       }
+    } catch (error) {
+      console.error(`[SimpleAIManager] ${flow} flow failed:`, error.message);
+      throw error;
+    } finally {
+      await this._restoreState(state);
+    }
+  }
 
-      const aiConfig = require('./ai-config');
-      const hybridModel = aiConfig.getHybridModel('ollama');
+  /**
+   * Execute single provider flow (local or cloud)
+   * @private
+   */
+  async _executeSingleProviderFlow(question, options, flow) {
+    const provider = flow === 'local' ? 'ollama' : 'deepseek';
 
-      // Switch to local provider with hybrid model (silently)
-      if (originalProvider !== 'ollama') {
-        await this.switchProvider('ollama', true);
-      }
-      this.setModel(hybridModel);
+    if (this.currentProvider !== provider) {
+      await this.switchProvider(provider, true);
+    }
 
-      const localResponse = await this.query(`Brief analysis: ${question}`, {
-        stream: true,
-        onChunk: onChunk,
-        parameters: options.parameters || {}
-      });
+    const response = await this.query(question, {
+      stream: true,
+      onChunk: options.onChunk,
+      parameters: options.parameters || {}
+    });
 
-      combinedResponse += localResponse.content;
+    console.log(`[SimpleAIManager] ${flow} flow completed successfully`);
+    return response.content;
+  }
 
-      // Add separator
-      const separator = '\n\n---\n\n**🧠 DeepSeek Analysis:**\n\n';
-      combinedResponse += separator;
-      if (onChunk) {
-        onChunk(separator);
-      }
+  /**
+   * Execute hybrid flow
+   * @private
+   */
+  async _executeHybridFlow(question, options) {
+    let combinedResponse = '';
 
-      // Phase 2: Stream DeepSeek response
-      console.log('[SimpleAIManager] Phase 2: Streaming DeepSeek response...');
-
-      // Switch to DeepSeek (silently)
-      await this.switchProvider('deepseek', true);
-
-      const deepseekResponse = await this.query(question, {
-        stream: true,
-        onChunk: onChunk,
-        parameters: options.parameters || {}
-      });
-
-      combinedResponse += deepseekResponse.content;
-
-      // Restore original provider and model (silently)
-      if (originalProvider !== 'deepseek') {
-        await this.switchProvider(originalProvider, true);
-        this.setModel(originalModel);
-      }
+    try {
+      combinedResponse += await this._processLocalPhase(question, options);
+      combinedResponse += this._addPhaseSeparator(options.onChunk);
+      combinedResponse += await this._processDeepSeekPhase(question, options);
 
       console.log('[SimpleAIManager] Hybrid flow completed successfully');
       return combinedResponse;
-
     } catch (error) {
-      console.error('[SimpleAIManager] Hybrid flow failed:', error.message);
-
-      // Add error message to response
-      const errorMsg = `\n\n**❌ DeepSeek Error:** ${error.message}`;
-      combinedResponse += errorMsg;
-      if (onChunk) {
-        onChunk(errorMsg);
-      }
-
-      // Try to restore original provider (silently)
-      try {
-        if (originalProvider && this.currentProvider !== originalProvider) {
-          await this.switchProvider(originalProvider, true);
-          this.setModel(originalModel);
-        }
-      } catch (restoreError) {
-        console.error('[SimpleAIManager] Failed to restore provider:', restoreError.message);
-      }
-
-      return combinedResponse;
+      return this._handleHybridError(error, combinedResponse, options.onChunk);
     }
   }
+
+
+  /**
+   * Save current provider state
+   * @private
+   */
+  _saveCurrentState() {
+    return {
+      provider: this.currentProvider,
+      model: this.currentModel
+    };
+  }
+
+  /**
+   * Process local AI phase
+   * @private
+   */
+  async _processLocalPhase(question, options) {
+    console.log('[SimpleAIManager] Phase 1: Streaming local response...');
+
+    if (options.onChunk) {
+      options.onChunk('🚀 **Local AI Response:**\n\n');
+    }
+
+    const aiConfig = require('./ai-config');
+    const hybridModel = aiConfig.getHybridModel('ollama');
+
+    if (this.currentProvider !== 'ollama') {
+      await this.switchProvider('ollama', true);
+    }
+    this.setModel(hybridModel);
+
+    const localResponse = await this.query(`Brief analysis: ${question}`, {
+      stream: true,
+      onChunk: options.onChunk,
+      parameters: options.parameters || {}
+    });
+
+    return localResponse.content;
+  }
+
+  /**
+   * Add phase separator
+   * @private
+   */
+  _addPhaseSeparator(onChunk) {
+    const separator = '\n\n---\n\n**🧠 DeepSeek Analysis:**\n\n';
+    if (onChunk) {
+      onChunk(separator);
+    }
+    return separator;
+  }
+
+  /**
+   * Process DeepSeek AI phase
+   * @private
+   */
+  async _processDeepSeekPhase(question, options) {
+    console.log('[SimpleAIManager] Phase 2: Streaming DeepSeek response...');
+
+    await this.switchProvider('deepseek', true);
+
+    const deepseekResponse = await this.query(question, {
+      stream: true,
+      onChunk: options.onChunk,
+      parameters: options.parameters || {}
+    });
+
+    return deepseekResponse.content;
+  }
+
+  /**
+   * Handle hybrid flow errors
+   * @private
+   */
+  _handleHybridError(error, combinedResponse, onChunk) {
+    const errorMsg = `\n\n**❌ DeepSeek Error:** ${error.message}`;
+    if (onChunk) {
+      onChunk(errorMsg);
+    }
+    return combinedResponse + errorMsg;
+  }
+
+  /**
+   * Restore provider state
+   * @private
+   */
+  async _restoreState(state) {
+    try {
+      if (state.provider !== this.currentProvider) {
+        await this.switchProvider(state.provider, true);
+        this.setModel(state.model);
+      }
+    } catch (restoreError) {
+      console.error('[SimpleAIManager] Failed to restore provider:', restoreError.message);
+    }
+  }
+
 
   /**
    * Get current provider information (compatibility method)

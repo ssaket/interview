@@ -1,12 +1,10 @@
 const { ipcRenderer } = require('electron');
-// --- Unified formatter (DeepSeekFormatter) ---
 const path = require('path');
 // `__dirname` points to the project root when running inside a <script> tag,
 // so jump into the source folder explicitly.
 const DeepSeekFormatter = require(path.join(__dirname, 'src', 'js', 'formatter.js'));
 const dsFormatter = new DeepSeekFormatter();
 
-// --- Flow Manager ---
 const FlowManager = {
   currentFlow: null,
   flows: {
@@ -105,58 +103,31 @@ const FlowManager = {
   },
 
   async queryAI(text, options = {}) {
-    switch(this.currentAiFlow) {
-      case 'local':
-        return await this.queryLocal(text);
-      case 'cloud':
-        return await this.queryCloud(text);
-      case 'hybrid':
-        return await this.queryHybrid(text);
-      default:
-        return await this.queryLocal(text);
-    }
+    return await this._streamingQuery(text, this.currentAiFlow || 'local');
   },
 
-  async queryLocal(text) {
-    UI.setOutput('Processing with local AI...');
-    return await ipcRenderer.invoke('ask-chatgpt', text);
-  },
-
-  async queryCloud(text) {
-    UI.setOutput('Processing with DeepSeek...');
-    await ipcRenderer.invoke('switch-to-deepseek');
-    const response = await ipcRenderer.invoke('ask-chatgpt', text);
-    await ipcRenderer.invoke('switch-to-provider', 'ollama');
-    return response;
-  },
-
-  async queryHybrid(text) {
-    UI.setOutput('🚀 **Hybrid AI Processing...**\n\n');
-
-    // Set up chunk listener for streaming
-    const chunkHandler = (event, chunk) => {
-      UI.appendOutput(chunk);
+  // Unified streaming query handler for all AI flows
+  async _streamingQuery(text, flow) {
+    const flowConfig = {
+      local: { icon: '🤖', name: 'Local AI' },
+      cloud: { icon: '☁️', name: 'Cloud AI' },
+      hybrid: { icon: '🚀', name: 'Hybrid AI' }
     };
 
-    // Add the event listener
+    const config = flowConfig[flow] || flowConfig.local;
+    UI.setOutput(`${config.icon} **${config.name} Processing...**\n\n`);
+
+    const chunkHandler = (event, chunk) => UI.appendOutput(chunk);
     ipcRenderer.on('ai-chunk', chunkHandler);
 
     try {
-      // Use the new streaming hybrid flow
-      const result = await ipcRenderer.invoke('ask-chatgpt', text, {
-        flow: 'hybrid',
-        onChunk: true  // Flag to enable streaming
-      });
-
-      return result;
+      return await ipcRenderer.invoke('ask-chatgpt', text, { flow, onChunk: true });
     } finally {
-      // Clean up the event listener
       ipcRenderer.removeListener('ai-chunk', chunkHandler);
     }
   }
 };
 
-// --- UI Controller ---
 const UI = {
   get output() {
     return document.getElementById('output');
@@ -391,8 +362,6 @@ const UI = {
   },
 };
 
-let mediaRecorder,
-  audioChunks = [];
 
 // Theme state
 let currentTheme = 'light';
@@ -454,8 +423,8 @@ ipcRenderer.on('formatter-toggled', (event, enabled) => {
 async function captureScreenshot(isRegion = false) {
   // Activate screenshot flow
   FlowManager.setFlow(FlowManager.flows.SCREENSHOT);
-  
-  UI.setOutput(isRegion ? 'Capturing behind overlay...' : 'Capturing screen...');
+
+  UI.setOutput(isRegion ? 'Capturing window area...' : 'Capturing screen...');
 
   const image = isRegion
     ? await ipcRenderer.invoke('capture-screen-region')
@@ -464,9 +433,15 @@ async function captureScreenshot(isRegion = false) {
   UI.showScreenshot(image);
 
   UI.setOutput('Running OCR...');
-  const text = await ipcRenderer.invoke('perform-ocr', image);
+  const ocrText = await ipcRenderer.invoke('perform-ocr', image);
 
-  const answer = await FlowManager.queryAI(text);
+  if (!ocrText || !ocrText.trim()) {
+    UI.setOutput('❌ No text found in screenshot', 3000);
+    FlowManager.setFlow(FlowManager.flows.IDLE);
+    return;
+  }
+
+  const answer = await FlowManager.queryAI(ocrText);
 
   lastAssistantResponse = answer;
   saveLastAssistantResponse(answer);
@@ -474,18 +449,7 @@ async function captureScreenshot(isRegion = false) {
   UI.hideInstructions();
   UI.hideScreenshot();
 
-  // For hybrid mode, output is already set during streaming, skip final formatting
-  if (FlowManager.currentAiFlow === 'hybrid') {
-    return;
-  }
-
-  const { text: plain, html } = dsFormatter.formatResponse(answer, formatterEnabled);
-  if (formatterEnabled) {
-    UI.setOutputHTML(html);
-  } else {
-    UI.setOutput(plain);
-  }
-  
+  // All AI flows now use streaming, so output is already set during streaming
   // Return to idle state after screenshot processing is complete
   FlowManager.setFlow(FlowManager.flows.IDLE);
 }
@@ -498,67 +462,21 @@ ipcRenderer.on('trigger-overlay-region-screenshot', async () => {
   await captureScreenshot(true);
 });
 
+ipcRenderer.on('trigger-screenshot-region', async () => {
+  await captureScreenshot(true);
+});
+
 // Listen for OCR filtering changes from main process
 ipcRenderer.on('ocr-filtering-changed', (event, enabled) => {
   UI.updateOcrIndicator(enabled);
   UI.setOutput(`OCR Filtering: ${enabled ? 'ON' : 'OFF'}`, 2000);
 });
 
-// Listen for burn mode changes from main process
-ipcRenderer.on('burn-mode-changed', (event, enabled) => {
-  UI.updateBurnModeIndicator(enabled);
-  if (enabled) {
-    UI.setOutput(
-      `🔥 Burn Mode: ON\nOCR queries will use both Ollama (local) + DeepSeek (cloud)`,
-      3000
-    );
-  } else {
-    UI.setOutput(`🤖 Burn Mode: OFF\nOCR queries will use Ollama (local) only`, 3000);
-  }
-});
 
-// Call this when you want to start recording (e.g. hotkey or button)
-async function startAudioCapture() {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  audioChunks = [];
-
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) audioChunks.push(e.data);
-  };
-
-  mediaRecorder.start();
-  UI.setOutput('🎙️ Recording audio…');
-}
-
-// Call this to stop and process the recording
-function stopAudioCapture() {
-  return new Promise((resolve) => {
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(audioChunks, { type: 'audio/webm' });
-      // You can play it back:
-      const url = URL.createObjectURL(blob);
-      new Audio(url).play();
-
-      // Or send it to your main process for saving/transcription:
-      const arrayBuffer = await blob.arrayBuffer();
-      const base64Audio = Buffer.from(arrayBuffer).toString('base64');
-      const transcript = await ipcRenderer.invoke('transcribe-audio', base64Audio);
-      UI.setOutput(`📝 Transcript:\n${transcript}`);
-      resolve();
-    };
-    mediaRecorder.stop();
-    UI.setOutput('🎙️ Recording stopped');
-  });
-}
-
-ipcRenderer.on('start-audio', startAudioCapture);
-ipcRenderer.on('stop-audio', stopAudioCapture);
 
 // Listen for hide/show commands
 ipcRenderer.on('hide-ui', () => {
   UI.hideUI();
-  // document.getElementById("selLayer").style.display = "none";
 });
 ipcRenderer.on('show-ui', () => {
   UI.showUI();
@@ -902,3 +820,42 @@ document.addEventListener('DOMContentLoaded', () => {
     if (shortcuts) shortcuts.style.display = 'none';
   }, 2000);
 });
+
+// Mouse tracking functionality
+let mouseTrackingActive = false;
+
+ipcRenderer.on('mouse-tracking-started', () => {
+  mouseTrackingActive = true;
+  console.log('[Renderer] Mouse tracking started - click anywhere to trigger region screenshot + AI');
+
+  // Add global click listener
+  document.addEventListener('click', handleMouseTrackingClick, { once: false });
+});
+
+ipcRenderer.on('mouse-tracking-stopped', () => {
+  mouseTrackingActive = false;
+  console.log('[Renderer] Mouse tracking stopped');
+
+  // Remove click listener
+  document.removeEventListener('click', handleMouseTrackingClick);
+});
+
+ipcRenderer.on('trigger-screenshot-region-with-ai', async () => {
+  console.log('[Renderer] Triggering region screenshot with auto AI query');
+
+  // Use the existing region screenshot workflow
+  await captureScreenshot(true);
+});
+
+function handleMouseTrackingClick(event) {
+  if (!mouseTrackingActive) return;
+
+  console.log('[Renderer] Click detected during mouse tracking');
+
+  // Prevent default click behavior
+  event.preventDefault();
+  event.stopPropagation();
+
+  // Notify main process to handle the click
+  ipcRenderer.send('mouse-tracking-click-detected');
+}

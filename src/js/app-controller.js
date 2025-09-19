@@ -100,10 +100,17 @@ class AppController {
       const startTime = Date.now();
       const Tesseract = require('tesseract.js');
 
+      console.log('[AppController] Starting OCR on image...');
+      console.log('[AppController] Image data URL length:', imageDataUrl.length);
+
       try {
         const {
           data: { text, confidence },
         } = await Tesseract.recognize(imageDataUrl, 'eng');
+
+        console.log('[AppController] Raw OCR text length:', text.length);
+        console.log('[AppController] OCR confidence:', confidence);
+        console.log('[AppController] Raw OCR text preview:', text.substring(0, 200));
 
         let finalText = text;
         const cleaningOptions = {
@@ -120,6 +127,8 @@ class AppController {
           const cleaner = new LLMFriendlyOCRCleaner();
 
           finalText = cleaner.cleanText(text, cleaningOptions);
+          console.log('[AppController] Cleaned text length:', finalText.length);
+          console.log('[AppController] Cleaned text preview:', finalText.substring(0, 200));
         }
 
         // Log OCR processing session
@@ -674,11 +683,22 @@ class AppController {
     }
   }
 
+  /** Register mouse tracking click handler */
+  registerMouseTrackingHandlers() {
+    const { ipcMain } = require('electron');
+
+    ipcMain.on('mouse-tracking-click-detected', () => {
+      console.log('[AppController] Mouse tracking click detected');
+      this.shortcutManager.handleMouseTrackingClick();
+    });
+  }
+
   start() {
     app.whenReady().then(() => {
       this.windowManager.create();
       this.shortcutManager.register();
       this.registerIpc();
+      this.registerMouseTrackingHandlers();
       this.aiManager.initialize();
     });
     app.on('before-quit', async () => {
