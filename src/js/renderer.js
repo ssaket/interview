@@ -105,82 +105,54 @@ const FlowManager = {
   },
 
   async queryAI(text, options = {}) {
-    const flowType = this.currentAiFlow;
-    
-    switch(flowType) {
-      case this.aiFlows.LOCAL:
-        return await this.queryLocal(text, options);
-      
-      case this.aiFlows.CLOUD:
-        return await this.queryCloud(text, options);
-      
-      case this.aiFlows.HYBRID:
-        return await this.queryHybrid(text, options);
-      
+    switch(this.currentAiFlow) {
+      case 'local':
+        return await this.queryLocal(text);
+      case 'cloud':
+        return await this.queryCloud(text);
+      case 'hybrid':
+        return await this.queryHybrid(text);
       default:
-        return await this.queryLocal(text, options);
+        return await this.queryLocal(text);
     }
   },
 
-  async queryLocal(text, options = {}) {
-    console.log('[AI Flow] LOCAL: Querying Ollama...');
-    UI.setOutput('LOCAL AI: Processing with Ollama local model...');
-    
-    const answer = await ipcRenderer.invoke('ask-chatgpt', text);
-    return answer;
+  async queryLocal(text) {
+    UI.setOutput('Processing with local AI...');
+    return await ipcRenderer.invoke('ask-chatgpt', text);
   },
 
-  async queryCloud(text, options = {}) {
-    console.log('[AI Flow] CLOUD: Querying DeepSeek API...');
-    UI.setOutput('CLOUD AI: Processing with DeepSeek API...');
-    
-    // Switch to DeepSeek provider temporarily
-    const originalProvider = await ipcRenderer.invoke('get-provider-status');
+  async queryCloud(text) {
+    UI.setOutput('Processing with DeepSeek...');
     await ipcRenderer.invoke('switch-to-deepseek');
-    
-    try {
-      const answer = await ipcRenderer.invoke('ask-chatgpt', text);
-      return answer;
-    } finally {
-      // Switch back to original provider if needed
-      if (originalProvider.provider !== 'deepseek') {
-        await ipcRenderer.invoke('switch-to-provider', originalProvider.provider);
-      }
-    }
+    const response = await ipcRenderer.invoke('ask-chatgpt', text);
+    await ipcRenderer.invoke('switch-to-provider', 'ollama');
+    return response;
   },
 
-  async queryHybrid(text, options = {}) {
-    console.log('[AI Flow] HYBRID: Fast local + background cloud...');
-    UI.setOutput('HYBRID AI: Getting fast local response, DeepSeek processing in background...');
-    
-    // Fast local prompt - make it more concise for speed
-    const fastPrompt = `Brief answer: ${text}`;
-    
-    // Start local query immediately for fast response
-    const localPromise = this.queryLocal(fastPrompt, options);
-    
-    // Start background DeepSeek query
-    const cloudPromise = this.queryCloud(text, options).catch(error => {
-      console.warn('[AI Flow] HYBRID: Cloud query failed:', error.message);
-      return `\n\n---\n**DeepSeek Error:** ${error.message}`;
-    });
-    
-    // Return local response first
-    const localResponse = await localPromise;
-    
-    // Update UI with local response immediately
-    const { text: plainLocal, html: htmlLocal } = dsFormatter.formatResponse(localResponse, formatterEnabled);
-    if (formatterEnabled) {
-      UI.setOutputHTML(htmlLocal + '\n\n<div style="opacity:0.7;">🔄 DeepSeek processing...</div>');
-    } else {
-      UI.setOutput(plainLocal + '\n\n🔄 DeepSeek processing...');
+  async queryHybrid(text) {
+    UI.setOutput('🚀 **Hybrid AI Processing...**\n\n');
+
+    // Set up chunk listener for streaming
+    const chunkHandler = (event, chunk) => {
+      UI.appendOutput(chunk);
+    };
+
+    // Add the event listener
+    ipcRenderer.on('ai-chunk', chunkHandler);
+
+    try {
+      // Use the new streaming hybrid flow
+      const result = await ipcRenderer.invoke('ask-chatgpt', text, {
+        flow: 'hybrid',
+        onChunk: true  // Flag to enable streaming
+      });
+
+      return result;
+    } finally {
+      // Clean up the event listener
+      ipcRenderer.removeListener('ai-chunk', chunkHandler);
     }
-    
-    // Wait for cloud response and append
-    const cloudResponse = await cloudPromise;
-    const combinedResponse = `${localResponse}\n\n---\n\n**DeepSeek Analysis:**\n${cloudResponse}`;
-    
-    return combinedResponse;
   }
 };
 
@@ -242,6 +214,10 @@ const UI = {
         }
       }, timeout);
     }
+  },
+
+  appendOutput(text) {
+    this.output.textContent += text;
   },
 
   setOutputHTML(html) {
@@ -497,6 +473,12 @@ async function captureScreenshot(isRegion = false) {
 
   UI.hideInstructions();
   UI.hideScreenshot();
+
+  // For hybrid mode, output is already set during streaming, skip final formatting
+  if (FlowManager.currentAiFlow === 'hybrid') {
+    return;
+  }
+
   const { text: plain, html } = dsFormatter.formatResponse(answer, formatterEnabled);
   if (formatterEnabled) {
     UI.setOutputHTML(html);
@@ -829,21 +811,20 @@ ipcRenderer.on('speech-error', (event, error) => {
 
 // AI Flow cycling
 ipcRenderer.on('cycle-ai-flow', () => {
-  const flows = Object.values(FlowManager.aiFlows);
+  const flows = ['local', 'cloud', 'hybrid'];
   const currentIndex = flows.indexOf(FlowManager.currentAiFlow);
   const nextIndex = (currentIndex + 1) % flows.length;
   const nextFlow = flows[nextIndex];
-  
+
   FlowManager.setAiFlow(nextFlow);
-  
-  // Display flow change notification
+
   const flowNames = {
-    [FlowManager.aiFlows.LOCAL]: 'LOCAL (Ollama only)',
-    [FlowManager.aiFlows.CLOUD]: 'CLOUD (DeepSeek API)',
-    [FlowManager.aiFlows.HYBRID]: 'HYBRID (Local + DeepSeek)'
+    'local': 'LOCAL (Ollama only)',
+    'cloud': 'CLOUD (DeepSeek API)',
+    'hybrid': 'HYBRID (Local + DeepSeek)'
   };
-  
-  UI.setOutput(`AI FLOW: Switched to ${flowNames[nextFlow]}`, 3000);
+
+  UI.setOutput(`AI FLOW: ${flowNames[nextFlow]}`, 3000);
 });
 
 // Initialize OCR filtering state when page loads
@@ -903,6 +884,7 @@ ipcRenderer.on('speech-to-ai-error', (event, data) => {
 document.addEventListener('DOMContentLoaded', () => {
   initOcrFilteringState();
   // Initialize AI flow indicator
+  console.log('[FlowManager] Initializing with AI flow:', FlowManager.currentAiFlow);
   FlowManager.updateAiFlowIndicator(FlowManager.currentAiFlow);
   // Initialize theme and set last response if available
   initTheme();

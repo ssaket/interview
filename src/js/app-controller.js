@@ -149,19 +149,27 @@ class AppController {
     });
 
     /* ------------ Ask ChatGPT / AI ------------ */
-    ipcMain.handle('ask-chatgpt', async (_event, question) => {
+    ipcMain.handle('ask-chatgpt', async (event, question, options = {}) => {
       try {
+        // Set up streaming callback if requested
+        if (options.onChunk) {
+          options.onChunk = (chunk) => {
+            // Send chunk to renderer process
+            event.sender.send('ai-chunk', chunk);
+          };
+        }
+
         // Check if this is the initial OCR query (question matches OCR text)
         const isInitialOcrQuery = this.isOcrContext && (question === this.lastOcrText);
 
         if (isInitialOcrQuery) {
           // Initial OCR query - clear OCR flag since we're now in session history
           this.clearOcrContext();
-          return await this.handleOcrQuery(question);
+          return await this.handleOcrQuery(question, options);
         }
 
         // Regular query - AI session handles all conversation context automatically
-        return await this.aiManager.ask(question);
+        return await this.aiManager.ask(question, options);
       } catch (err) {
         const info = this.aiManager.getProviderInfo();
 
@@ -576,13 +584,14 @@ class AppController {
   /**
    * Handle OCR queries using the current AI manager
    * @param {string} question - The OCR text to query
+   * @param {Object} options - Query options including flow information
    * @returns {Promise<string>} Formatted response
    */
-  async handleOcrQuery(question) {
+  async handleOcrQuery(question, options = {}) {
     console.log('[OCR Query] Processing OCR query...');
 
     try {
-      const response = await this.aiManager.ask(question);
+      const response = await this.aiManager.ask(question, options);
       this.updateSessionLength();
       return response;
     } catch (error) {

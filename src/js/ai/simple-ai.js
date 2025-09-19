@@ -14,9 +14,11 @@ const aiConfig = require('./ai-config');
  * @param {string} options.provider - Provider name (ollama, openai, deepseek, huggingface)
  * @param {Array} options.messages - Chat messages
  * @param {Object} options.parameters - Additional parameters
+ * @param {boolean} options.stream - Enable streaming responses
+ * @param {Function} options.onChunk - Callback for streaming chunks
  * @returns {Promise<Object>} Standardized response
  */
-async function chatCompletion({ provider, messages, parameters = {} }) {
+async function chatCompletion({ provider, messages, parameters = {}, stream = false, onChunk = null }) {
   if (!provider) {
     provider = aiConfig.getDefaultProvider();
   }
@@ -31,13 +33,13 @@ async function chatCompletion({ provider, messages, parameters = {} }) {
   // Provider-specific handling
   switch (provider.toLowerCase()) {
     case 'ollama':
-      return await handleOllama(config, messages, parameters);
+      return await handleOllama(config, messages, parameters, stream, onChunk);
     case 'openai':
-      return await handleOpenAI(config, messages, parameters);
+      return await handleOpenAI(config, messages, parameters, stream, onChunk);
     case 'deepseek':
-      return await handleDeepSeek(config, messages, parameters);
+      return await handleDeepSeek(config, messages, parameters, stream, onChunk);
     case 'huggingface':
-      return await handleHuggingFace(config, messages, parameters);
+      return await handleHuggingFace(config, messages, parameters, stream, onChunk);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
@@ -46,11 +48,11 @@ async function chatCompletion({ provider, messages, parameters = {} }) {
 /**
  * Handle Ollama requests
  */
-async function handleOllama(config, messages, parameters) {
+async function handleOllama(config, messages, parameters, stream = false, onChunk = null) {
   const requestBody = {
     model: config.model,
     messages: messages,
-    stream: false,
+    stream: stream,
     options: {
       temperature: parameters.temperature ?? config.parameters.temperature,
       top_p: parameters.top_p ?? config.parameters.top_p,
@@ -58,25 +60,92 @@ async function handleOllama(config, messages, parameters) {
   };
 
   try {
-    const response = await axios.post(
-      `${config.baseUrl}/api/chat`,
-      requestBody,
-      {
-        timeout: config.timeout,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    if (stream && onChunk) {
+      // Streaming response
+      const response = await axios.post(
+        `${config.baseUrl}/api/chat`,
+        requestBody,
+        {
+          timeout: config.timeout,
+          headers: { 'Content-Type': 'application/json' },
+          responseType: 'stream',
+        }
+      );
 
-    return {
-      choices: [{
-        message: {
-          role: 'assistant',
-          content: response.data.message.content,
-        },
-      }],
-      provider: 'ollama',
-      model: config.model
-    };
+      let fullContent = '';
+
+      return new Promise((resolve, reject) => {
+        response.data.on('data', (chunk) => {
+          const lines = chunk.toString().split('\n').filter(line => line.trim());
+
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line);
+              if (data.message && data.message.content) {
+                const content = data.message.content;
+                fullContent += content;
+                onChunk(content);
+              }
+
+              if (data.done) {
+                resolve({
+                  choices: [{
+                    message: {
+                      role: 'assistant',
+                      content: fullContent,
+                    },
+                  }],
+                  provider: 'ollama',
+                  model: config.model
+                });
+              }
+            } catch (parseError) {
+              // Ignore parsing errors for partial chunks
+            }
+          }
+        });
+
+        response.data.on('error', (error) => {
+          reject(formatError('ollama', error));
+        });
+
+        response.data.on('end', () => {
+          if (fullContent) {
+            resolve({
+              choices: [{
+                message: {
+                  role: 'assistant',
+                  content: fullContent,
+                },
+              }],
+              provider: 'ollama',
+              model: config.model
+            });
+          }
+        });
+      });
+    } else {
+      // Non-streaming response
+      const response = await axios.post(
+        `${config.baseUrl}/api/chat`,
+        requestBody,
+        {
+          timeout: config.timeout,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+
+      return {
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: response.data.message.content,
+          },
+        }],
+        provider: 'ollama',
+        model: config.model
+      };
+    }
   } catch (error) {
     throw formatError('ollama', error);
   }
@@ -85,7 +154,7 @@ async function handleOllama(config, messages, parameters) {
 /**
  * Handle OpenAI requests
  */
-async function handleOpenAI(config, messages, parameters) {
+async function handleOpenAI(config, messages, parameters, stream = false, onChunk = null) {
   if (!config.apiKey) {
     throw new Error('OpenAI API key is required');
   }
@@ -96,28 +165,103 @@ async function handleOpenAI(config, messages, parameters) {
     temperature: parameters.temperature ?? config.parameters.temperature,
     top_p: parameters.top_p ?? config.parameters.top_p,
     max_tokens: parameters.max_tokens ?? config.parameters.max_tokens,
-    stream: false,
+    stream: stream,
     ...parameters
   };
 
   try {
-    const response = await axios.post(
-      `${config.baseUrl}/chat/completions`,
-      requestBody,
-      {
-        timeout: config.timeout,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
-        },
-      }
-    );
+    if (stream && onChunk) {
+      // Streaming response
+      const response = await axios.post(
+        `${config.baseUrl}/chat/completions`,
+        requestBody,
+        {
+          timeout: config.timeout,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+          },
+          responseType: 'stream',
+        }
+      );
 
-    return {
-      ...response.data,
-      provider: 'openai',
-      model: config.model
-    };
+      let fullContent = '';
+
+      return new Promise((resolve, reject) => {
+        response.data.on('data', (chunk) => {
+          const lines = chunk.toString().split('\n').filter(line => line.trim());
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+
+              if (data === '[DONE]') {
+                resolve({
+                  choices: [{
+                    message: {
+                      role: 'assistant',
+                      content: fullContent,
+                    },
+                  }],
+                  provider: 'openai',
+                  model: config.model
+                });
+                return;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
+                  const content = parsed.choices[0].delta.content;
+                  fullContent += content;
+                  onChunk(content);
+                }
+              } catch (parseError) {
+                // Ignore parsing errors for partial chunks
+              }
+            }
+          }
+        });
+
+        response.data.on('error', (error) => {
+          reject(formatError('openai', error));
+        });
+
+        response.data.on('end', () => {
+          if (fullContent) {
+            resolve({
+              choices: [{
+                message: {
+                  role: 'assistant',
+                  content: fullContent,
+                },
+              }],
+              provider: 'openai',
+              model: config.model
+            });
+          }
+        });
+      });
+    } else {
+      // Non-streaming response
+      const response = await axios.post(
+        `${config.baseUrl}/chat/completions`,
+        requestBody,
+        {
+          timeout: config.timeout,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+          },
+        }
+      );
+
+      return {
+        ...response.data,
+        provider: 'openai',
+        model: config.model
+      };
+    }
   } catch (error) {
     throw formatError('openai', error);
   }
@@ -126,7 +270,7 @@ async function handleOpenAI(config, messages, parameters) {
 /**
  * Handle DeepSeek requests (V3.1 with think mode support)
  */
-async function handleDeepSeek(config, messages, parameters) {
+async function handleDeepSeek(config, messages, parameters, stream = false, onChunk = null) {
   if (!config.apiKey) {
     throw new Error('DeepSeek API key is required');
   }
@@ -144,29 +288,106 @@ async function handleDeepSeek(config, messages, parameters) {
     temperature: parameters.temperature ?? config.parameters.temperature,
     top_p: parameters.top_p ?? config.parameters.top_p,
     max_tokens: parameters.max_tokens ?? config.parameters.max_tokens,
-    stream: false,
+    stream: stream,
     ...parameters
   };
 
   try {
-    const response = await axios.post(
-      `${baseUrl}/chat/completions`,
-      requestBody,
-      {
-        timeout: config.timeout,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
-        },
-      }
-    );
+    if (stream && onChunk) {
+      // Streaming response
+      const response = await axios.post(
+        `${baseUrl}/chat/completions`,
+        requestBody,
+        {
+          timeout: config.timeout,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+          },
+          responseType: 'stream',
+        }
+      );
 
-    return {
-      ...response.data,
-      provider: 'deepseek',
-      model: config.model,
-      version: '3.1'
-    };
+      let fullContent = '';
+
+      return new Promise((resolve, reject) => {
+        response.data.on('data', (chunk) => {
+          const lines = chunk.toString().split('\n').filter(line => line.trim());
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+
+              if (data === '[DONE]') {
+                resolve({
+                  choices: [{
+                    message: {
+                      role: 'assistant',
+                      content: fullContent,
+                    },
+                  }],
+                  provider: 'deepseek',
+                  model: config.model,
+                  version: '3.1'
+                });
+                return;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
+                  const content = parsed.choices[0].delta.content;
+                  fullContent += content;
+                  onChunk(content);
+                }
+              } catch (parseError) {
+                // Ignore parsing errors for partial chunks
+              }
+            }
+          }
+        });
+
+        response.data.on('error', (error) => {
+          reject(formatError('deepseek', error));
+        });
+
+        response.data.on('end', () => {
+          if (fullContent) {
+            resolve({
+              choices: [{
+                message: {
+                  role: 'assistant',
+                  content: fullContent,
+                },
+              }],
+              provider: 'deepseek',
+              model: config.model,
+              version: '3.1'
+            });
+          }
+        });
+      });
+    } else {
+      // Non-streaming response
+      const response = await axios.post(
+        `${baseUrl}/chat/completions`,
+        requestBody,
+        {
+          timeout: config.timeout,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+          },
+        }
+      );
+
+      return {
+        ...response.data,
+        provider: 'deepseek',
+        model: config.model,
+        version: '3.1'
+      };
+    }
   } catch (error) {
     throw formatError('deepseek', error);
   }
@@ -175,7 +396,7 @@ async function handleDeepSeek(config, messages, parameters) {
 /**
  * Handle HuggingFace requests
  */
-async function handleHuggingFace(config, messages, parameters) {
+async function handleHuggingFace(config, messages, parameters, stream = false, onChunk = null) {
   // HuggingFace provider logic (simplified)
   const requestBody = {
     model: config.model,
@@ -183,7 +404,7 @@ async function handleHuggingFace(config, messages, parameters) {
     temperature: parameters.temperature ?? config.parameters.temperature,
     top_p: parameters.top_p ?? config.parameters.top_p,
     max_tokens: parameters.max_tokens ?? config.parameters.max_tokens,
-    stream: false,
+    stream: stream,
     ...parameters
   };
 
@@ -196,25 +417,62 @@ async function handleHuggingFace(config, messages, parameters) {
   }
 
   try {
+    // Note: HuggingFace streaming implementation would depend on the specific provider
+    // For now, we'll implement basic streaming support
     const response = await axios.post(
       `${config.baseUrl}/models/${config.model}`,
       requestBody,
       {
         timeout: config.timeout,
         headers,
+        responseType: stream && onChunk ? 'stream' : 'json',
       }
     );
 
-    return {
-      choices: [{
-        message: {
-          role: 'assistant',
-          content: response.data.generated_text || response.data.content || response.data,
-        },
-      }],
-      provider: 'huggingface',
-      model: config.model
-    };
+    if (stream && onChunk) {
+      // Basic streaming for HuggingFace (implementation varies by provider)
+      let fullContent = '';
+
+      return new Promise((resolve, reject) => {
+        response.data.on('data', (chunk) => {
+          try {
+            const content = chunk.toString();
+            fullContent += content;
+            onChunk(content);
+          } catch (error) {
+            // Handle chunk processing errors
+          }
+        });
+
+        response.data.on('error', (error) => {
+          reject(formatError('huggingface', error));
+        });
+
+        response.data.on('end', () => {
+          resolve({
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: fullContent,
+              },
+            }],
+            provider: 'huggingface',
+            model: config.model
+          });
+        });
+      });
+    } else {
+      return {
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: response.data.generated_text || response.data.content || response.data,
+          },
+        }],
+        provider: 'huggingface',
+        model: config.model
+      };
+    }
   } catch (error) {
     throw formatError('huggingface', error);
   }

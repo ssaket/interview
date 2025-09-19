@@ -26,6 +26,7 @@ class AIConfig {
           models: {
             local: ['deepseek-coder-v2', 'qwen3:4b-instruct-2507-fp16', 'gpt-oss', 'magistral'],
             primary: 'gpt-oss',
+            hybrid: 'qwen3:4b-instruct-2507-fp16', // Default model for hybrid AI flow
           },
           parameters: {
             temperature: 0.3,
@@ -109,6 +110,10 @@ class AIConfig {
           model: process.env.OLLAMA_MODEL || defaults.providers.ollama.model,
           baseUrl: process.env.OLLAMA_BASE_URL || defaults.providers.ollama.baseUrl,
           timeout: process.env.OLLAMA_TIMEOUT ? parseInt(process.env.OLLAMA_TIMEOUT) : defaults.providers.ollama.timeout,
+          models: {
+            ...defaults.providers.ollama.models,
+            hybrid: process.env.OLLAMA_HYBRID_MODEL || defaults.providers.ollama.models.hybrid,
+          },
         },
         openai: {
           ...defaults.providers.openai,
@@ -241,6 +246,16 @@ class AIConfig {
   getPrimaryModel(providerName) {
     const config = this.getProviderConfig(providerName);
     return config.models?.primary || config.model;
+  }
+
+  /**
+   * Get hybrid model for a provider (used in hybrid AI flow)
+   * @param {string} providerName - Provider name
+   * @returns {string} Hybrid model name
+   */
+  getHybridModel(providerName) {
+    const config = this.getProviderConfig(providerName);
+    return config.models?.hybrid || config.models?.primary || config.model;
   }
 
   /**

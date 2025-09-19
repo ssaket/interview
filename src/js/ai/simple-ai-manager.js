@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const simpleAI = require('./simple-ai');
 const MODEL_PROMPTS = require('../model-prompts');
 
@@ -22,6 +24,7 @@ class SimpleAIManager {
 
     // State
     this.isInitialized = true;
+    this.systemPromptsEnabled = true; // Toggle for system prompts
 
     console.log(`[SimpleAIManager] Initialized with ${this.currentProvider} using model: ${this.currentModel}`);
   }
@@ -29,8 +32,9 @@ class SimpleAIManager {
   /**
    * Switch to a different provider
    * @param {string} providerName - Target provider name
+   * @param {boolean} silent - If true, don't send UI notifications
    */
-  async switchProvider(providerName) {
+  async switchProvider(providerName, silent = false) {
     if (!providerName) {
       throw new Error('Provider name is required');
     }
@@ -47,16 +51,18 @@ class SimpleAIManager {
       this.currentProvider = providerName;
       this.currentModel = this._getDefaultModelForProvider(providerName);
 
-      // Notify the app controller about the switch
-      this.appController.windowManager.send('provider-switched', {
-        from: previousProvider,
-        to: this.currentProvider,
-        provider: this.currentProvider,
-        model: this.currentModel,
-        isOllama: this.isOllama(),
-      });
+      // Notify the app controller about the switch (unless silent)
+      if (!silent) {
+        this.appController.windowManager.send('provider-switched', {
+          from: previousProvider,
+          to: this.currentProvider,
+          provider: this.currentProvider,
+          model: this.currentModel,
+          isOllama: this.isOllama(),
+        });
+      }
 
-      console.log(`[SimpleAIManager] Switched to ${providerName} using model: ${this.currentModel}`);
+      console.log(`[SimpleAIManager] ${silent ? 'Silently switched' : 'Switched'} to ${providerName} using model: ${this.currentModel}`);
       return true;
     } catch (error) {
       console.error(`[SimpleAIManager] Failed to switch to ${providerName}:`, error.message);
@@ -90,15 +96,23 @@ class SimpleAIManager {
     const sessionKey = this._getSessionKey(this.currentProvider, this.currentModel);
     const session = this._getOrCreateSession(sessionKey);
 
-    // Add system prompt if this is the first message
-    if (session.messages.length === 0) {
+    // Add system prompt if this is the first message and system prompts are enabled
+    if (session.messages.length === 0 && this.systemPromptsEnabled) {
       const systemPrompt = this._getSystemPrompt();
       if (systemPrompt) {
+        console.log(`[SimpleAIManager] System prompt for ${this.currentProvider}:${this.currentModel}:`);
+        console.log('--- SYSTEM PROMPT START ---');
+        console.log(systemPrompt);
+        console.log('--- SYSTEM PROMPT END ---');
         session.messages.push({
           role: 'system',
           content: systemPrompt,
         });
+      } else {
+        console.log(`[SimpleAIManager] No system prompt found for ${this.currentProvider}:${this.currentModel}`);
       }
+    } else if (session.messages.length === 0 && !this.systemPromptsEnabled) {
+      console.log(`[SimpleAIManager] System prompts disabled - skipping system prompt`);
     }
 
     // Add user message
@@ -110,11 +124,23 @@ class SimpleAIManager {
     // Limit session history
     this._limitSessionHistory(session);
 
+    // Log the complete message array being sent to AI
+    console.log(`[SimpleAIManager] Sending ${session.messages.length} messages to ${this.currentProvider}:${this.currentModel}`);
+    session.messages.forEach((msg, index) => {
+      if (msg.role === 'system') {
+        console.log(`Message ${index}: [SYSTEM] (${msg.content.length} chars)`);
+      } else {
+        console.log(`Message ${index}: [${msg.role.toUpperCase()}] ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`);
+      }
+    });
+
     try {
       const response = await simpleAI.chatCompletion({
         provider: this.currentProvider,
         messages: session.messages,
         parameters: options.parameters || {},
+        stream: options.stream || false,
+        onChunk: options.onChunk || null,
       });
 
       const content = this._extractContent(response);
@@ -128,6 +154,13 @@ class SimpleAIManager {
       // Update session metadata
       session.lastUsed = Date.now();
       session.requestCount++;
+
+      // Store response to temporary file
+      this._storeResponseToFile(query, content, {
+        sessionKey,
+        requestCount: session.requestCount,
+        messageCount: session.messages.length
+      });
 
       return {
         content,
@@ -225,12 +258,132 @@ class SimpleAIManager {
   /**
    * Ask the AI a question (compatibility method)
    * @param {string} question - The question to ask
-   * @param {Object} options - Additional options
+   * @param {Object} options - Additional options including flow information
    * @returns {Promise<string>} The AI's response content
    */
   async ask(question, options = {}) {
+    // Handle hybrid flow with sequential streaming
+    if (options.flow === 'hybrid') {
+      return await this.askHybrid(question, options);
+    }
+
+    // Handle hybrid flow model selection (legacy)
+    if (options.flow === 'hybrid' && this.currentProvider === 'ollama') {
+      const aiConfig = require('./ai-config');
+      const hybridModel = aiConfig.getHybridModel('ollama');
+      const originalModel = this.currentModel;
+
+      console.log(`[SimpleAIManager] Using hybrid model: ${hybridModel} (was: ${originalModel})`);
+
+      // Temporarily switch to hybrid model
+      this.setModel(hybridModel);
+
+      try {
+        const response = await this.query(question, options);
+        return response.content;
+      } finally {
+        // Restore original model
+        this.setModel(originalModel);
+      }
+    }
+
     const response = await this.query(question, options);
     return response.content;
+  }
+
+  /**
+   * Hybrid AI flow: stream local response first, then stream DeepSeek analysis
+   * @param {string} question - The question to ask
+   * @param {Object} options - Additional options including onChunk callback
+   * @returns {Promise<string>} Combined response content
+   */
+  async askHybrid(question, options = {}) {
+    console.log('[SimpleAIManager] Starting hybrid flow with streaming...');
+
+    let combinedResponse = '';
+    const onChunk = options.onChunk;
+
+    // Store original state outside try block
+    const originalProvider = this.currentProvider;
+    const originalModel = this.currentModel;
+
+    try {
+      // Phase 1: Stream local Ollama response
+      console.log('[SimpleAIManager] Phase 1: Streaming local response...');
+
+      if (onChunk) {
+        onChunk('🚀 **Local AI Response:**\n\n');
+      }
+
+      const aiConfig = require('./ai-config');
+      const hybridModel = aiConfig.getHybridModel('ollama');
+
+      // Switch to local provider with hybrid model (silently)
+      if (originalProvider !== 'ollama') {
+        await this.switchProvider('ollama', true);
+      }
+      this.setModel(hybridModel);
+
+      const localResponse = await this.query(`Brief analysis: ${question}`, {
+        stream: true,
+        onChunk: onChunk,
+        parameters: options.parameters || {}
+      });
+
+      combinedResponse += localResponse.content;
+
+      // Add separator
+      const separator = '\n\n---\n\n**🧠 DeepSeek Analysis:**\n\n';
+      combinedResponse += separator;
+      if (onChunk) {
+        onChunk(separator);
+      }
+
+      // Phase 2: Stream DeepSeek response
+      console.log('[SimpleAIManager] Phase 2: Streaming DeepSeek response...');
+
+      // Switch to DeepSeek (silently)
+      await this.switchProvider('deepseek', true);
+
+      const deepseekResponse = await this.query(question, {
+        stream: true,
+        onChunk: onChunk,
+        parameters: options.parameters || {}
+      });
+
+      combinedResponse += deepseekResponse.content;
+
+      // Restore original provider and model (silently)
+      if (originalProvider !== 'deepseek') {
+        await this.switchProvider(originalProvider, true);
+        this.setModel(originalModel);
+      }
+
+      console.log('[SimpleAIManager] Hybrid flow completed successfully');
+      return combinedResponse;
+
+    } catch (error) {
+      console.error('[SimpleAIManager] Hybrid flow failed:', error.message);
+
+      // Add error message to response
+      const errorMsg = `\n\n**❌ DeepSeek Error:** ${error.message}`;
+      combinedResponse += errorMsg;
+      if (onChunk) {
+        onChunk(errorMsg);
+      }
+
+      // Try to restore original provider (silently)
+      try {
+        if (originalProvider && this.currentProvider !== originalProvider) {
+          await this.switchProvider(originalProvider, true);
+          this.setModel(originalModel);
+        }
+      } catch (restoreError) {
+        console.error('[SimpleAIManager] Failed to restore provider:', restoreError.message);
+      }
+
+      return combinedResponse;
+    }
   }
 
   /**
@@ -308,6 +461,56 @@ class SimpleAIManager {
     return this.currentModel;
   }
 
+  /**
+   * Toggle system prompts on/off
+   * @returns {boolean} New state of system prompts
+   */
+  toggleSystemPrompts() {
+    this.systemPromptsEnabled = !this.systemPromptsEnabled;
+    console.log(`[SimpleAIManager] System prompts ${this.systemPromptsEnabled ? 'enabled' : 'disabled'}`);
+    return this.systemPromptsEnabled;
+  }
+
+  /**
+   * Get system prompts enabled state
+   * @returns {boolean} Whether system prompts are enabled
+   */
+  getSystemPromptsEnabled() {
+    return this.systemPromptsEnabled;
+  }
+
+  /**
+   * Store agent response to temporary file
+   * @param {string} query - Original user query
+   * @param {string} response - AI response content
+   * @param {Object} metadata - Additional metadata
+   */
+  _storeResponseToFile(query, response, metadata = {}) {
+    try {
+      const timestamp = new Date().toISOString();
+      const responseData = {
+        timestamp,
+        provider: this.currentProvider,
+        model: this.currentModel,
+        systemPromptsEnabled: this.systemPromptsEnabled,
+        query: query.substring(0, 200) + (query.length > 200 ? '...' : ''),
+        response,
+        metadata
+      };
+
+      const fileName = `agent-responses-${new Date().toISOString().split('T')[0]}.jsonl`;
+      const filePath = path.join(process.cwd(), fileName);
+
+      // Append as JSONL (JSON Lines) format
+      const line = JSON.stringify(responseData) + '\n';
+      fs.appendFileSync(filePath, line);
+
+      console.log(`[SimpleAIManager] Response stored to ${fileName}`);
+    } catch (error) {
+      console.error('[SimpleAIManager] Failed to store response:', error.message);
+    }
+  }
+
   // Private methods
 
   _getDefaultModelForProvider(providerName) {
@@ -342,19 +545,22 @@ class SimpleAIManager {
 
   _getSystemPrompt() {
     const modelType = this._getModelType(this.currentModel);
+    console.log(`[SimpleAIManager] Model: ${this.currentModel} -> Type: ${modelType}`);
+
     const prompt = MODEL_PROMPTS[modelType];
 
-    if (prompt && typeof prompt === 'object' && prompt.system) {
-      return prompt.system;
+    if (prompt && typeof prompt === 'string') {
+      return prompt;
     }
 
-    return MODEL_PROMPTS.default?.system || null;
+    // Fallback to default prompt
+    return MODEL_PROMPTS.default || null;
   }
 
   _getModelType(modelName = '') {
     const name = modelName.toLowerCase();
     if (name.includes('phi')) return 'phi';
-    if (name.includes('mistral')) return 'mistral';
+    if (name.includes('mistral') || name.includes('magistral')) return 'mistral';
     if (name.includes('qwen')) return 'qwen';
     if (name.includes('codellama')) return 'codellama';
     if (name.includes('gpt')) return 'gpt';

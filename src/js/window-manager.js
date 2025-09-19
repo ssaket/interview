@@ -52,7 +52,10 @@ class WindowManager {
   /** Safe wrapper for renderer calls. */
   send(channel, payload) {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      console.log(`[WindowManager] Sending IPC message: ${channel}`, payload);
       this.mainWindow.webContents.send(channel, payload);
+    } else {
+      console.error(`[WindowManager] Cannot send IPC message ${channel}: window destroyed or not ready`);
     }
   }
 
@@ -60,6 +63,14 @@ class WindowManager {
   toggleFormatter() {
     this.formatterEnabled = !this.formatterEnabled;
     this.send('formatter-toggled', this.formatterEnabled);
+  }
+
+  /** Open developer tools */
+  openDevTools() {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      console.log('[WindowManager] Opening developer tools');
+      this.mainWindow.webContents.openDevTools();
+    }
   }
 }
 

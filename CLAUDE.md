@@ -26,14 +26,18 @@ This is an Electron-based DeepSeek Overlay Helper application that captures scre
 
 ## Core Architecture
 
-### AI System (Simplified Function-Based)
-The AI system uses simple functions instead of complex class hierarchies for better maintainability:
+### AI System with Flow Management
+The AI system supports three distinct processing flows for different use cases:
 
 - **SimpleAIManager** (`src/js/ai/simple-ai-manager.js`) - Main AI controller with session management
 - **SimpleAI** (`src/js/ai/simple-ai.js`) - Direct HTTP functions for all AI providers
 - **AIConfig** (`src/js/ai/ai-config.js`) - Centralized configuration management
+- **AI Flows**:
+  - **LOCAL** - Ollama local models only (fast, private)
+  - **CLOUD** - DeepSeek API only (enhanced reasoning)
+  - **HYBRID** - Streaming: local response first, then DeepSeek analysis appended
 - **Supported Providers**:
-  - Ollama - Local AI models
+  - Ollama - Local AI models with hybrid model support (`OLLAMA_HYBRID_MODEL`)
   - OpenAI - GPT models via API
   - HuggingFace - Inference API
   - DeepSeek V3.1 - With think mode support for enhanced reasoning
@@ -64,6 +68,7 @@ AI_PROVIDER=ollama
 # Ollama Configuration
 OLLAMA_MODEL=gpt-oss
 OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_HYBRID_MODEL=qwen3:4b-instruct-2507-fp16
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key
@@ -74,7 +79,7 @@ HF_TOKEN=your_huggingface_token
 HF_PROVIDER=hyperbolic
 HF_MODEL=deepseek-ai/DeepSeek-R1-0528
 
-# DeepSeek Configuration (V3.1 with Think Mode)
+# DeepSeek Configuration (V3.1 with Think Mode) - Required for HYBRID AI flow
 DEEPSEEK_API_KEY=your_deepseek_api_key
 DEEPSEEK_MODEL=deepseek-chat
 
@@ -128,13 +133,21 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 
 ### AI and Session Control
 - `Cmd+Shift+R` - Reset session (clear context)
-- `Cmd+Shift+P` - Switch AI provider
+- `Cmd+Shift+P` - Cycle AI flows (LOCAL → CLOUD → HYBRID)
 - `Cmd+Shift+W` - Manual model warmup (Ollama)
-- `Cmd+Shift+F` - Toggle OCR filtering
+- `Cmd+Shift+F` - Toggle response formatter (code highlighting)
+- `Cmd+Shift+O` - Toggle OCR filtering
 
 ### Speech-to-Text
 - `Cmd+R` - Start speech recording
 - `Cmd+T` - Stop speech recording and auto-submit to AI with OCR context
+
+### AI Flow Selection
+Use `Cmd+Shift+P` to cycle through AI processing flows:
+
+- **LOCAL Flow**: Fast local processing with Ollama models only
+- **CLOUD Flow**: Enhanced reasoning with DeepSeek API only
+- **HYBRID Flow**: Best of both - streaming local response first, then DeepSeek analysis appended
 
 ### OCR + Speech Integrated Workflow
 - Take screenshot → OCR extracts text → AI processes with session context

@@ -84,17 +84,7 @@ class ShortcutManager {
 
     /* ─── Window visibility ─── */
     globalShortcut.register('Command+B', () => {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-        globalShortcut.unregister('Shift+X');
-        globalShortcut.unregister('Shift+Z');
-      }
-      else {
-        mainWindow.show();
-        globalShortcut.register('Shift+X', () => this.windowManager.send('scroll-page', 'up'));
-        globalShortcut.register('Shift+Z', () => this.windowManager.send('scroll-page', 'down'));
-      }
-
+      this.toggleWindowVisibility();
     });
 
     globalShortcut.register('Command+R', () => {
@@ -113,18 +103,40 @@ class ShortcutManager {
     });
 
     /* ─── OCR filtering toggle ─── */
-    globalShortcut.register('Command+Shift+F', () => {
+    globalShortcut.register('Command+Shift+O', () => {
       this.appController.ocrFilteringEnabled = !this.appController.ocrFilteringEnabled;
       this.windowManager.send('ocr-filtering-changed', this.appController.ocrFilteringEnabled);
     });
 
+    /* ─── Formatter toggle ─── */
+    globalShortcut.register('Command+Shift+F', () => {
+      this.windowManager.toggleFormatter();
+    });
+
 
     /* ─── AI flow switches ─── */
-    globalShortcut.register('Command+Shift+P', () => this.cycleAiFlow());
+    const aiFlowShortcut = globalShortcut.register('Command+Shift+P', () => this.cycleAiFlow());
+    console.log('[ShortcutManager] Command+Shift+P registration:', aiFlowShortcut ? 'SUCCESS' : 'FAILED');
+
+    // Alternative shortcut for testing AI flow cycling
+    const altAiFlowShortcut = globalShortcut.register('Command+Shift+L', () => {
+      console.log('[ShortcutManager] Command+Shift+L pressed - alternative AI flow cycling');
+      this.cycleAiFlow();
+    });
+    console.log('[ShortcutManager] Command+Shift+L (alternative) registration:', altAiFlowShortcut ? 'SUCCESS' : 'FAILED');
+
     globalShortcut.register('Command+Shift+M', () => this.switchOllamaModel());
+    globalShortcut.register('Command+Shift+Y', () => this.toggleSystemPrompts());
 
     /* ─── Misc renderer events ─── */
     globalShortcut.register('Command+Shift+D', () => this.windowManager.send('toggle-theme'));
+
+    // Developer tools shortcut
+    globalShortcut.register('Command+Shift+I', () => {
+      console.log('[ShortcutManager] Opening developer tools');
+      this.windowManager.openDevTools();
+    });
+
     globalShortcut.register('Shift+X', () => this.windowManager.send('scroll-page', 'up'));
     globalShortcut.register('Shift+Z', () => this.windowManager.send('scroll-page', 'down'));
     globalShortcut.register('Command+Shift+S', () => this.windowManager.send('trigger-screenshot'));
@@ -198,6 +210,7 @@ class ShortcutManager {
     console.log('  Cmd+Shift+F           - Toggle OCR filtering');
     console.log('  Cmd+Shift+P           - Switch AI provider');
     console.log('  Cmd+Shift+M           - Switch Ollama model');
+    console.log('  Cmd+Shift+Y           - Toggle system prompts');
     console.log('  Cmd+Shift+Q           - Toggle burn mode');
     console.log('\nMISC:');
     console.log('  Cmd+Shift+D           - Toggle dark/light theme');
@@ -232,13 +245,22 @@ class ShortcutManager {
       }
     }
 
-    const ollamaModels = this.aiManager.getOllamaModels();
-    const allModels = ollamaModels.local.slice();
-    this.aiManager;
+    // Get available Ollama models using the new API
+    const allModels = this.aiManager.getAvailableModels();
+    if (!allModels || allModels.length === 0) {
+      console.error('No Ollama models available');
+      this.windowManager.send('model-switch-failed', {
+        model: 'ollama',
+        error: 'No models available'
+      });
+      return;
+    }
 
     /* 1️⃣ Determine next model */
     const current = info.model;
-    const next = allModels[(allModels.indexOf(current) + 1) % allModels.length];
+    const currentIndex = allModels.indexOf(current);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % allModels.length : 0;
+    const next = allModels[nextIndex];
 
     /* 2️⃣ Save last user question from current session */
     const prevSession = this.aiManager.getSession();
@@ -258,11 +280,12 @@ class ShortcutManager {
     process.env.OLLAMA_MODEL = next;
 
     try {
-      this.aiManager.initialize('ollama');
+      // Initialize method exists but is a no-op in SimpleAIManager
+      this.aiManager.initialize();
     } catch (err) {
       console.error('Model switch failed:', err);
       this.windowManager.send('model-switch-failed', { model: next, error: err.message });
-      throw err;
+      return;
     }
 
     /* 4️⃣ Preserve user question in new session */
@@ -273,7 +296,6 @@ class ShortcutManager {
     }
 
     /* 5️⃣ Notify renderer */
-
     this.windowManager.send('model-switched', {
       model: next,
       question: lastUserMsg ? lastUserMsg.content : '',
@@ -337,6 +359,28 @@ class ShortcutManager {
   }
 
   /**
+   * Toggle window visibility and manage shortcuts accordingly
+   */
+  toggleWindowVisibility() {
+    const { mainWindow } = this.windowManager;
+
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+      // Deregister all shortcuts when hiding
+      this.unregisterAll();
+      // Re-register only Command+B to allow showing window again
+      globalShortcut.register('Command+B', () => {
+        this.toggleWindowVisibility();
+      });
+    } else {
+      mainWindow.show();
+      // Deregister all shortcuts and re-register them fresh
+      this.unregisterAll();
+      this.register();
+    }
+  }
+
+  /**
    * Toggle mouse tracking mode - when enabled, window follows mouse cursor
    */
   toggleMouseTracking() {
@@ -394,7 +438,20 @@ class ShortcutManager {
    * Cycle through AI flows: LOCAL -> CLOUD -> HYBRID -> LOCAL
    */
   cycleAiFlow() {
+    console.log('[ShortcutManager] Cmd+Shift+P pressed - cycling AI flow');
     this.windowManager.send('cycle-ai-flow');
+  }
+
+  /**
+   * Toggle system prompts on/off
+   */
+  toggleSystemPrompts() {
+    const enabled = this.aiManager.toggleSystemPrompts();
+    this.windowManager.send('system-prompts-toggled', {
+      enabled: enabled,
+      message: `System prompts ${enabled ? 'enabled' : 'disabled'}`
+    });
+    console.log(`[Shortcut] System prompts ${enabled ? 'enabled' : 'disabled'}`);
   }
 }
 
