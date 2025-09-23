@@ -597,24 +597,21 @@ class SimpleAIManager {
     const modelType = this._getModelType(this.currentModel);
     console.log(`[SimpleAIManager] Model: ${this.currentModel} -> Type: ${modelType}`);
 
-    const prompt = MODEL_PROMPTS[modelType];
+    const prompt = MODEL_PROMPTS.getModelPrompt(modelType);
 
     if (prompt && typeof prompt === 'string') {
       return prompt;
     }
 
     // Fallback to default prompt
-    return MODEL_PROMPTS.default || null;
+    return  prompt || null;
   }
 
   _getModelType(modelName = '') {
     const name = modelName.toLowerCase();
-    if (name.includes('phi')) return 'phi';
     if (name.includes('mistral') || name.includes('magistral')) return 'mistral';
     if (name.includes('qwen')) return 'qwen';
     if (name.includes('codellama')) return 'codellama';
-    if (name.includes('gpt')) return 'gpt';
-    if (name.includes('deepseek-coder')) return 'deepseek_coder';
     if (name.includes('deepseek')) return 'deepseek';
     return 'default';
   }

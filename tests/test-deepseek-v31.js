@@ -1,5 +1,5 @@
-const simpleAI = require('../src/js/ai/simple-ai');
-const SimpleAIManager = require('../src/js/ai/simple-ai-manager');
+const simpleAI = require('../js/ai/simple-ai');
+const SimpleAIManager = require('../js/ai/simple-ai-manager');
 
 console.log('🧪 Testing DeepSeek V3.1 Integration');
 console.log('====================================');

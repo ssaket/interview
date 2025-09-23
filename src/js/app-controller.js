@@ -698,22 +698,12 @@ class AppController {
     }
   }
 
-  /** Register mouse tracking click handler */
-  registerMouseTrackingHandlers() {
-    const { ipcMain } = require('electron');
-
-    ipcMain.on('mouse-tracking-click-detected', () => {
-      console.log('[AppController] Mouse tracking click detected');
-      this.shortcutManager.handleMouseTrackingClick();
-    });
-  }
 
   start() {
     app.whenReady().then(() => {
       this.windowManager.create();
       this.shortcutManager.register();
       this.registerIpc();
-      this.registerMouseTrackingHandlers();
       this.aiManager.initialize();
     });
     app.on('before-quit', async () => {

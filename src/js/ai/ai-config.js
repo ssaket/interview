@@ -80,7 +80,7 @@ class AIConfig {
         },
         deepseek: {
           name: 'deepseek',
-          model: 'deepseek-reasoner',
+          model: 'deepseek-chat',
           baseUrl: 'https://api.deepseek.com',
           timeout: 120000,
           models: {
