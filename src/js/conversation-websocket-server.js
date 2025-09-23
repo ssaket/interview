@@ -39,15 +39,15 @@ class ConversationWebSocketServer {
       // Set up WebSocket event handlers
       this.wss.on('connection', this.handleWebSocketConnection.bind(this));
 
-      // Start listening
+      // Start listening on all interfaces (0.0.0.0) to allow network access
       await new Promise((resolve, reject) => {
-        this.httpServer.listen(this.port, (error) => {
+        this.httpServer.listen(this.port, '0.0.0.0', (error) => {
           if (error) {
             reject(error);
           } else {
             this.actualPort = this.httpServer.address().port;
             this.isRunning = true;
-            console.log(`[ConversationWebSocketServer] Started on port ${this.actualPort}`);
+            console.log(`[ConversationWebSocketServer] Started on port ${this.actualPort}, accessible on all network interfaces`);
             resolve();
           }
         });
@@ -107,7 +107,37 @@ class ConversationWebSocketServer {
     if (!this.isRunning || !this.actualPort) {
       return null;
     }
-    return `http://localhost:${this.actualPort}`;
+    return `http://0.0.0.0:${this.actualPort}`;
+  }
+
+  /**
+   * Get network-accessible URLs for the server
+   * @returns {Array<string>} Array of accessible URLs
+   */
+  getNetworkUrls() {
+    if (!this.isRunning || !this.actualPort) {
+      return [];
+    }
+
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    const urls = [];
+
+    // Add localhost
+    urls.push(`http://localhost:${this.actualPort}`);
+
+    // Add all network interfaces
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        // Skip internal and non-IPv4 addresses
+        if (iface.internal || iface.family !== 'IPv4') {
+          continue;
+        }
+        urls.push(`http://${iface.address}:${this.actualPort}`);
+      }
+    }
+
+    return urls;
   }
 
   /**
@@ -158,14 +188,8 @@ class ConversationWebSocketServer {
         const htmlPath = path.join(process.cwd(), 'conversation-history-websocket.html');
         const htmlContent = await fs.readFile(htmlPath, 'utf8');
 
-        // Inject WebSocket URL into the HTML
-        const modifiedHtml = htmlContent.replace(
-          'ws://localhost:0000',
-          `ws://localhost:${this.actualPort}`
-        );
-
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(modifiedHtml);
+        res.end(htmlContent);
       } else if (req.url === '/favicon.ico') {
         res.writeHead(404);
         res.end();

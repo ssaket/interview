@@ -529,7 +529,7 @@ class ShortcutManager {
     this.mouseTrackingEnabled = false;
 
     // Trigger region screenshot
-    this.windowManager.send('trigger-screenshot-region-with-ai');
+    this.windowManager.send('trigger-screenshot-region');
 
     console.log('Mouse tracking disabled - region screenshot triggered');
   }

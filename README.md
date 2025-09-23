@@ -145,7 +145,7 @@ The cleaner uses pattern matching to identify:
 
 ### Region Selection Benefits
 
-Using region selection (`⌘+Shift+A`) instead of full screen capture:
+Using region selection (`⌘+A`):
 - **Reduces noise**: Less irrelevant UI elements in OCR
 - **Improves accuracy**: Focused on specific content area
 - **Faster processing**: Smaller images process quicker

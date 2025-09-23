@@ -47,8 +47,8 @@ class CodeMirrorRenderer {
     console.log('🔧 Setting up IPC event listeners...');
 
     // Screenshot events (region only)
-    ipcRenderer.on('trigger-overlay-region-screenshot', () => this.handleScreenshot(true));
-    ipcRenderer.on('trigger-screenshot-region', () => this.handleScreenshot(true));
+    ipcRenderer.on('trigger-overlay-region-screenshot', () => this.handleScreenshot());
+    ipcRenderer.on('trigger-screenshot-region', () => this.handleScreenshot());
 
     // Speech events
     ipcRenderer.on('start-speech-recording', () => this.handleSpeechStart());
@@ -114,7 +114,7 @@ class CodeMirrorRenderer {
   }
 
   // Screenshot handling (region only)
-  async handleScreenshot(isRegion = true) {
+  async handleScreenshot() {
     this.updateOCRStatus('capturing');
     this.showMessage('📸 Capturing region...');
 

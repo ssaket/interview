@@ -782,7 +782,12 @@ class AppController {
   async startWebSocketServer() {
     try {
       const url = await this.conversationWebSocketServer.start();
+      const networkUrls = this.conversationWebSocketServer.getNetworkUrls();
       console.log(`[AppController] WebSocket server started at ${url}`);
+      console.log('[AppController] Network accessible URLs:');
+      networkUrls.forEach(networkUrl => {
+        console.log(`  - ${networkUrl}`);
+      });
     } catch (error) {
       console.error('[AppController] Failed to start WebSocket server:', error);
     }

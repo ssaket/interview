@@ -13,276 +13,245 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            background-color: #1a1a1a;
-            color: #e0e0e0;
-            line-height: 1.6;
-            padding: 20px;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            line-height: 1.5;
+            padding: 16px;
+            font-size: 14px;
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 900px;
             margin: 0 auto;
         }
 
         .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding: 20px;
-            background: linear-gradient(135deg, #2d2d2d, #404040);
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            padding: 16px 0;
+            border-bottom: 1px solid #21262d;
+            margin-bottom: 24px;
         }
 
         .header h1 {
-            color: #4a9eff;
-            font-size: 2.5em;
-            margin-bottom: 10px;
+            color: #f0f6fc;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
         }
 
         .connection-status {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 15px;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            font-weight: 600;
+            gap: 6px;
+            margin-bottom: 12px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            border: 1px solid transparent;
         }
 
         .connection-status.connected {
-            background: #22c55e;
-            color: white;
+            background: #1a2e1a;
+            border-color: #2d4f2d;
+            color: #7ee787;
         }
 
         .connection-status.connecting {
-            background: #f59e0b;
-            color: white;
+            background: #2e2a1a;
+            border-color: #4f4b2d;
+            color: #f0c674;
         }
 
         .connection-status.disconnected {
-            background: #ef4444;
-            color: white;
+            background: #2e1a1a;
+            border-color: #4f2d2d;
+            color: #ff7b72;
         }
 
         .status-indicator {
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
             background: currentColor;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
         }
 
         .provider-info {
             display: flex;
-            justify-content: center;
-            gap: 20px;
+            gap: 12px;
             flex-wrap: wrap;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
         }
 
         .info-badge {
-            background: #333;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            border: 1px solid #555;
+            background: #161b22;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            border: 1px solid #30363d;
+            color: #8b949e;
         }
 
         .info-badge.provider {
-            background: #4a9eff;
-            color: white;
+            background: #0d419d;
+            border-color: #1f6feb;
+            color: #ffffff;
         }
 
         .stats {
-            text-align: center;
-            color: #888;
-            font-size: 0.9em;
+            color: #7d8590;
+            font-size: 12px;
         }
 
         .conversation {
-            background: #2d2d2d;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-            margin-bottom: 20px;
+            background: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 6px;
+            margin-bottom: 16px;
             min-height: 200px;
+            overflow: hidden;
         }
 
         .message {
-            margin-bottom: 20px;
-            padding: 15px;
-            border-radius: 8px;
-            position: relative;
-            opacity: 0;
-            transform: translateY(10px);
-            animation: slideIn 0.3s ease forwards;
+            padding: 16px;
+            border-bottom: 1px solid #21262d;
         }
 
-        .message.new {
-            animation: slideInHighlight 0.6s ease forwards;
-        }
-
-        @keyframes slideIn {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes slideInHighlight {
-            0% {
-                opacity: 0;
-                transform: translateY(10px);
-                background: rgba(74, 158, 255, 0.2);
-            }
-            50% {
-                background: rgba(74, 158, 255, 0.1);
-            }
-            100% {
-                opacity: 1;
-                transform: translateY(0);
-                background: transparent;
-            }
+        .message:last-child {
+            border-bottom: none;
         }
 
         .message.user {
-            background: #1e3a5f;
-            border-left: 4px solid #4a9eff;
-            margin-left: 0;
-            margin-right: 60px;
+            background: #0d1117;
+            border-left: 3px solid #1f6feb;
         }
 
         .message.assistant {
-            background: #2a4a2a;
-            border-left: 4px solid #4ade80;
-            margin-left: 60px;
-            margin-right: 0;
+            background: #161b22;
+            border-left: 3px solid #238636;
         }
 
         .message-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
-            font-size: 0.9em;
+            margin-bottom: 8px;
+            font-size: 12px;
         }
 
         .role {
-            font-weight: bold;
+            font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         .message.user .role {
-            color: #4a9eff;
+            color: #1f6feb;
         }
 
         .message.assistant .role {
-            color: #4ade80;
+            color: #238636;
         }
 
         .timestamp {
-            color: #888;
-            font-size: 0.8em;
+            color: #7d8590;
+            font-size: 11px;
         }
 
         .content {
             white-space: pre-wrap;
             word-wrap: break-word;
-            font-size: 1em;
+            font-size: 14px;
+            color: #c9d1d9;
         }
 
         .content code {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Consolas', monospace;
-            font-size: 0.9em;
+            background: #161b22;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 12px;
+            border: 1px solid #30363d;
         }
 
         .content pre {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px;
+            background: #161b22;
+            padding: 12px;
             border-radius: 6px;
             overflow-x: auto;
-            margin: 10px 0;
-            font-family: 'Monaco', 'Consolas', monospace;
+            margin: 8px 0;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 12px;
+            border: 1px solid #30363d;
         }
 
         .empty-state {
             text-align: center;
-            padding: 60px 20px;
-            color: #888;
-            font-size: 1.1em;
+            padding: 48px 20px;
+            color: #7d8590;
+            font-size: 14px;
         }
 
         .empty-state .icon {
-            font-size: 4em;
-            margin-bottom: 20px;
-            color: #555;
+            font-size: 32px;
+            margin-bottom: 12px;
+            color: #6e7681;
         }
 
         .controls {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: 16px;
+            right: 16px;
             display: flex;
-            gap: 10px;
+            gap: 8px;
         }
 
         .btn {
-            background: #4a9eff;
+            background: #238636;
             color: white;
             border: none;
-            padding: 12px 20px;
-            border-radius: 25px;
+            padding: 8px 16px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 0.9em;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 10px rgba(74, 158, 255, 0.3);
+            font-size: 12px;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+            border: 1px solid transparent;
         }
 
         .btn:hover {
-            background: #3a8ee6;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(74, 158, 255, 0.4);
+            background: #2ea043;
         }
 
         .btn:disabled {
-            background: #666;
+            background: #21262d;
+            color: #7d8590;
             cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
+            border-color: #30363d;
         }
 
         .btn.secondary {
-            background: #666;
-            box-shadow: 0 2px 10px rgba(102, 102, 102, 0.3);
+            background: #21262d;
+            border-color: #30363d;
+            color: #c9d1d9;
         }
 
         .btn.secondary:hover {
-            background: #777;
-            box-shadow: 0 4px 15px rgba(102, 102, 102, 0.4);
+            background: #30363d;
         }
 
         .notification {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 20px;
-            border-radius: 8px;
+            top: 16px;
+            right: 16px;
+            padding: 12px 16px;
+            border-radius: 6px;
             color: white;
-            font-weight: 600;
+            font-weight: 500;
+            font-size: 12px;
             transform: translateX(400px);
-            transition: transform 0.3s ease;
+            transition: transform 0.2s ease;
             z-index: 1000;
+            border: 1px solid transparent;
         }
 
         .notification.show {
@@ -290,51 +259,54 @@
         }
 
         .notification.success {
-            background: #22c55e;
+            background: #238636;
+            border-color: #2ea043;
         }
 
         .notification.error {
-            background: #ef4444;
+            background: #da3633;
+            border-color: #f85149;
         }
 
         .notification.info {
-            background: #3b82f6;
+            background: #1f6feb;
+            border-color: #388bfd;
         }
 
         @media (max-width: 768px) {
-            .header h1 {
-                font-size: 2em;
+            body {
+                padding: 12px;
             }
-            
+
+            .header h1 {
+                font-size: 18px;
+            }
+
             .provider-info {
                 flex-direction: column;
-                align-items: center;
+                gap: 8px;
             }
-            
-            .message.user {
-                margin-right: 20px;
-            }
-            
-            .message.assistant {
-                margin-left: 20px;
-            }
-            
+
             .controls {
                 position: relative;
                 bottom: auto;
                 right: auto;
                 justify-content: center;
-                margin-top: 30px;
+                margin-top: 24px;
+            }
+
+            .message {
+                padding: 12px;
             }
         }
 
         .typing-indicator {
             display: none;
-            padding: 15px;
-            margin: 20px 60px 20px 0;
-            background: #333;
-            border-radius: 8px;
-            color: #888;
+            padding: 12px 16px;
+            background: #161b22;
+            border-bottom: 1px solid #21262d;
+            color: #7d8590;
+            font-size: 12px;
         }
 
         .typing-indicator.show {
@@ -343,14 +315,15 @@
 
         .typing-dots {
             display: inline-flex;
-            gap: 4px;
+            gap: 2px;
+            margin-left: 6px;
         }
 
         .typing-dot {
-            width: 6px;
-            height: 6px;
+            width: 4px;
+            height: 4px;
             border-radius: 50%;
-            background: #4a9eff;
+            background: #7d8590;
             animation: typingPulse 1.4s ease-in-out infinite both;
         }
 
@@ -361,11 +334,9 @@
         @keyframes typingPulse {
             0%, 80%, 100% {
                 opacity: 0.3;
-                transform: scale(0.8);
             }
             40% {
                 opacity: 1;
-                transform: scale(1);
             }
         }
     </style>
@@ -373,7 +344,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🤖 Live Conversation History</h1>
+            <h1>Conversation History</h1>
             <div class="connection-status" id="connection-status">
                 <div class="status-indicator"></div>
                 <span>Connecting...</span>
@@ -384,7 +355,7 @@
                 <div class="info-badge" id="session-badge">Loading...</div>
             </div>
             <div class="stats" id="stats">
-                <span id="last-updated">Never updated</span> • 
+                <span id="last-updated">Never updated</span> •
                 <span id="message-count">0 messages</span>
             </div>
         </div>
@@ -393,14 +364,14 @@
             <div class="empty-state" id="empty-state">
                 <div class="icon">💬</div>
                 <div>No conversation history yet.</div>
-                <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
-                    Start a conversation with the DeepSeek Overlay app to see messages here in real-time.
+                <div style="margin-top: 8px; font-size: 12px; color: #6e7681;">
+                    Start a conversation with the DeepSeek Overlay app to see messages here.
                 </div>
             </div>
         </div>
 
         <div class="typing-indicator" id="typing-indicator">
-            <span>AI is thinking</span>
+            <span>Processing</span>
             <div class="typing-dots">
                 <div class="typing-dot"></div>
                 <div class="typing-dot"></div>
@@ -423,8 +394,8 @@
         let maxReconnectAttempts = 5;
         let reconnectDelay = 1000;
 
-        // WebSocket URL (will be replaced by server)
-        const WS_URL = 'ws://localhost:0000';
+        // WebSocket URL - dynamically determine host from current page location
+        const WS_URL = `ws://${window.location.host}`;
 
         // Initialize the page
         document.addEventListener('DOMContentLoaded', function() {
@@ -566,7 +537,7 @@
             
             messageDiv.innerHTML = `
                 <div class="message-header">
-                    <div class="role">${message.role === 'user' ? '👤 User' : '🤖 Assistant'}</div>
+                    <div class="role">${message.role === 'user' ? 'User' : 'Assistant'}</div>
                     <div class="timestamp">${timestamp}</div>
                 </div>
                 <div class="content">${formatContent(message.content)}</div>
