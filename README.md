@@ -5,8 +5,8 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 ## Features
 
 ### Core Functionality
-- **Screenshot Capture**: Capture full screen or selected regions for analysis
-- **Region Selection**: Click and drag to capture specific areas instead of full screen
+- **Screenshot Capture**: Capture selected regions for analysis
+- **Region Selection**: Click and drag to capture specific areas
 - **OCR Processing**: Extract text from screenshots using Tesseract.js with intelligent filtering
 - **Smart Text Cleaning**: Remove UI junk and irrelevant text before sending to AI
 - **AI Integration**: Query ChatGPT/DeepSeek models for coding assistance
@@ -57,8 +57,7 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 
 | Shortcut | Action |
 |----------|--------|
-| `⌘+Shift+S` | Capture full screen and analyze |
-| `⌘+Shift+A` | Select region to capture and analyze |
+| `⌘+A` | Select region to capture and analyze |
 | `⌘+←/→/↑/↓` | Move overlay window |
 | `⌘+B` | Hide/show application |
 | `⌘+Shift+R` | Reset session (clear context) |
@@ -69,8 +68,7 @@ A smart overlay application that captures screenshots, performs OCR, and queries
 
 1. **Position the overlay** where you want it on screen
 2. **Capture content**:
-   - Use `⌘+Shift+S` for full screen capture
-   - Use `⌘+Shift+A` to select a specific region - reduces OCR noise!
+   - Use `⌘+A` to select a specific region - reduces OCR noise!
 3. **Review the formatted response** with highlighted code and concise explanations
 4. **Ask follow-up questions** - the AI will remember previous context in the session
 5. **Reset session** using `⌘+Shift+R` when starting a new topic

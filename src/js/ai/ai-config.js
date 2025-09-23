@@ -98,7 +98,7 @@ class AIConfig {
           },
           version: '3.1',
         },
-      }
+      },
     };
 
     // Override with environment variables
@@ -109,7 +109,9 @@ class AIConfig {
           ...defaults.providers.ollama,
           model: process.env.OLLAMA_MODEL || defaults.providers.ollama.model,
           baseUrl: process.env.OLLAMA_BASE_URL || defaults.providers.ollama.baseUrl,
-          timeout: process.env.OLLAMA_TIMEOUT ? parseInt(process.env.OLLAMA_TIMEOUT) : defaults.providers.ollama.timeout,
+          timeout: process.env.OLLAMA_TIMEOUT
+            ? parseInt(process.env.OLLAMA_TIMEOUT)
+            : defaults.providers.ollama.timeout,
           models: {
             ...defaults.providers.ollama.models,
             hybrid: process.env.OLLAMA_HYBRID_MODEL || defaults.providers.ollama.models.hybrid,
@@ -120,7 +122,9 @@ class AIConfig {
           model: process.env.OPENAI_MODEL || defaults.providers.openai.model,
           apiKey: process.env.OPENAI_API_KEY,
           baseUrl: process.env.OPENAI_BASE_URL || defaults.providers.openai.baseUrl,
-          timeout: process.env.OPENAI_TIMEOUT ? parseInt(process.env.OPENAI_TIMEOUT) : defaults.providers.openai.timeout,
+          timeout: process.env.OPENAI_TIMEOUT
+            ? parseInt(process.env.OPENAI_TIMEOUT)
+            : defaults.providers.openai.timeout,
         },
         huggingface: {
           ...defaults.providers.huggingface,
@@ -128,16 +132,20 @@ class AIConfig {
           apiToken: process.env.HF_TOKEN,
           provider: process.env.HF_PROVIDER || defaults.providers.huggingface.provider,
           baseUrl: process.env.HF_BASE_URL || defaults.providers.huggingface.baseUrl,
-          timeout: process.env.HF_TIMEOUT ? parseInt(process.env.HF_TIMEOUT) : defaults.providers.huggingface.timeout,
+          timeout: process.env.HF_TIMEOUT
+            ? parseInt(process.env.HF_TIMEOUT)
+            : defaults.providers.huggingface.timeout,
         },
         deepseek: {
           ...defaults.providers.deepseek,
           model: process.env.DEEPSEEK_MODEL || defaults.providers.deepseek.model,
           apiKey: process.env.DEEPSEEK_API_KEY,
           baseUrl: process.env.DEEPSEEK_BASE_URL || defaults.providers.deepseek.baseUrl,
-          timeout: process.env.DEEPSEEK_TIMEOUT ? parseInt(process.env.DEEPSEEK_TIMEOUT) : defaults.providers.deepseek.timeout,
+          timeout: process.env.DEEPSEEK_TIMEOUT
+            ? parseInt(process.env.DEEPSEEK_TIMEOUT)
+            : defaults.providers.deepseek.timeout,
         },
-      }
+      },
     };
 
     return envOverrides;
@@ -189,7 +197,7 @@ class AIConfig {
 
     this.config.providers[normalizedName] = {
       ...this.config.providers[normalizedName],
-      ...newConfig
+      ...newConfig,
     };
   }
 
@@ -338,7 +346,6 @@ class AIConfig {
   reset() {
     this.config = this._loadConfiguration();
   }
-
 }
 
 // Export singleton instance

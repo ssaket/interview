@@ -18,7 +18,13 @@ const aiConfig = require('./ai-config');
  * @param {Function} options.onChunk - Callback for streaming chunks
  * @returns {Promise<Object>} Standardized response
  */
-async function chatCompletion({ provider, messages, parameters = {}, stream = false, onChunk = null }) {
+async function chatCompletion({
+  provider,
+  messages,
+  parameters = {},
+  stream = false,
+  onChunk = null,
+}) {
   if (!provider) {
     provider = aiConfig.getDefaultProvider();
   }
@@ -62,21 +68,20 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
   try {
     if (stream && onChunk) {
       // Streaming response
-      const response = await axios.post(
-        `${config.baseUrl}/api/chat`,
-        requestBody,
-        {
-          timeout: config.timeout,
-          headers: { 'Content-Type': 'application/json' },
-          responseType: 'stream',
-        }
-      );
+      const response = await axios.post(`${config.baseUrl}/api/chat`, requestBody, {
+        timeout: config.timeout,
+        headers: { 'Content-Type': 'application/json' },
+        responseType: 'stream',
+      });
 
       let fullContent = '';
 
       return new Promise((resolve, reject) => {
         response.data.on('data', (chunk) => {
-          const lines = chunk.toString().split('\n').filter(line => line.trim());
+          const lines = chunk
+            .toString()
+            .split('\n')
+            .filter((line) => line.trim());
 
           for (const line of lines) {
             try {
@@ -89,14 +94,16 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
 
               if (data.done) {
                 resolve({
-                  choices: [{
-                    message: {
-                      role: 'assistant',
-                      content: fullContent,
+                  choices: [
+                    {
+                      message: {
+                        role: 'assistant',
+                        content: fullContent,
+                      },
                     },
-                  }],
+                  ],
                   provider: 'ollama',
-                  model: config.model
+                  model: config.model,
                 });
               }
             } catch (parseError) {
@@ -112,38 +119,38 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
         response.data.on('end', () => {
           if (fullContent) {
             resolve({
-              choices: [{
-                message: {
-                  role: 'assistant',
-                  content: fullContent,
+              choices: [
+                {
+                  message: {
+                    role: 'assistant',
+                    content: fullContent,
+                  },
                 },
-              }],
+              ],
               provider: 'ollama',
-              model: config.model
+              model: config.model,
             });
           }
         });
       });
     } else {
       // Non-streaming response
-      const response = await axios.post(
-        `${config.baseUrl}/api/chat`,
-        requestBody,
-        {
-          timeout: config.timeout,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
+      const response = await axios.post(`${config.baseUrl}/api/chat`, requestBody, {
+        timeout: config.timeout,
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       return {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: response.data.message.content,
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: response.data.message.content,
+            },
           },
-        }],
+        ],
         provider: 'ollama',
-        model: config.model
+        model: config.model,
       };
     }
   } catch (error) {
@@ -185,7 +192,7 @@ function buildOpenAIRequestBody(config, messages, parameters, stream) {
     top_p: parameters.top_p ?? config.parameters.top_p,
     max_tokens: parameters.max_tokens ?? config.parameters.max_tokens,
     stream: stream,
-    ...parameters
+    ...parameters,
   };
 }
 
@@ -196,7 +203,7 @@ function buildOpenAIRequestBody(config, messages, parameters, stream) {
 function buildOpenAIHeaders(apiKey) {
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${apiKey}`,
+    Authorization: `Bearer ${apiKey}`,
   };
 }
 
@@ -205,21 +212,20 @@ function buildOpenAIHeaders(apiKey) {
  * @private
  */
 async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
-  const response = await axios.post(
-    `${config.baseUrl}/chat/completions`,
-    requestBody,
-    {
-      timeout: config.timeout,
-      headers,
-      responseType: 'stream',
-    }
-  );
+  const response = await axios.post(`${config.baseUrl}/chat/completions`, requestBody, {
+    timeout: config.timeout,
+    headers,
+    responseType: 'stream',
+  });
 
   let fullContent = '';
 
   return new Promise((resolve, reject) => {
     response.data.on('data', (chunk) => {
-      const lines = chunk.toString().split('\n').filter(line => line.trim());
+      const lines = chunk
+        .toString()
+        .split('\n')
+        .filter((line) => line.trim());
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
@@ -227,14 +233,16 @@ async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
 
           if (data === '[DONE]') {
             resolve({
-              choices: [{
-                message: {
-                  role: 'assistant',
-                  content: fullContent,
+              choices: [
+                {
+                  message: {
+                    role: 'assistant',
+                    content: fullContent,
+                  },
                 },
-              }],
+              ],
               provider: 'openai',
-              model: config.model
+              model: config.model,
             });
             return;
           }
@@ -262,14 +270,16 @@ async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
     response.data.on('end', () => {
       if (fullContent) {
         resolve({
-          choices: [{
-            message: {
-              role: 'assistant',
-              content: fullContent,
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: fullContent,
+              },
             },
-          }],
+          ],
           provider: 'openai',
-          model: config.model
+          model: config.model,
         });
       }
     });
@@ -281,19 +291,15 @@ async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
  * @private
  */
 async function handleOpenAINonStreaming(config, requestBody, headers) {
-  const response = await axios.post(
-    `${config.baseUrl}/chat/completions`,
-    requestBody,
-    {
-      timeout: config.timeout,
-      headers,
-    }
-  );
+  const response = await axios.post(`${config.baseUrl}/chat/completions`, requestBody, {
+    timeout: config.timeout,
+    headers,
+  });
 
   return {
     ...response.data,
     provider: 'openai',
-    model: config.model
+    model: config.model,
   };
 }
 
@@ -319,30 +325,29 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
     top_p: parameters.top_p ?? config.parameters.top_p,
     max_tokens: parameters.max_tokens ?? config.parameters.max_tokens,
     stream: stream,
-    ...parameters
+    ...parameters,
   };
 
   try {
     if (stream && onChunk) {
       // Streaming response
-      const response = await axios.post(
-        `${baseUrl}/chat/completions`,
-        requestBody,
-        {
-          timeout: config.timeout,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-          },
-          responseType: 'stream',
-        }
-      );
+      const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
+        timeout: config.timeout,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        responseType: 'stream',
+      });
 
       let fullContent = '';
 
       return new Promise((resolve, reject) => {
         response.data.on('data', (chunk) => {
-          const lines = chunk.toString().split('\n').filter(line => line.trim());
+          const lines = chunk
+            .toString()
+            .split('\n')
+            .filter((line) => line.trim());
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
@@ -350,22 +355,29 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
 
               if (data === '[DONE]') {
                 resolve({
-                  choices: [{
-                    message: {
-                      role: 'assistant',
-                      content: fullContent,
+                  choices: [
+                    {
+                      message: {
+                        role: 'assistant',
+                        content: fullContent,
+                      },
                     },
-                  }],
+                  ],
                   provider: 'deepseek',
                   model: config.model,
-                  version: '3.1'
+                  version: '3.1',
                 });
                 return;
               }
 
               try {
                 const parsed = JSON.parse(data);
-                if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
+                if (
+                  parsed.choices &&
+                  parsed.choices[0] &&
+                  parsed.choices[0].delta &&
+                  parsed.choices[0].delta.content
+                ) {
                   const content = parsed.choices[0].delta.content;
                   fullContent += content;
                   onChunk(content);
@@ -384,38 +396,36 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         response.data.on('end', () => {
           if (fullContent) {
             resolve({
-              choices: [{
-                message: {
-                  role: 'assistant',
-                  content: fullContent,
+              choices: [
+                {
+                  message: {
+                    role: 'assistant',
+                    content: fullContent,
+                  },
                 },
-              }],
+              ],
               provider: 'deepseek',
               model: config.model,
-              version: '3.1'
+              version: '3.1',
             });
           }
         });
       });
     } else {
       // Non-streaming response
-      const response = await axios.post(
-        `${baseUrl}/chat/completions`,
-        requestBody,
-        {
-          timeout: config.timeout,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-          },
-        }
-      );
+      const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
+        timeout: config.timeout,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+      });
 
       return {
         ...response.data,
         provider: 'deepseek',
         model: config.model,
-        version: '3.1'
+        version: '3.1',
       };
     }
   } catch (error) {
@@ -435,7 +445,7 @@ async function handleHuggingFace(config, messages, parameters, stream = false, o
     top_p: parameters.top_p ?? config.parameters.top_p,
     max_tokens: parameters.max_tokens ?? config.parameters.max_tokens,
     stream: stream,
-    ...parameters
+    ...parameters,
   };
 
   const headers = {
@@ -449,15 +459,11 @@ async function handleHuggingFace(config, messages, parameters, stream = false, o
   try {
     // Note: HuggingFace streaming implementation would depend on the specific provider
     // For now, we'll implement basic streaming support
-    const response = await axios.post(
-      `${config.baseUrl}/models/${config.model}`,
-      requestBody,
-      {
-        timeout: config.timeout,
-        headers,
-        responseType: stream && onChunk ? 'stream' : 'json',
-      }
-    );
+    const response = await axios.post(`${config.baseUrl}/models/${config.model}`, requestBody, {
+      timeout: config.timeout,
+      headers,
+      responseType: stream && onChunk ? 'stream' : 'json',
+    });
 
     if (stream && onChunk) {
       // Basic streaming for HuggingFace (implementation varies by provider)
@@ -480,27 +486,31 @@ async function handleHuggingFace(config, messages, parameters, stream = false, o
 
         response.data.on('end', () => {
           resolve({
-            choices: [{
-              message: {
-                role: 'assistant',
-                content: fullContent,
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: fullContent,
+                },
               },
-            }],
+            ],
             provider: 'huggingface',
-            model: config.model
+            model: config.model,
           });
         });
       });
     } else {
       return {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: response.data.generated_text || response.data.content || response.data,
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: response.data.generated_text || response.data.content || response.data,
+            },
           },
-        }],
+        ],
         provider: 'huggingface',
-        model: config.model
+        model: config.model,
       };
     }
   } catch (error) {
@@ -533,14 +543,18 @@ function formatError(provider, error) {
       case 429:
         return new Error(`${provider} API rate limit exceeded. Please try again later.`);
       case 400:
-        return new Error(`${provider} API bad request: ${data.error?.message || 'Invalid request'}`);
+        return new Error(
+          `${provider} API bad request: ${data.error?.message || 'Invalid request'}`
+        );
       case 404:
         return new Error(`${provider} model not found or not accessible.`);
       case 500:
       case 503:
         return new Error(`${provider} API server error. Please try again later.`);
       default:
-        return new Error(`${provider} API error (${status}): ${data.error?.message || error.message}`);
+        return new Error(
+          `${provider} API error (${status}): ${data.error?.message || error.message}`
+        );
     }
   }
 
@@ -557,7 +571,7 @@ async function testProvider(provider) {
     await chatCompletion({
       provider,
       messages: [{ role: 'user', content: 'ping' }],
-      parameters: { max_tokens: 1 }
+      parameters: { max_tokens: 1 },
     });
     return true;
   } catch (error) {

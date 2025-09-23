@@ -7,8 +7,8 @@ const fs = require('fs').promises;
  * WebSocket server for real-time conversation history updates
  */
 class ConversationWebSocketServer {
-  constructor(conversationHistoryService, port = 0) {
-    this.conversationHistoryService = conversationHistoryService;
+  constructor(aiManager, port = 0) {
+    this.aiManager = aiManager;
     this.server = null;
     this.wss = null;
     this.httpServer = null;
@@ -16,7 +16,7 @@ class ConversationWebSocketServer {
     this.actualPort = null;
     this.isRunning = false;
     this.clients = new Set();
-    
+
     console.log('[ConversationWebSocketServer] Initialized');
   }
 
@@ -32,13 +32,13 @@ class ConversationWebSocketServer {
     try {
       // Create HTTP server
       this.httpServer = http.createServer(this.handleHttpRequest.bind(this));
-      
+
       // Create WebSocket server
       this.wss = new WebSocket.Server({ server: this.httpServer });
-      
+
       // Set up WebSocket event handlers
       this.wss.on('connection', this.handleWebSocketConnection.bind(this));
-      
+
       // Start listening
       await new Promise((resolve, reject) => {
         this.httpServer.listen(this.port, (error) => {
@@ -70,7 +70,7 @@ class ConversationWebSocketServer {
 
     try {
       // Close all WebSocket connections
-      this.clients.forEach(client => {
+      this.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
           client.close();
         }
@@ -119,16 +119,16 @@ class ConversationWebSocketServer {
     }
 
     try {
-      const historyData = this.conversationHistoryService.getCurrentHistory();
+      const historyData = this.getCurrentHistory();
       const message = JSON.stringify({
         type: 'history_update',
         data: historyData,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       // Send to all connected clients
       const deadClients = new Set();
-      this.clients.forEach(client => {
+      this.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
           client.send(message);
         } else {
@@ -137,9 +137,11 @@ class ConversationWebSocketServer {
       });
 
       // Remove dead clients
-      deadClients.forEach(client => this.clients.delete(client));
+      deadClients.forEach((client) => this.clients.delete(client));
 
-      console.log(`[ConversationWebSocketServer] Broadcasted update to ${this.clients.size} clients`);
+      console.log(
+        `[ConversationWebSocketServer] Broadcasted update to ${this.clients.size} clients`
+      );
     } catch (error) {
       console.error('[ConversationWebSocketServer] Failed to broadcast update:', error);
     }
@@ -155,13 +157,13 @@ class ConversationWebSocketServer {
         // Serve the conversation history HTML page
         const htmlPath = path.join(process.cwd(), 'conversation-history-websocket.html');
         const htmlContent = await fs.readFile(htmlPath, 'utf8');
-        
+
         // Inject WebSocket URL into the HTML
         const modifiedHtml = htmlContent.replace(
           'ws://localhost:0000',
           `ws://localhost:${this.actualPort}`
         );
-        
+
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(modifiedHtml);
       } else if (req.url === '/favicon.ico') {
@@ -184,7 +186,7 @@ class ConversationWebSocketServer {
    */
   handleWebSocketConnection(ws, req) {
     console.log('[ConversationWebSocketServer] New WebSocket connection');
-    
+
     // Add client to the set
     this.clients.add(ws);
 
@@ -220,11 +222,11 @@ class ConversationWebSocketServer {
    */
   async sendCurrentHistory(ws) {
     try {
-      const historyData = this.conversationHistoryService.getCurrentHistory();
+      const historyData = this.getCurrentHistory();
       const message = JSON.stringify({
         type: 'initial_history',
         data: historyData,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       if (ws.readyState === WebSocket.OPEN) {
@@ -253,10 +255,12 @@ class ConversationWebSocketServer {
         case 'clear_history':
           // This could trigger a history clear in the main app
           // For now, just acknowledge
-          ws.send(JSON.stringify({ 
-            type: 'clear_acknowledged', 
-            timestamp: new Date().toISOString() 
-          }));
+          ws.send(
+            JSON.stringify({
+              type: 'clear_acknowledged',
+              timestamp: new Date().toISOString(),
+            })
+          );
           break;
 
         default:
@@ -265,6 +269,36 @@ class ConversationWebSocketServer {
     } catch (error) {
       console.error('[ConversationWebSocketServer] Error handling client message:', error);
     }
+  }
+
+  /**
+   * Get current conversation history data
+   * @returns {Object} History data object
+   */
+  getCurrentHistory() {
+    const providerInfo = this.aiManager.getProviderInfo();
+    const sessionStats = this.aiManager.getSessionStats();
+    const session = this.aiManager.getSession();
+
+    return {
+      provider: providerInfo.name,
+      model: providerInfo.model,
+      isOllama: providerInfo.isOllama,
+      history: session.history || [],
+      lastUpdated: new Date().toISOString(),
+      sessionStats: {
+        historyLength: sessionStats.historyLength,
+        cacheSize: sessionStats.cacheSize,
+        isActive: sessionStats.isActive,
+        provider: sessionStats.provider,
+        model: sessionStats.model,
+      },
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        version: '1.0',
+        source: 'DeepSeek Overlay Helper',
+      },
+    };
   }
 
   /**
@@ -277,7 +311,7 @@ class ConversationWebSocketServer {
       port: this.actualPort,
       url: this.getUrl(),
       connectedClients: this.clients.size,
-      uptime: this.isRunning ? Date.now() - this.startTime : 0
+      uptime: this.isRunning ? Date.now() - this.startTime : 0,
     };
   }
 }

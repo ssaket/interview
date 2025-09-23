@@ -15,13 +15,13 @@ The OCR Fallback system provides intelligent AI model selection for screenshot a
 ## How It Works
 
 ### Normal Mode (Default)
-1. Take screenshot (Cmd+Shift+S or Cmd+Shift+A)
+1. Take screenshot (Cmd+A)
 2. OCR extracts text from image
 3. Query sent to **Ollama only** (local processing)
 4. Response displayed with formatting
 
 ### Burn Mode (Enhanced)
-1. Take screenshot (Cmd+Shift+S or Cmd+Shift+A)  
+1. Take screenshot (Cmd+A)  
 2. OCR extracts text from image
 3. Query sent to **both Ollama AND DeepSeek**
 4. Dual response displayed showing both perspectives
@@ -64,8 +64,7 @@ The OCR Fallback system provides intelligent AI model selection for screenshot a
 
 | Shortcut | Action | Description |
 |----------|--------|-------------|
-| `Cmd+Shift+S` | Full Screenshot | Capture entire screen + OCR + AI query |
-| `Cmd+Shift+A` | Region Screenshot | Capture window region + OCR + AI query |
+| `Cmd+A` | Region Screenshot | Capture window region + OCR + AI query |
 | `Cmd+Shift+Q` | Toggle Burn Mode | Enable/disable dual provider queries |
 | `Cmd+Shift+M` | Cycle Ollama Models | Switch between available Ollama models |
 | `Cmd+Shift+F` | Toggle OCR Filtering | Enable/disable text cleanup |
@@ -357,7 +356,7 @@ Enable debug logging by checking the console output:
 ## Quick Reference
 
 **Essential Shortcuts:**
-- `Cmd+Shift+S` - Screenshot + OCR + AI
+- `Cmd+A` - Screenshot + OCR + AI
 - `Cmd+Shift+Q` - Toggle Burn Mode  
 - `Cmd+Shift+M` - Cycle Ollama Models
 

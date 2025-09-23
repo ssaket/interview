@@ -26,7 +26,9 @@ class SimpleAIManager {
     this.isInitialized = true;
     this.systemPromptsEnabled = true; // Toggle for system prompts
 
-    console.log(`[SimpleAIManager] Initialized with ${this.currentProvider} using model: ${this.currentModel}`);
+    console.log(
+      `[SimpleAIManager] Initialized with ${this.currentProvider} using model: ${this.currentModel}`
+    );
   }
 
   /**
@@ -62,7 +64,9 @@ class SimpleAIManager {
         });
       }
 
-      console.log(`[SimpleAIManager] ${silent ? 'Silently switched' : 'Switched'} to ${providerName} using model: ${this.currentModel}`);
+      console.log(
+        `[SimpleAIManager] ${silent ? 'Silently switched' : 'Switched'} to ${providerName} using model: ${this.currentModel}`
+      );
       return true;
     } catch (error) {
       console.error(`[SimpleAIManager] Failed to switch to ${providerName}:`, error.message);
@@ -100,7 +104,9 @@ class SimpleAIManager {
     if (session.messages.length === 0 && this.systemPromptsEnabled) {
       const systemPrompt = this._getSystemPrompt();
       if (systemPrompt) {
-        console.log(`[SimpleAIManager] System prompt for ${this.currentProvider}:${this.currentModel}:`);
+        console.log(
+          `[SimpleAIManager] System prompt for ${this.currentProvider}:${this.currentModel}:`
+        );
         console.log('--- SYSTEM PROMPT START ---');
         console.log(systemPrompt);
         console.log('--- SYSTEM PROMPT END ---');
@@ -109,7 +115,9 @@ class SimpleAIManager {
           content: systemPrompt,
         });
       } else {
-        console.log(`[SimpleAIManager] No system prompt found for ${this.currentProvider}:${this.currentModel}`);
+        console.log(
+          `[SimpleAIManager] No system prompt found for ${this.currentProvider}:${this.currentModel}`
+        );
       }
     } else if (session.messages.length === 0 && !this.systemPromptsEnabled) {
       console.log(`[SimpleAIManager] System prompts disabled - skipping system prompt`);
@@ -125,12 +133,16 @@ class SimpleAIManager {
     this._limitSessionHistory(session);
 
     // Log the complete message array being sent to AI
-    console.log(`[SimpleAIManager] Sending ${session.messages.length} messages to ${this.currentProvider}:${this.currentModel}`);
+    console.log(
+      `[SimpleAIManager] Sending ${session.messages.length} messages to ${this.currentProvider}:${this.currentModel}`
+    );
     session.messages.forEach((msg, index) => {
       if (msg.role === 'system') {
         console.log(`Message ${index}: [SYSTEM] (${msg.content.length} chars)`);
       } else {
-        console.log(`Message ${index}: [${msg.role.toUpperCase()}] ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`);
+        console.log(
+          `Message ${index}: [${msg.role.toUpperCase()}] ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`
+        );
       }
     });
 
@@ -159,7 +171,7 @@ class SimpleAIManager {
       this._storeResponseToFile(query, content, {
         sessionKey,
         requestCount: session.requestCount,
-        messageCount: session.messages.length
+        messageCount: session.messages.length,
       });
 
       return {
@@ -239,6 +251,33 @@ class SimpleAIManager {
   }
 
   /**
+   * Get session statistics (compatibility method for WebSocket server)
+   * @returns {Object} Session statistics
+   */
+  getSessionStats() {
+    const sessionKey = this._getSessionKey(this.currentProvider, this.currentModel);
+    const session = this.sessions.get(sessionKey);
+
+    if (!session) {
+      return {
+        historyLength: 0,
+        cacheSize: 0,
+        isActive: false,
+        provider: this.currentProvider,
+        model: this.currentModel,
+      };
+    }
+
+    return {
+      historyLength: session.messages.length,
+      cacheSize: this.globalCache.size,
+      isActive: true,
+      provider: this.currentProvider,
+      model: this.currentModel,
+    };
+  }
+
+  /**
    * Set model for current provider
    * @param {string} modelName - Model name
    */
@@ -311,7 +350,7 @@ class SimpleAIManager {
     const response = await this.query(question, {
       stream: true,
       onChunk: options.onChunk,
-      parameters: options.parameters || {}
+      parameters: options.parameters || {},
     });
 
     console.log(`[SimpleAIManager] ${flow} flow completed successfully`);
@@ -337,7 +376,6 @@ class SimpleAIManager {
     }
   }
 
-
   /**
    * Save current provider state
    * @private
@@ -345,7 +383,7 @@ class SimpleAIManager {
   _saveCurrentState() {
     return {
       provider: this.currentProvider,
-      model: this.currentModel
+      model: this.currentModel,
     };
   }
 
@@ -371,7 +409,7 @@ class SimpleAIManager {
     const localResponse = await this.query(`Brief analysis: ${question}`, {
       stream: true,
       onChunk: options.onChunk,
-      parameters: options.parameters || {}
+      parameters: options.parameters || {},
     });
 
     return localResponse.content;
@@ -401,7 +439,7 @@ class SimpleAIManager {
     const deepseekResponse = await this.query(question, {
       stream: true,
       onChunk: options.onChunk,
-      parameters: options.parameters || {}
+      parameters: options.parameters || {},
     });
 
     return deepseekResponse.content;
@@ -434,7 +472,6 @@ class SimpleAIManager {
     }
   }
 
-
   /**
    * Get current provider information (compatibility method)
    * @returns {Object} Provider info
@@ -465,8 +502,8 @@ class SimpleAIManager {
 
     // Convert messages to history format for compatibility
     const history = session.messages
-      .filter(msg => msg.role !== 'system')
-      .map(msg => ({
+      .filter((msg) => msg.role !== 'system')
+      .map((msg) => ({
         role: msg.role,
         content: msg.content,
       }));
@@ -516,7 +553,9 @@ class SimpleAIManager {
    */
   toggleSystemPrompts() {
     this.systemPromptsEnabled = !this.systemPromptsEnabled;
-    console.log(`[SimpleAIManager] System prompts ${this.systemPromptsEnabled ? 'enabled' : 'disabled'}`);
+    console.log(
+      `[SimpleAIManager] System prompts ${this.systemPromptsEnabled ? 'enabled' : 'disabled'}`
+    );
     return this.systemPromptsEnabled;
   }
 
@@ -544,7 +583,7 @@ class SimpleAIManager {
         systemPromptsEnabled: this.systemPromptsEnabled,
         query: query.substring(0, 200) + (query.length > 200 ? '...' : ''),
         response,
-        metadata
+        metadata,
       };
 
       const fileName = `agent-responses-${new Date().toISOString().split('T')[0]}.jsonl`;

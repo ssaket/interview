@@ -28,7 +28,7 @@ class OCRLogger {
       averageReduction: 0,
       contentTypes: {},
       confidenceLevels: {},
-      startTime: new Date()
+      startTime: new Date(),
     };
 
     this.initializeLogger();
@@ -70,7 +70,7 @@ class OCRLogger {
           confidence: data.confidence || 0,
           contentType: data.contentType || 'unknown',
           preset: data.preset || 'auto',
-          processingTime: data.processingTime || 0
+          processingTime: data.processingTime || 0,
         },
         analysis: this.analyzeTextProcessing(data.originalText, data.cleanedText),
         metadata: {
@@ -78,9 +78,9 @@ class OCRLogger {
           preprocessed: data.preprocessed || false,
           filteringEnabled: data.filteringEnabled || false,
           ocrEngine: 'tesseract',
-          version: '1.0.0'
+          version: '1.0.0',
         },
-        settings: data.cleaningOptions || {}
+        settings: data.cleaningOptions || {},
       };
 
       // Update session statistics
@@ -91,7 +91,6 @@ class OCRLogger {
 
       this.log('info', `OCR session logged: ${sessionId}`);
       return { sessionId, filePath, analysis: logEntry.analysis };
-
     } catch (error) {
       this.log('error', `Failed to log OCR session: ${error.message}`);
       return null;
@@ -109,7 +108,8 @@ class OCRLogger {
       // Basic metrics
       originalLength: original.length,
       cleanedLength: cleaned.length,
-      reductionRatio: original.length > 0 ? (original.length - cleaned.length) / original.length : 0,
+      reductionRatio:
+        original.length > 0 ? (original.length - cleaned.length) / original.length : 0,
       reductionPercentage: 0,
 
       // Line analysis
@@ -133,7 +133,7 @@ class OCRLogger {
       preservedContent: this.findPreservedContent(original, cleaned),
 
       // Suggestions
-      suggestions: []
+      suggestions: [],
     };
 
     // Calculate derived metrics
@@ -166,11 +166,11 @@ class OCRLogger {
     const codePatterns = [
       /[{}();]/g,
       /\b(function|class|def|if|else|for|while|return)\b/gi,
-      /[=+\-*\/]{2,}/g
+      /[=+\-*\/]{2,}/g,
     ];
 
     let codeCount = 0;
-    codePatterns.forEach(pattern => {
+    codePatterns.forEach((pattern) => {
       const matches = text.match(pattern);
       if (matches) codeCount += matches.length;
     });
@@ -183,9 +183,21 @@ class OCRLogger {
    */
   countMeaningfulWords(text) {
     const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-    const junkWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for']);
+    const junkWords = new Set([
+      'the',
+      'a',
+      'an',
+      'and',
+      'or',
+      'but',
+      'in',
+      'on',
+      'at',
+      'to',
+      'for',
+    ]);
 
-    return words.filter(word => word.length > 2 && !junkWords.has(word)).length;
+    return words.filter((word) => word.length > 2 && !junkWords.has(word)).length;
   }
 
   /**
@@ -196,7 +208,7 @@ class OCRLogger {
     const cleanedLines = cleaned.split('\n');
     const cleanedSet = new Set(cleanedLines);
 
-    return originalLines.filter(line => !cleanedSet.has(line) && line.trim().length > 0);
+    return originalLines.filter((line) => !cleanedSet.has(line) && line.trim().length > 0);
   }
 
   /**
@@ -207,7 +219,7 @@ class OCRLogger {
     const cleanedLines = cleaned.split('\n');
     const originalSet = new Set(originalLines);
 
-    return cleanedLines.filter(line => originalSet.has(line) && line.trim().length > 0);
+    return cleanedLines.filter((line) => originalSet.has(line) && line.trim().length > 0);
   }
 
   /**
@@ -260,13 +272,13 @@ class OCRLogger {
     const charMap = {};
 
     // Count characters in first string
-    chars1.forEach(char => {
+    chars1.forEach((char) => {
       charMap[char] = (charMap[char] || 0) + 1;
     });
 
     // Count common characters
     let common = 0;
-    chars2.forEach(char => {
+    chars2.forEach((char) => {
       if (charMap[char] && charMap[char] > 0) {
         common++;
         charMap[char]--;
@@ -294,11 +306,15 @@ class OCRLogger {
     const suggestions = [];
 
     if (analysis.reductionPercentage > 80) {
-      suggestions.push('Excessive text removal detected - consider reducing cleaning aggressiveness');
+      suggestions.push(
+        'Excessive text removal detected - consider reducing cleaning aggressiveness'
+      );
     }
 
     if (analysis.questionsPreserved === 0 && analysis.originalLength > 100) {
-      suggestions.push('No questions detected in cleaned text - verify question preservation settings');
+      suggestions.push(
+        'No questions detected in cleaned text - verify question preservation settings'
+      );
     }
 
     if (analysis.qualityScore < 0.4) {
@@ -443,7 +459,8 @@ class OCRLogger {
       ...this.sessionStats,
       runtimeMinutes: Math.round(runtime * 100) / 100,
       averageReductionPercentage: Math.round(this.sessionStats.averageReduction * 100),
-      processingRate: runtime > 0 ? Math.round(this.sessionStats.totalProcessed / runtime * 100) / 100 : 0
+      processingRate:
+        runtime > 0 ? Math.round((this.sessionStats.totalProcessed / runtime) * 100) / 100 : 0,
     };
   }
 
@@ -466,7 +483,7 @@ class OCRLogger {
         trends: reportData.trends,
         recommendations: reportData.recommendations,
         topIssues: reportData.issues,
-        sessionStats: this.getSessionStats()
+        sessionStats: this.getSessionStats(),
       };
 
       // Save report
@@ -523,11 +540,11 @@ class OCRLogger {
         averageQualityScore: 0,
         averageReduction: 0,
         contentTypes: {},
-        effectivenessDistribution: {}
+        effectivenessDistribution: {},
       },
       trends: [],
       recommendations: [],
-      issues: []
+      issues: [],
     };
 
     let totalQuality = 0;
@@ -559,10 +576,9 @@ class OCRLogger {
             sessionId: logEntry.sessionId,
             issue: 'Low quality score',
             score: logAnalysis.qualityScore,
-            suggestions: logAnalysis.suggestions
+            suggestions: logAnalysis.suggestions,
           });
         }
-
       } catch (error) {
         this.log('warn', `Failed to analyze log file ${filePath}: ${error.message}`);
       }
@@ -591,14 +607,18 @@ class OCRLogger {
     }
 
     if (summary.averageReduction > 70) {
-      recommendations.push('High text reduction rate - verify important content is being preserved');
+      recommendations.push(
+        'High text reduction rate - verify important content is being preserved'
+      );
     }
 
     const poorSessions = summary.effectivenessDistribution.poor || 0;
     const totalSessions = summary.totalSessions;
 
     if (poorSessions / totalSessions > 0.2) {
-      recommendations.push('High rate of poor cleaning effectiveness - review content type detection');
+      recommendations.push(
+        'High rate of poor cleaning effectiveness - review content type detection'
+      );
     }
 
     return recommendations;
@@ -648,7 +668,7 @@ class OCRLogger {
       enabled: this.enableLogging,
       logDirectory: this.baseLogDir,
       sessionStats: this.getSessionStats(),
-      maxLogAge: this.maxLogAge
+      maxLogAge: this.maxLogAge,
     };
   }
 

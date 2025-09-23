@@ -2,129 +2,89 @@
 <html data-theme="light">
   <head>
     <meta charset="UTF-8" />
-    <title>Overlay Helper</title>
-    <link rel="stylesheet" href="src/css/main.css" />
-    <link rel="stylesheet" href="src/css/formatter.css" />
-    <link rel="stylesheet" href="src/css/themes.css" />
-    <!-- KaTeX CSS for math formula rendering -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <title>DeepSeek Overlay Helper - CodeMirror Interface</title>
+    <meta name="description" content="AI-powered coding interview assistant with CodeMirror text interface">
+    <style>
+      /* Minimal reset only */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; overflow: hidden; background: transparent; }
+      #codemirror-container { width: 100%; height: 100vh; }
+    </style>
   </head>
   <body>
-    <div id="header">
-      <div id="session-length">L: 0</div>
-      <div id="stack-count" style="margin-left: 10px; display: none;">S: 0</div>
-      <div
-        id="ocr-filter-indicator"
-        style="
-          /* display: inline-block; */
-          width: 8px;
-          height: 8px;
-          background-color: #00ff00;
-          border-radius: 50%;
-          margin-left: 5px;
-        "
-      ></div>
-      <div
-        id="speech-indicator"
-        style="
-          /* display: inline-block; */
-          width: 8px;
-          height: 8px;
-          background-color: #0088ff;
-          border-radius: 50%;
-          margin-left: 5px;
-          display: none;
-        "
-      ></div>
-      <div
-        id="ai-flow-indicator"
-        style="
-          width: 8px;
-          height: 8px;
-          background-color: #44aa44;
-          border-radius: 50%;
-          margin-left: 5px;
-          display: inline-block;
-        "
-        title="AI Flow: LOCAL"
-      ></div>
-    </div>
-    <div id="container">
-      <div id="shortcuts">
-        <div style="margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">SCREEN CAPTURE</h3>
-          <p><strong>⌘+Shift+S</strong> - Capture full screen</p>
-          <p><strong>⌘+Shift+A</strong> - Capture region behind overlay</p>
-          <p><strong>⌘+Shift+1</strong> - Add full screen to stack</p>
-          <p><strong>⌘+Shift+2</strong> - Add region to stack</p>
-          <p><strong>⌘+Shift+3</strong> - Process screenshot stack</p>
-          <p><strong>⌘+Shift+4</strong> - Clear screenshot stack</p>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">SPEECH-TO-TEXT</h3>
-          <p><strong>⌘+R</strong> - Start speech recording</p>
-          <p><strong>⌘+T</strong> - Stop recording and transcribe</p>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">AI FLOWS</h3>
-          <p><strong>⌘+Shift+P</strong> - Cycle AI flows: <span style="color: #44aa44;">●</span> LOCAL → <span style="color: #4488ff;">●</span> CLOUD → <span style="color: #ff8844;">●</span> HYBRID</p>
-          <div style="margin-left: 20px; font-size: 14px; color: #666;">
-            <p><span style="color: #44aa44;">● LOCAL</span> - Ollama local models only (default)</p>
-            <p><span style="color: #4488ff;">● CLOUD</span> - DeepSeek API only</p>
-            <p><span style="color: #ff8844;">● HYBRID</span> - Fast local response + DeepSeek analysis</p>
-          </div>
-          <p><strong>⌘+Shift+M</strong> - Switch Ollama model</p>
-          <p><strong>⌘+Shift+W</strong> - Warm up Ollama model</p>
-          <p><strong>⌘+Shift+R</strong> - Reset AI session</p>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">WINDOW CONTROL</h3>
-          <p><strong>⌘+←/→/↑/↓</strong> - Move window</p>
-          <p><strong>⌘+Shift+C</strong> - Center window on screen</p>
-          <p><strong>⌘+Shift+0</strong> - Toggle window size (small ⟷ large)</p>
-          <p><strong>⌘+Shift+[/]</strong> - Adjust window width</p>
-          <p><strong>⌘+Shift+↑/↓</strong> - Adjust window height</p>
-          <p><strong>⌘+Shift+=/−</strong> - Adjust movement step size</p>
-          <p><strong>Ctrl+Shift+=</strong> - Toggle mouse tracking mode</p>
-          <p><strong>⌘+B</strong> - Hide/show application</p>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">SETTINGS</h3>
-          <p><strong>⌘+Shift+F</strong> - Toggle OCR text filtering</p>
-          <p><strong>⌘+Shift+D</strong> - Toggle dark/light theme</p>
-          <p><strong>⌘+Shift+L</strong> - Toggle response formatter</p>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">NAVIGATION</h3>
-          <p><strong>Shift+X/Z</strong> - Scroll page up/down</p>
-          <p><strong>⌘+Shift+H</strong> - Show help in console</p>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">STATUS INDICATORS</h3>
-          <div style="font-size: 14px; color: #666;">
-            <p><span style="color: #00ff00;">●</span> OCR Filtering (green when enabled)</p>
-            <p><span style="color: #0088ff;">●</span> Speech Recording (red=recording, orange=processing, blue=transcribing)</p>
-            <p><span style="color: #44aa44;">●</span> AI Flow (green=LOCAL, blue=CLOUD, orange=HYBRID)</p>
-          </div>
-        </div>
+    <!-- Main CodeMirror container -->
+    <div id="codemirror-container">
+      <!-- Loading screen shown during initialization -->
+      <div class="loading-screen" id="loading-screen">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Initializing CodeMirror Interface</div>
+        <div class="loading-subtext">Setting up AI-powered coding assistant...</div>
       </div>
-      <div id="transcription-results" style="display: none; margin: 10px 0;">
-        <strong>Transcription:</strong>
-        <div id="transcription-text" style="margin-top: 5px; font-family: monospace; white-space: pre-wrap;"></div>
-        <div id="transcription-meta" style="margin-top: 5px; font-size: 0.8em; color: #666;"></div>
-      </div>
-      <div id="output">Waiting for action...</div>
-      <img id="screenshot" style="display: none" />
     </div>
-    <!-- KaTeX JavaScript for math formula rendering -->
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpVOOVVP1WkQRkgOFjFtYbCUi8Duu/6WAgIjTXCODd0KvjY" crossorigin="anonymous"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgJE3YDMOYs6EBRkQ7r7z4xZCKMqr2zzK3zJqI5nEeCqrLJmNnGe4tOa" crossorigin="anonymous"></script>
-    <script src="src/js/renderer.js"></script>
+
+    <!-- Legacy elements (hidden but preserved for compatibility) -->
+    <div class="legacy-ui">
+      <div id="header">
+        <div id="session-length">L: 0</div>
+        <div id="stack-count">S: 0</div>
+        <div id="ocr-filter-indicator"></div>
+        <div id="speech-indicator"></div>
+        <div id="ai-flow-indicator"></div>
+      </div>
+      <div id="container">
+        <div id="transcription-results">
+          <div id="transcription-text"></div>
+          <div id="transcription-meta"></div>
+        </div>
+        <div id="output">Waiting for action...</div>
+        <img id="screenshot" />
+      </div>
+    </div>
+
+    <!-- Core scripts -->
+    <script>
+      // Theme initialization
+      function initializeTheme() {
+        const savedTheme = localStorage.getItem('codemirror-theme');
+        const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = savedTheme ? savedTheme === 'dark' : systemDark;
+
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      }
+
+      // Error handling
+      function showError(message, details) {
+        const container = document.getElementById('codemirror-container');
+        container.innerHTML = `
+          <div class="error-display">
+            <h2>❌ CodeMirror Interface Error</h2>
+            <p><strong>Message:</strong> ${message}</p>
+            ${details ? `<p><strong>Details:</strong> ${details}</p>` : ''}
+            <p><strong>Solution:</strong> Please check the console for more information and try refreshing the application.</p>
+          </div>
+        `;
+      }
+
+      // Hide loading screen
+      function hideLoadingScreen() {
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+          loadingScreen.style.display = 'none';
+        }
+      }
+
+      // Global error handler
+      window.addEventListener('error', (event) => {
+        console.error('Global error:', event.error);
+        showError('Application Error', event.error?.message || 'Unknown error occurred');
+      });
+
+      // Initialize theme immediately
+      initializeTheme();
+
+      console.log('🚀 CodeMirror interface HTML loaded');
+    </script>
+    <!-- Main CodeMirror renderer -->
+    <script src="src/js/codemirror-renderer.js"></script>
   </body>
 </html>

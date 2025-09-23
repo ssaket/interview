@@ -49,8 +49,7 @@ The AI system supports three distinct processing flows for different use cases:
 - **RegionSelector** (`src/js/region-selector.js`) - Screen region selection
 - **Formatter** (`src/js/formatter.js`) - AI response formatting and code highlighting
 - **OCRLogger** (`src/js/ocr-logger.js`) - OCR session logging and analysis
-- **ConversationHistoryService** (`src/js/conversation-history-service.js`) - Web-viewable conversation history export
-- **ConversationWebSocketServer** (`src/js/conversation-websocket-server.js`) - Real-time WebSocket server for live updates
+- **ConversationWebSocketServer** (`src/js/conversation-websocket-server.js`) - Real-time WebSocket server for live conversation history updates
 
 ### OCR and Text Processing
 - **LLMFriendlyOCRCleaner** (`src/js/llm-friendly-ocr-cleaner.js`) - Simple text cleaning to remove obvious UI junk while preserving useful content
@@ -125,7 +124,6 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 
 ### **TIER 1: Core Functions** *(Single Modifier - Most Used)*
 **Easy-to-reach keys with strong mnemonics:**
-- `Cmd/Ctrl+S` - **S**creenshot (full screen)
 - `Cmd/Ctrl+A` - **A**rea screenshot (region selection)
 - `Cmd/Ctrl+R` - **R**ecord speech
 - `Cmd/Ctrl+T` - s**T**op recording
@@ -133,11 +131,10 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - `Cmd/Ctrl+Arrow Keys` - Move window (natural directional mapping)
 
 ### **TIER 2: Workflows** *(Numbers - Sequential Operations)*
-**1→2→3→4 natural sequence for screenshot stack workflow:**
-- `Cmd/Ctrl+1` - Add full screenshot to stack
-- `Cmd/Ctrl+2` - Add region screenshot to stack
-- `Cmd/Ctrl+3` - Process screenshot stack
-- `Cmd/Ctrl+4` - Clear screenshot stack
+**1→2→3 natural sequence for screenshot stack workflow:**
+- `Cmd/Ctrl+1` - Add region screenshot to stack
+- `Cmd/Ctrl+2` - Process screenshot stack
+- `Cmd/Ctrl+3` - Clear screenshot stack
 
 ### **TIER 3: Utilities** *(Function Keys - Universal Standards)*
 - `F1` - Help (universal help key)
@@ -152,7 +149,6 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - `Cmd/Ctrl+Shift+D` - **D**ark/light theme toggle
 - `Cmd/Ctrl+Shift+V` - **V**iew conversation history in browser
 - `Cmd/Ctrl+Shift+C` - **C**enter window
-- `Cmd/Ctrl+Shift+S/A` - Alternative screenshot shortcuts (compatibility)
 
 ### **TIER 5: Fine Control** *(Double Modifier + Arrows/Symbols)*
 **Precise adjustments for power users:**
@@ -217,9 +213,8 @@ The project uses Node.js-based testing without external frameworks:
 - **Live Browser URL**: Use `Cmd+Shift+V` to open the live conversation history at `http://localhost:[port]`
 - **WebSocket Server**: Automatically starts on app launch, serves HTML and provides real-time updates
 - **Connection Status**: Browser page shows live connection status with automatic reconnection
-- **Fallback Support**: Falls back to static file-based viewing if WebSocket server fails
 - **Full Context**: History includes provider info, session stats, and complete conversation context
-- **Session Clearing**: `Cmd+Shift+R` clears both app session and broadcasts update to connected browsers
+- **Session Clearing**: `Cmd+Shift+R` clears session and broadcasts update to connected browsers
 
 ### Speech-to-Text Language Configuration
 - **English Optimization**: By default, speech recognition is configured for English (`ASSEMBLYAI_LANGUAGE=en`)
@@ -253,16 +248,13 @@ src/js/
 ├── llm-friendly-ocr-cleaner.js # OCR text cleaning
 ├── ocr-logger.js          # OCR performance logging
 ├── shortcut-manager.js    # Keyboard shortcuts
-├── conversation-history-service.js # Conversation history export service
-├── conversation-websocket-server.js # WebSocket server for real-time updates
+├── conversation-websocket-server.js # WebSocket server for real-time conversation history updates
 └── window-manager.js      # Electron window management
 
 tests/                     # Node.js test files
 docs/                      # Additional documentation
 logs/ocr/                  # OCR processing logs for analysis
-conversation-history.html  # Static conversation history viewer (fallback)
 conversation-history-websocket.html # WebSocket-powered live viewer (served by server)
-conversation-data.json     # Exported conversation data (auto-generated)
 ```
 
 ## Important Implementation Notes

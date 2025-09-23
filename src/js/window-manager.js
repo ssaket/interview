@@ -1,6 +1,5 @@
 const { BrowserWindow } = require('electron');
 
-
 class WindowManager {
   constructor() {
     this.mainWindow = null;
@@ -35,6 +34,8 @@ class WindowManager {
     this.mainWindow.setContentProtection(true);
     this.mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     this.mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    this.mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    this.mainWindow.webContents.openDevTools({ mode: 'detach' });
 
     if (process.platform === 'darwin') {
       this.mainWindow.setHiddenInMissionControl(true);
@@ -55,7 +56,9 @@ class WindowManager {
       console.log(`[WindowManager] Sending IPC message: ${channel}`, payload);
       this.mainWindow.webContents.send(channel, payload);
     } else {
-      console.error(`[WindowManager] Cannot send IPC message ${channel}: window destroyed or not ready`);
+      console.error(
+        `[WindowManager] Cannot send IPC message ${channel}: window destroyed or not ready`
+      );
     }
   }
 

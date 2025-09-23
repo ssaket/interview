@@ -6,15 +6,15 @@ class LLMFriendlyOCRCleaner {
       /^[a-z]$/i,
       /^[0-9]$/,
       /^[|\\\/\-=_+\[\]{}()<>,.;:'"!@#$%^&*`~]+$/,
-      
+
       // Time stamps and system indicators
       /^\s*\d{1,2}:\d{2}\s*(am|pm)$/i,
       /^\s*\d{1,3}%$/i,
-      
+
       // Very obvious system UI elements
       /^\s*Wi-?Fi$/i,
       /^\s*Bluetooth$/i,
-      
+
       // Only the most common menu items that never contain useful content
       /^\s*(file|edit|view|window|help)$/i,
       /^\s*(copy|paste|cut|undo|redo)$/i,
@@ -29,7 +29,7 @@ class LLMFriendlyOCRCleaner {
    */
   cleanText(rawText, options = {}) {
     const {
-      minLineLength = 1,  // Very permissive - only remove empty lines
+      minLineLength = 1, // Very permissive - only remove empty lines
       removeEmptyLines = true,
       logResults = false,
     } = options;
@@ -113,7 +113,7 @@ class LLMFriendlyOCRCleaner {
    */
   isLLMWorthy(text) {
     if (!text || text.length < 3) return false;
-    
+
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
     return lines.length > 0;
   }
@@ -148,7 +148,15 @@ class LLMFriendlyOCRCleaner {
       }
 
       // Basic technical terms
-      const technicalWords = ['algorithm', 'array', 'string', 'function', 'complexity', 'sort', 'search'];
+      const technicalWords = [
+        'algorithm',
+        'array',
+        'string',
+        'function',
+        'complexity',
+        'sort',
+        'search',
+      ];
       technicalWords.forEach((term) => {
         if (line.toLowerCase().includes(term) && !context.technicalConcepts.includes(term)) {
           context.technicalConcepts.push(term);

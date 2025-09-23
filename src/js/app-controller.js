@@ -5,15 +5,13 @@ const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
 const OCRLogger = require('./ocr-logger');
 const SpeechToTextService = require('./speech-to-text-service');
-const ConversationHistoryService = require('./conversation-history-service');
 const ConversationWebSocketServer = require('./conversation-websocket-server');
 
 class AppController {
   constructor() {
     this.windowManager = new WindowManager();
     this.aiManager = new SimpleAIManager(this);
-    this.conversationHistoryService = new ConversationHistoryService(this.aiManager, this);
-    this.conversationWebSocketServer = new ConversationWebSocketServer(this.conversationHistoryService);
+    this.conversationWebSocketServer = new ConversationWebSocketServer(this.aiManager);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
     this.ocrLogger = new OCRLogger({
       logDir: path.join(process.cwd(), 'logs', 'ocr'),
@@ -29,9 +27,6 @@ class AppController {
 
     // Screenshot stack for batch processing
     this.screenshotStack = [];
-
-    // Link conversation history service and WebSocket server
-    this.conversationHistoryService.setWebSocketServer(this.conversationWebSocketServer);
 
     // Set up speech service callbacks
     this.setupSpeechCallbacks();
@@ -53,21 +48,7 @@ class AppController {
       };
     });
 
-    /* ------------ Screen Capture ------------ */
-    ipcMain.handle('capture-screen', async () => {
-      const { mainWindow } = this.windowManager;
-      mainWindow.webContents.send('hide-ui');
-      await new Promise((r) => setTimeout(r, 100));
-
-      const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: { width: 1920, height: 1080 },
-      });
-
-      mainWindow.webContents.send('show-ui');
-      return sources[0].thumbnail.toDataURL();
-    });
-
+    /* ------------ Screen Capture (Region Only) ------------ */
     ipcMain.handle('capture-screen-region', async () => {
       const { mainWindow } = this.windowManager;
       mainWindow.webContents.send('hide-ui');
@@ -169,7 +150,7 @@ class AppController {
         }
 
         // Check if this is the initial OCR query (question matches OCR text)
-        const isInitialOcrQuery = this.isOcrContext && (question === this.lastOcrText);
+        const isInitialOcrQuery = this.isOcrContext && question === this.lastOcrText;
 
         if (isInitialOcrQuery) {
           // Initial OCR query - clear OCR flag since we're now in session history
@@ -178,7 +159,14 @@ class AppController {
         }
 
         // Regular query - AI session handles all conversation context automatically
-        return await this.aiManager.ask(question, options);
+        const response = await this.aiManager.ask(question, options);
+
+        // Broadcast history update via WebSocket
+        if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
+          await this.conversationWebSocketServer.broadcastHistoryUpdate();
+        }
+
+        return response;
       } catch (err) {
         const info = this.aiManager.getProviderInfo();
 
@@ -280,29 +268,27 @@ class AppController {
     ipcMain.handle('add-screenshot-to-stack', async (_event, type) => {
       try {
         let screenshotData;
-        if (type === 'full') {
-          screenshotData = await this.captureFullScreen();
-        } else if (type === 'region') {
+        if (type === 'region') {
           screenshotData = await this.captureScreenRegion();
         } else {
-          throw new Error('Invalid screenshot type');
+          throw new Error('Invalid screenshot type - only region supported');
         }
 
         const screenshot = {
           id: Date.now(),
           type,
           data: screenshotData,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
 
         this.screenshotStack.push(screenshot);
         this.windowManager.send('screenshot-stack-updated', {
           count: this.screenshotStack.length,
-          screenshots: this.screenshotStack.map(s => ({
+          screenshots: this.screenshotStack.map((s) => ({
             id: s.id,
             type: s.type,
-            timestamp: s.timestamp
-          }))
+            timestamp: s.timestamp,
+          })),
         });
 
         return { success: true, count: this.screenshotStack.length };
@@ -320,7 +306,7 @@ class AppController {
       this.screenshotStack = [];
       this.windowManager.send('screenshot-stack-updated', {
         count: 0,
-        screenshots: []
+        screenshots: [],
       });
       return { success: true };
     });
@@ -337,7 +323,7 @@ class AppController {
         this.screenshotStack = [];
         this.windowManager.send('screenshot-stack-updated', {
           count: 0,
-          screenshots: []
+          screenshots: [],
         });
 
         return { success: true, text: combinedText };
@@ -372,24 +358,27 @@ class AppController {
       return this.speechService.getStatus();
     });
 
-    ipcMain.handle('set-speech-language', async (_event, languageCode, useAutoDetection = false) => {
-      try {
-        this.speechService.setLanguage(languageCode, useAutoDetection);
-        return { success: true, config: this.speechService.getLanguageConfigDescription() };
-      } catch (error) {
-        console.error('Failed to set speech language:', error);
-        return { success: false, error: error.message };
+    ipcMain.handle(
+      'set-speech-language',
+      async (_event, languageCode, useAutoDetection = false) => {
+        try {
+          this.speechService.setLanguage(languageCode, useAutoDetection);
+          return { success: true, config: this.speechService.getLanguageConfigDescription() };
+        } catch (error) {
+          console.error('Failed to set speech language:', error);
+          return { success: false, error: error.message };
+        }
       }
-    });
+    );
 
     ipcMain.handle('speech-to-ai', async (_event, speechText, options = {}) => {
       try {
         const metadata = {
           confidence: options.confidence || 1.0,
           duration: options.duration || 0,
-          language: options.language || 'en'
+          language: options.language || 'en',
         };
-        
+
         await this.handleSpeechToAI(speechText, metadata);
         return { success: true };
       } catch (error) {
@@ -406,8 +395,17 @@ class AppController {
     /* ------------ Conversation History ------------ */
     ipcMain.handle('open-conversation-history', async () => {
       try {
-        await this.conversationHistoryService.openInBrowser();
-        return { success: true };
+        const { shell } = require('electron');
+
+        // Open the WebSocket server URL if running
+        if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
+          const url = this.conversationWebSocketServer.getUrl();
+          await shell.openExternal(url);
+          console.log(`[AppController] Opened live conversation history at ${url}`);
+          return { success: true };
+        } else {
+          throw new Error('WebSocket server not running');
+        }
       } catch (error) {
         console.error('Failed to open conversation history:', error);
         return { success: false, error: error.message };
@@ -415,13 +413,42 @@ class AppController {
     });
 
     ipcMain.handle('get-conversation-stats', async () => {
-      return this.conversationHistoryService.getHistoryStats();
+      const session = this.aiManager.getSession();
+      const providerInfo = this.aiManager.getProviderInfo();
+
+      const userMessages = session.history.filter((msg) => msg.role === 'user').length;
+      const assistantMessages = session.history.filter((msg) => msg.role === 'assistant').length;
+
+      let totalCharacters = 0;
+      let totalWords = 0;
+
+      session.history.forEach((msg) => {
+        if (msg.content) {
+          totalCharacters += msg.content.length;
+          totalWords += msg.content.split(/\s+/).length;
+        }
+      });
+
+      return {
+        totalMessages: session.history.length,
+        userMessages,
+        assistantMessages,
+        totalCharacters,
+        totalWords,
+        lastUpdated: new Date().toISOString(),
+        isActive: session.history.length > 0,
+        provider: providerInfo.name,
+        model: providerInfo.model,
+      };
     });
 
     ipcMain.handle('clear-conversation-history', async () => {
       try {
         this.aiManager.clearSession();
-        await this.conversationHistoryService.clearHistoryFile();
+        // Broadcast update via WebSocket
+        if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
+          await this.conversationWebSocketServer.broadcastHistoryUpdate();
+        }
         return { success: true };
       } catch (error) {
         console.error('Failed to clear conversation history:', error);
@@ -431,7 +458,10 @@ class AppController {
 
     ipcMain.handle('export-conversation-history', async () => {
       try {
-        await this.conversationHistoryService.exportHistory();
+        // Broadcast current history via WebSocket
+        if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
+          await this.conversationWebSocketServer.broadcastHistoryUpdate();
+        }
         return { success: true };
       } catch (error) {
         console.error('Failed to export conversation history:', error);
@@ -462,23 +492,6 @@ class AppController {
         return { success: false, error: error.message };
       }
     });
-  }
-
-  /**
-   * Capture full screen screenshot (extracted from IPC handler)
-   */
-  async captureFullScreen() {
-    const { mainWindow } = this.windowManager;
-    mainWindow.webContents.send('hide-ui');
-    await new Promise((r) => setTimeout(r, 100));
-
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: 1920, height: 1080 },
-    });
-
-    mainWindow.webContents.send('show-ui');
-    return sources[0].thumbnail.toDataURL();
   }
 
   /**
@@ -534,7 +547,9 @@ class AppController {
       const screenshot = this.screenshotStack[i];
 
       try {
-        console.log(`[Stack] Processing screenshot ${i + 1}/${this.screenshotStack.length} (${screenshot.type})`);
+        console.log(
+          `[Stack] Processing screenshot ${i + 1}/${this.screenshotStack.length} (${screenshot.type})`
+        );
 
         const {
           data: { text, confidence },
@@ -553,11 +568,10 @@ class AppController {
           timestamp: screenshot.timestamp,
           originalText: text,
           cleanedText: finalText,
-          confidence: confidence || 0
+          confidence: confidence || 0,
         });
 
         combinedText += `--- Screenshot ${i + 1} (${screenshot.type}, ${new Date(screenshot.timestamp).toLocaleTimeString()}) ---\n${finalText}\n\n`;
-
       } catch (error) {
         console.error(`[Stack] OCR failed for screenshot ${i + 1}:`, error);
         combinedText += `--- Screenshot ${i + 1} (${screenshot.type}) - OCR FAILED ---\nError: ${error.message}\n\n`;
@@ -567,7 +581,7 @@ class AppController {
     // Log the combined OCR session
     const processingTime = Date.now() - startTime;
     await this.ocrLogger.logOCRSession({
-      originalText: ocrResults.map(r => r.originalText).join('\n\n--- SEPARATOR ---\n\n'),
+      originalText: ocrResults.map((r) => r.originalText).join('\n\n--- SEPARATOR ---\n\n'),
       cleanedText: combinedText,
       confidence: ocrResults.reduce((sum, r) => sum + r.confidence, 0) / ocrResults.length,
       contentType: 'stacked_screenshots',
@@ -578,9 +592,9 @@ class AppController {
       imageSize: `${this.screenshotStack.length} screenshots`,
       stackInfo: {
         count: this.screenshotStack.length,
-        types: this.screenshotStack.map(s => s.type),
-        timestamps: this.screenshotStack.map(s => s.timestamp)
-      }
+        types: this.screenshotStack.map((s) => s.type),
+        timestamps: this.screenshotStack.map((s) => s.timestamp),
+      },
     });
 
     // Mark this as OCR context for the next AI query
@@ -602,6 +616,12 @@ class AppController {
     try {
       const response = await this.aiManager.ask(question, options);
       this.updateSessionLength();
+
+      // Broadcast history update via WebSocket
+      if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
+        await this.conversationWebSocketServer.broadcastHistoryUpdate();
+      }
+
       return response;
     } catch (error) {
       console.error('[OCR Query] Error during OCR processing:', error);
@@ -625,7 +645,7 @@ class AppController {
       onTranscriptReceived: async (text, metadata) => {
         console.log('Transcription received:', text);
         this.windowManager.send('transcription-received', text, metadata);
-        
+
         // Auto-submit speech to AI if we have OCR context or ongoing conversation
         if (text && text.trim()) {
           await this.handleSpeechToAI(text, metadata);
@@ -638,7 +658,7 @@ class AppController {
       onStatusChange: (status, message) => {
         console.log('Speech status change:', status, message);
         this.windowManager.send('speech-status-update', status, message);
-      }
+      },
     });
   }
 
@@ -650,35 +670,39 @@ class AppController {
   async handleSpeechToAI(speechText, metadata) {
     try {
       console.log(`[AppController] Processing speech input: "${speechText}"`);
-      
+
       // Notify UI that we're processing speech as AI query
       this.windowManager.send('speech-to-ai-started', {
         text: speechText,
         confidence: metadata.confidence,
-        hasSessionHistory: this.aiManager.getSession().history.length > 0
+        hasSessionHistory: this.aiManager.getSession().history.length > 0,
       });
 
       // Simply send the speech text as a regular AI query
       // The AI session already maintains conversation history including any previous OCR/screenshot context
       const aiResponse = await this.aiManager.ask(speechText);
 
+      // Broadcast history update via WebSocket
+      if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
+        await this.conversationWebSocketServer.broadcastHistoryUpdate();
+      }
+
       // Notify UI with the AI response
       this.windowManager.send('speech-to-ai-completed', {
         speechText: speechText,
         aiResponse: aiResponse,
         confidence: metadata.confidence,
-        duration: metadata.duration
+        duration: metadata.duration,
       });
 
       console.log('[AppController] Speech-to-AI workflow completed successfully');
-      
     } catch (error) {
       console.error('[AppController] Speech-to-AI processing failed:', error);
-      
+
       // Send error to UI
       this.windowManager.send('speech-to-ai-error', {
         speechText: speechText,
-        error: error.message || error.toString()
+        error: error.message || error.toString(),
       });
     }
   }
@@ -710,7 +734,7 @@ class AppController {
       await this.ocrLogger.shutdown();
       if (process.platform !== 'darwin') app.quit();
     });
-    
+
     // Handle abrupt termination signals
     process.on('SIGINT', () => {
       console.log('Received SIGINT, cleaning up...');
@@ -743,7 +767,7 @@ class AppController {
    */
   async cleanup() {
     console.log('[AppController] Cleaning up resources...');
-    
+
     try {
       this.shortcutManager.unregisterAll();
       await this.stopWebSocketServer();

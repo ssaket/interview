@@ -30,10 +30,8 @@ class ShortcutManager {
 
     /* ═══ TIER 1: CORE FUNCTIONS (Primary Modifier - Most Used) ═══ */
 
-    // Screenshot Functions (S = Screenshot, A = Area)
-    globalShortcut.register(`${primary}+S`, () => {
-      this.windowManager.send('trigger-screenshot');
-    });
+    // Screenshot Functions (A = Area only)
+    // Full screenshot removed - only region capture available
 
     globalShortcut.register(`${primary}+A`, () => {
       this.windowManager.send('trigger-screenshot-region');
@@ -65,20 +63,16 @@ class ShortcutManager {
 
     /* ═══ TIER 2: WORKFLOW SEQUENCES (Numbers - Sequential Operations) ═══ */
 
-    // Screenshot Stack Workflow (1→2→3→4 natural sequence)
+    // Screenshot Stack Workflow (1→2→3 sequence, region only)
     globalShortcut.register(`${primary}+1`, () => {
-      this.windowManager.send('add-screenshot-to-stack', 'full');
-    });
-
-    globalShortcut.register(`${primary}+2`, () => {
       this.windowManager.send('add-screenshot-to-stack', 'region');
     });
 
-    globalShortcut.register(`${primary}+3`, () => {
+    globalShortcut.register(`${primary}+2`, () => {
       this.windowManager.send('process-screenshot-stack');
     });
 
-    globalShortcut.register(`${primary}+4`, () => {
+    globalShortcut.register(`${primary}+3`, () => {
       this.windowManager.send('clear-screenshot-stack');
     });
 
@@ -135,11 +129,11 @@ class ShortcutManager {
     });
 
     globalShortcut.register(`${secondary}+V`, () => {
-      this.appController.conversationHistoryService.openInBrowser().catch(error => {
+      this.appController.conversationHistoryService.openInBrowser().catch((error) => {
         console.error('Failed to open conversation history:', error);
         this.windowManager.send('show-notification', {
           type: 'error',
-          message: 'Failed to open conversation history'
+          message: 'Failed to open conversation history',
         });
       });
     });
@@ -199,16 +193,6 @@ class ShortcutManager {
       mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
     });
 
-    /* ═══ ALTERNATIVE SCREENSHOT SHORTCUTS (Compatibility) ═══ */
-
-    // Alternative screenshot shortcuts for users who expect them
-    globalShortcut.register(`${secondary}+S`, () => {
-      this.windowManager.send('trigger-screenshot');
-    });
-
-    globalShortcut.register(`${secondary}+A`, () => {
-      this.windowManager.send('trigger-screenshot-region');
-    });
 
     /* ═══ LEGACY/ADDITIONAL FEATURES ═══ */
 
@@ -236,9 +220,10 @@ class ShortcutManager {
 
     // Mouse Tracking (for power users) - trying alternative key since = fails
     // Try multiple key combinations until one works (avoiding conflicts with existing shortcuts)
-    const mouseTrackingKeys = process.platform === 'darwin'
-      ? ['Command+Shift+Equal', 'Command+Option+M', 'Command+Shift+Q', 'Command+Shift+K']
-      : ['Control+Shift+Equal', 'Control+Alt+M', 'Control+Shift+Q', 'Control+Shift+K'];
+    const mouseTrackingKeys =
+      process.platform === 'darwin'
+        ? ['Command+Shift+Equal', 'Command+Option+M', 'Command+Shift+Q', 'Command+Shift+K']
+        : ['Control+Shift+Equal', 'Control+Alt+M', 'Control+Shift+Q', 'Control+Shift+K'];
 
     let mouseRegistered = false;
     for (const key of mouseTrackingKeys) {
@@ -265,7 +250,7 @@ class ShortcutManager {
     // Stop mouse tracking if active
     this.stopMouseTracking();
     this.mouseTrackingEnabled = false;
-    
+
     globalShortcut.unregisterAll();
   }
 
@@ -274,17 +259,15 @@ class ShortcutManager {
     const mod = process.platform === 'darwin' ? 'Cmd' : 'Ctrl';
     console.log('\n=== PSYCHOLOGY-OPTIMIZED SHORTCUTS ===');
     console.log(`TIER 1 - CORE FUNCTIONS (${mod} + Key):`);
-    console.log(`  ${mod}+S                 - Screenshot (full screen)`);
     console.log(`  ${mod}+A                 - Area screenshot (region)`);
     console.log(`  ${mod}+R                 - Record speech`);
     console.log(`  ${mod}+T                 - sTop recording`);
     console.log(`  ${mod}+B                 - Show/hide window`);
     console.log(`  ${mod}+Arrow Keys        - Move window`);
     console.log('\nTIER 2 - WORKFLOWS (Numbers):');
-    console.log(`  ${mod}+1                 - Add full screenshot to stack`);
-    console.log(`  ${mod}+2                 - Add region screenshot to stack`);
-    console.log(`  ${mod}+3                 - Process screenshot stack`);
-    console.log(`  ${mod}+4                 - Clear screenshot stack`);
+    console.log(`  ${mod}+1                 - Add region screenshot to stack`);
+    console.log(`  ${mod}+2                 - Process screenshot stack`);
+    console.log(`  ${mod}+3                 - Clear screenshot stack`);
     console.log('\nTIER 3 - UTILITIES (Function Keys):');
     console.log('  F1                     - Show this help');
     console.log('  F11                    - Toggle window size (alternative)');
@@ -296,7 +279,6 @@ class ShortcutManager {
     console.log(`  ${mod}+Shift+D           - Toggle theme`);
     console.log(`  ${mod}+Shift+V           - Conversation history`);
     console.log(`  ${mod}+Shift+C           - Center window`);
-    console.log(`  ${mod}+Shift+S/A         - Alternative screenshot shortcuts`);
     console.log(`\nTIER 5 - FINE CONTROL (${mod}+Shift + Symbols/Arrows):`);
     console.log(`  ${mod}+Shift+Arrows      - Resize window height`);
     console.log(`  ${mod}+Shift+[ ]         - Resize window width`);
@@ -338,7 +320,7 @@ class ShortcutManager {
       console.error('No Ollama models available');
       this.windowManager.send('model-switch-failed', {
         model: 'ollama',
-        error: 'No models available'
+        error: 'No models available',
       });
       return;
     }
@@ -423,10 +405,10 @@ class ShortcutManager {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
     const [windowWidth, windowHeight] = mainWindow.getSize();
-    
+
     const x = Math.round((screenWidth - windowWidth) / 2);
     const y = Math.round((screenHeight - windowHeight) / 2);
-    
+
     mainWindow.setPosition(x, y);
     console.log(`Window centered at (${x}, ${y})`);
   }
@@ -472,7 +454,7 @@ class ShortcutManager {
    */
   toggleMouseTracking() {
     this.mouseTrackingEnabled = !this.mouseTrackingEnabled;
-    
+
     if (this.mouseTrackingEnabled) {
       this.startMouseTracking();
       console.log('Mouse tracking enabled - window will follow cursor');
@@ -488,10 +470,12 @@ class ShortcutManager {
   startMouseTracking() {
     const { screen } = require('electron');
 
-    console.log('Mouse tracking enabled - LEFT CLICK anywhere to take region screenshot + AI query');
+    console.log(
+      'Mouse tracking enabled - LEFT CLICK anywhere to take region screenshot + AI query'
+    );
     this.windowManager.send('show-notification', {
       type: 'info',
-      message: 'Mouse tracking ON - Click anywhere to screenshot + AI query'
+      message: 'Mouse tracking ON - Click anywhere to screenshot + AI query',
     });
 
     // Set up interval to check mouse position and clicks
@@ -500,9 +484,10 @@ class ShortcutManager {
       const { mainWindow } = this.windowManager;
 
       // Check if mouse position has changed significantly
-      if (Math.abs(mousePos.x - this.lastMousePosition.x) > 5 ||
-          Math.abs(mousePos.y - this.lastMousePosition.y) > 5) {
-
+      if (
+        Math.abs(mousePos.x - this.lastMousePosition.x) > 5 ||
+        Math.abs(mousePos.y - this.lastMousePosition.y) > 5
+      ) {
         // Get window size to center it on mouse cursor
         const [windowWidth, windowHeight] = mainWindow.getSize();
         const newX = mousePos.x - Math.floor(windowWidth / 2);
@@ -564,7 +549,7 @@ class ShortcutManager {
     const enabled = this.aiManager.toggleSystemPrompts();
     this.windowManager.send('system-prompts-toggled', {
       enabled: enabled,
-      message: `System prompts ${enabled ? 'enabled' : 'disabled'}`
+      message: `System prompts ${enabled ? 'enabled' : 'disabled'}`,
     });
     console.log(`[Shortcut] System prompts ${enabled ? 'enabled' : 'disabled'}`);
   }

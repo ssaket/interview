@@ -24,8 +24,7 @@ This document lists all available keyboard shortcuts for the application.
 ## Screen Capture
 | Shortcut | Action |
 |----------|--------|
-| `Cmd+Shift+S` | Take screenshot |
-| `Cmd+Shift+A` | Capture behind overlay region |
+| `Cmd+A` | Capture behind overlay region |
 
 ## Window Control
 | Shortcut | Action |

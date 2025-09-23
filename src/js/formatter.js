@@ -136,7 +136,7 @@ class DeepSeekFormatter {
       mathReplacements[replacementIndex] = {
         type: 'block',
         formula: formula.trim(),
-        placeholder
+        placeholder,
       };
       replacementIndex++;
       return placeholder;
@@ -148,14 +148,14 @@ class DeepSeekFormatter {
       mathReplacements[replacementIndex] = {
         type: 'inline',
         formula: formula.trim(),
-        placeholder
+        placeholder,
       };
       replacementIndex++;
       return placeholder;
     });
 
     // Replace placeholders with rendered math HTML
-    mathReplacements.forEach(math => {
+    mathReplacements.forEach((math) => {
       const renderedMath = this.renderMathFormula(math.formula, math.type === 'block');
       text = text.replace(math.placeholder, renderedMath);
     });
@@ -172,12 +172,12 @@ class DeepSeekFormatter {
   renderMathFormula(formula, displayMode = false) {
     // Escape the formula for safety
     const escapedFormula = this.escapeHtml(formula);
-    
+
     // For now, return a styled span that can be rendered by KaTeX on the frontend
     // The actual rendering will happen in the browser using KaTeX
     const className = displayMode ? 'math-block' : 'math-inline';
     const displayAttr = displayMode ? ' data-display="true"' : '';
-    
+
     return `<span class="${className}" data-formula="${escapedFormula}"${displayAttr}>${escapedFormula}</span>`;
   }
 
