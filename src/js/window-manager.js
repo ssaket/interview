@@ -53,7 +53,6 @@ class WindowManager {
   /** Safe wrapper for renderer calls. */
   send(channel, payload) {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      console.log(`[WindowManager] Sending IPC message: ${channel}`, payload);
       this.mainWindow.webContents.send(channel, payload);
     } else {
       console.error(

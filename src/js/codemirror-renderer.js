@@ -110,6 +110,11 @@ class CodeMirrorRenderer {
       this.handleSpeechToAIError(data);
     });
 
+    // Scrolling events
+    ipcRenderer.on('scroll-page', (event, direction) => {
+      this.handleScrollPage(direction);
+    });
+
     console.log('✅ IPC event listeners setup complete');
   }
 
@@ -334,6 +339,13 @@ class CodeMirrorRenderer {
   toggleTheme() {
     if (this.interface) {
       this.interface.toggleTheme();
+    }
+  }
+
+  // Scrolling handling
+  handleScrollPage(direction) {
+    if (this.interface) {
+      this.interface.scrollPage(direction);
     }
   }
 

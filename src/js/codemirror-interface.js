@@ -66,6 +66,7 @@ class UltraMinimalCodeMirrorInterface {
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
           backgroundColor: 'rgba(13, 17, 23, 0.15)',
           color: '#f0f6fc',
+          overflow: 'hidden',
         },
         '.cm-content': {
           padding: '16px',
@@ -84,6 +85,7 @@ class UltraMinimalCodeMirrorInterface {
         '.cm-scroller': {
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
           backgroundColor: 'rgba(13, 17, 23, 0.15)',
+          overflow: 'auto',
         },
       });
     } else {
@@ -94,6 +96,7 @@ class UltraMinimalCodeMirrorInterface {
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
           backgroundColor: 'rgba(255, 255, 255, 0.08)',
           color: '#24292f',
+          overflow: 'hidden',
         },
         '.cm-content': {
           padding: '16px',
@@ -112,6 +115,7 @@ class UltraMinimalCodeMirrorInterface {
         '.cm-scroller': {
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
           backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          overflow: 'auto',
         },
       });
     }
@@ -313,18 +317,50 @@ Activity log:`;
     this.setContent(this.getInitialDocument());
   }
 
+  // Page scrolling
+  scrollPage(direction) {
+    if (!this.editor) return;
+
+    try {
+      const scroller = this.editor.scrollDOM;
+      if (!scroller) return;
+
+      const scrollAmount = scroller.clientHeight * 0.2; // 20% of viewport height (smaller scrolling)
+
+      if (direction === 'up') {
+        scroller.scrollTop = Math.max(0, scroller.scrollTop - scrollAmount);
+      } else if (direction === 'down') {
+        scroller.scrollTop = Math.min(
+          scroller.scrollHeight - scroller.clientHeight,
+          scroller.scrollTop + scrollAmount
+        );
+      }
+    } catch (error) {
+      console.warn('Failed to scroll page:', error);
+    }
+  }
+
   // Utilities
   scrollToBottom() {
     if (!this.editor) return;
 
     try {
+      // More reliable scrolling approach
       const doc = this.editor.state.doc;
-      const lastLine = doc.lines;
-      const pos = doc.line(lastLine).to;
+      const lastPos = doc.length;
 
-      this.editor.dispatch({
-        selection: { anchor: pos },
-        scrollIntoView: true,
+      // Use requestAnimationFrame to ensure DOM is updated
+      requestAnimationFrame(() => {
+        this.editor.dispatch({
+          selection: { anchor: lastPos, head: lastPos },
+          scrollIntoView: true,
+        });
+
+        // Also try direct scrolling as fallback
+        const scroller = this.editor.scrollDOM;
+        if (scroller) {
+          scroller.scrollTop = scroller.scrollHeight;
+        }
       });
     } catch (error) {
       console.warn('Failed to scroll:', error);

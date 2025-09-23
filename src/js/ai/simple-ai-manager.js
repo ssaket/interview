@@ -167,13 +167,6 @@ class SimpleAIManager {
       session.lastUsed = Date.now();
       session.requestCount++;
 
-      // Store response to temporary file
-      this._storeResponseToFile(query, content, {
-        sessionKey,
-        requestCount: session.requestCount,
-        messageCount: session.messages.length,
-      });
-
       return {
         content,
         provider: this.currentProvider,
@@ -567,37 +560,6 @@ class SimpleAIManager {
     return this.systemPromptsEnabled;
   }
 
-  /**
-   * Store agent response to temporary file
-   * @param {string} query - Original user query
-   * @param {string} response - AI response content
-   * @param {Object} metadata - Additional metadata
-   */
-  _storeResponseToFile(query, response, metadata = {}) {
-    try {
-      const timestamp = new Date().toISOString();
-      const responseData = {
-        timestamp,
-        provider: this.currentProvider,
-        model: this.currentModel,
-        systemPromptsEnabled: this.systemPromptsEnabled,
-        query: query.substring(0, 200) + (query.length > 200 ? '...' : ''),
-        response,
-        metadata,
-      };
-
-      const fileName = `agent-responses-${new Date().toISOString().split('T')[0]}.jsonl`;
-      const filePath = path.join(process.cwd(), fileName);
-
-      // Append as JSONL (JSON Lines) format
-      const line = JSON.stringify(responseData) + '\n';
-      fs.appendFileSync(filePath, line);
-
-      console.log(`[SimpleAIManager] Response stored to ${fileName}`);
-    } catch (error) {
-      console.error('[SimpleAIManager] Failed to store response:', error.message);
-    }
-  }
 
   // Private methods
 

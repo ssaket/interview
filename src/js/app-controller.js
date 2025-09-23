@@ -3,7 +3,6 @@ const path = require('path');
 const WindowManager = require('./window-manager');
 const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
-const OCRLogger = require('./ocr-logger');
 const SpeechToTextService = require('./speech-to-text-service');
 const ConversationWebSocketServer = require('./conversation-websocket-server');
 
@@ -13,11 +12,6 @@ class AppController {
     this.aiManager = new SimpleAIManager(this);
     this.conversationWebSocketServer = new ConversationWebSocketServer(this.aiManager);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
-    this.ocrLogger = new OCRLogger({
-      logDir: path.join(process.cwd(), 'logs', 'ocr'),
-      enableLogging: true,
-      maxLogAge: 90, // Keep logs for 90 days
-    });
     this.speechService = new SpeechToTextService();
     this.ocrFilteringEnabled = true;
 
@@ -57,18 +51,34 @@ class AppController {
       const [windowX, windowY] = mainWindow.getPosition();
       const [windowWidth, windowHeight] = mainWindow.getSize();
 
-      const { bounds } = screen.getPrimaryDisplay();
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { bounds, scaleFactor } = primaryDisplay;
+
+      // Use physical pixels for high-DPI displays to ensure full resolution capture
+      const physicalWidth = Math.round(bounds.width * scaleFactor);
+      const physicalHeight = Math.round(bounds.height * scaleFactor);
+
+      console.log(`[Screenshot] Display: ${bounds.width}x${bounds.height} logical, ${physicalWidth}x${physicalHeight} physical (${scaleFactor}x scale)`);
+
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: { width: bounds.width, height: bounds.height },
+        thumbnailSize: { width: physicalWidth, height: physicalHeight },
       });
 
       mainWindow.webContents.send('show-ui');
 
-      const region = { x: windowX, y: windowY, width: windowWidth, height: windowHeight };
+      // Scale region coordinates to match physical pixels
+      const region = {
+        x: Math.round(windowX * scaleFactor),
+        y: Math.round(windowY * scaleFactor),
+        width: Math.round(windowWidth * scaleFactor),
+        height: Math.round(windowHeight * scaleFactor)
+      };
+
       try {
         const full = nativeImage.createFromDataURL(sources[0].thumbnail.toDataURL());
         const cropped = full.crop(region);
+        console.log(`[Screenshot] Cropped region: ${region.width}x${region.height} pixels`);
         return cropped.toDataURL();
       } catch (err) {
         console.error('Error cropping image:', err);
@@ -112,20 +122,6 @@ class AppController {
           console.log('[AppController] Cleaned text preview:', finalText.substring(0, 200));
         }
 
-        // Log OCR processing session
-        const processingTime = Date.now() - startTime;
-        await this.ocrLogger.logOCRSession({
-          originalText: text,
-          cleanedText: finalText,
-          confidence: confidence || 0,
-          contentType: options.contentType || 'unknown',
-          preset: options.preset || 'auto',
-          processingTime,
-          filteringEnabled: this.ocrFilteringEnabled,
-          cleaningOptions,
-          imageSize: options.imageSize,
-          preprocessed: options.preprocessed || false,
-        });
 
         // Mark this as OCR context for the next query (simple flag for UI)
         this.lastOcrText = finalText;
@@ -505,15 +501,28 @@ class AppController {
     const [windowX, windowY] = mainWindow.getPosition();
     const [windowWidth, windowHeight] = mainWindow.getSize();
 
-    const { bounds } = screen.getPrimaryDisplay();
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { bounds, scaleFactor } = primaryDisplay;
+
+    // Use physical pixels for high-DPI displays to ensure full resolution capture
+    const physicalWidth = Math.round(bounds.width * scaleFactor);
+    const physicalHeight = Math.round(bounds.height * scaleFactor);
+
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: bounds.width, height: bounds.height },
+      thumbnailSize: { width: physicalWidth, height: physicalHeight },
     });
 
     mainWindow.webContents.send('show-ui');
 
-    const region = { x: windowX, y: windowY, width: windowWidth, height: windowHeight };
+    // Scale region coordinates to match physical pixels
+    const region = {
+      x: Math.round(windowX * scaleFactor),
+      y: Math.round(windowY * scaleFactor),
+      width: Math.round(windowWidth * scaleFactor),
+      height: Math.round(windowHeight * scaleFactor)
+    };
+
     try {
       const full = nativeImage.createFromDataURL(sources[0].thumbnail.toDataURL());
       const cropped = full.crop(region);
@@ -578,24 +587,6 @@ class AppController {
       }
     }
 
-    // Log the combined OCR session
-    const processingTime = Date.now() - startTime;
-    await this.ocrLogger.logOCRSession({
-      originalText: ocrResults.map((r) => r.originalText).join('\n\n--- SEPARATOR ---\n\n'),
-      cleanedText: combinedText,
-      confidence: ocrResults.reduce((sum, r) => sum + r.confidence, 0) / ocrResults.length,
-      contentType: 'stacked_screenshots',
-      preset: 'stack',
-      processingTime,
-      filteringEnabled: this.ocrFilteringEnabled,
-      cleaningOptions,
-      imageSize: `${this.screenshotStack.length} screenshots`,
-      stackInfo: {
-        count: this.screenshotStack.length,
-        types: this.screenshotStack.map((s) => s.type),
-        timestamps: this.screenshotStack.map((s) => s.timestamp),
-      },
-    });
 
     // Mark this as OCR context for the next AI query
     this.lastOcrText = combinedText;
@@ -727,11 +718,9 @@ class AppController {
     });
     app.on('before-quit', async () => {
       this.shortcutManager.unregisterAll();
-      await this.ocrLogger.shutdown();
     });
     app.on('window-all-closed', async () => {
       this.shortcutManager.unregisterAll();
-      await this.ocrLogger.shutdown();
       if (process.platform !== 'darwin') app.quit();
     });
 

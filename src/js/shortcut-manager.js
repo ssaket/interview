@@ -196,9 +196,10 @@ class ShortcutManager {
 
     /* ═══ LEGACY/ADDITIONAL FEATURES ═══ */
 
-    // Page Scrolling (for completeness)
-    globalShortcut.register('Shift+X', () => this.windowManager.send('scroll-page', 'up'));
-    globalShortcut.register('Shift+Z', () => this.windowManager.send('scroll-page', 'down'));
+    // Page Scrolling (Alt/Option + Z/X)
+    const altKey = process.platform === 'darwin' ? 'Option' : 'Alt';
+    globalShortcut.register(`${altKey}+Z`, () => this.windowManager.send('scroll-page', 'up'));
+    globalShortcut.register(`${altKey}+X`, () => this.windowManager.send('scroll-page', 'down'));
 
     // Additional Model Management
     globalShortcut.register(`${secondary}+M`, () => this.switchOllamaModel());
@@ -286,7 +287,7 @@ class ShortcutManager {
     const mouseKey = process.platform === 'darwin' ? 'Cmd+Option+M' : 'Ctrl+Alt+M';
     console.log(`  ${mouseKey}           - Mouse tracking toggle`);
     console.log('\nOTHER:');
-    console.log('  Shift+X/Z              - Scroll page up/down');
+    console.log('  Alt/Opt+Z/X            - Scroll page up/down');
     console.log(`  ${mod}+Shift+M/Y/W/L/I   - Model/System/Warmup/Format/DevTools`);
     console.log('=====================================\n');
   }
@@ -437,16 +438,24 @@ class ShortcutManager {
       mainWindow.hide();
       // Deregister all shortcuts when hiding
       this.unregisterAll();
-      // Re-register only Command+B to allow showing window again
-      globalShortcut.register('Command+B', () => {
-        this.toggleWindowVisibility();
-      });
+      // Re-register only the special Cmd+B shortcut to allow showing window again
+      this.registerSpecialToggleShortcut();
     } else {
       mainWindow.show();
       // Deregister all shortcuts and re-register them fresh
       this.unregisterAll();
       this.register();
     }
+  }
+
+  /**
+   * Register only the special Cmd+B shortcut for showing window when hidden
+   */
+  registerSpecialToggleShortcut() {
+    const primary = process.platform === 'darwin' ? 'Command' : 'Control';
+    globalShortcut.register(`${primary}+B`, () => {
+      this.toggleWindowVisibility();
+    });
   }
 
   /**
