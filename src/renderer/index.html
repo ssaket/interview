@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://localhost:11434 https://api.assemblyai.com wss://api.assemblyai.com;"
+    />
+    <title>DeepSeek Assistant - Dev Mode</title>
+
+    <style>
+      /* Professional Code Editor Theme */
+      :root {
+        --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        --font-family-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+
+        /* Dark Theme Colors */
+        --bg-primary: #1e1e1e;
+        --bg-secondary: #252526;
+        --bg-tertiary: #2d2d30;
+        --border-color: #3e3e42;
+        --text-primary: #cccccc;
+        --text-secondary: #9d9d9d;
+        --text-muted: #6a6a6a;
+
+        /* Accent Colors */
+        --accent-blue: #007acc;
+        --accent-green: #4ec9b0;
+        --accent-orange: #ce9178;
+        --accent-red: #f44747;
+        --accent-yellow: #dcdcaa;
+      }
+
+      /* Global Styles */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-family: var(--font-family);
+        font-size: 13px;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      /* Main Container */
+      .dev-container {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-primary);
+      }
+
+      /* Status Bar */
+      .status-bar {
+        background: var(--accent-blue);
+        color: white;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 12px;
+        font-size: 12px;
+        font-weight: 500;
+        flex-shrink: 0;
+        user-select: none;
+      }
+
+      .status-left, .status-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .status-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        opacity: 0.9;
+      }
+
+      .status-item.active {
+        opacity: 1;
+        font-weight: 600;
+      }
+
+      /* OCR overlay styles removed for simplicity */
+
+      .editor-container {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+      }
+
+      .editor-header {
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+        padding: 8px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+
+      .editor-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .editor-stats {
+        color: var(--text-muted);
+        font-size: 11px;
+      }
+
+      .editor-content {
+        flex: 1;
+        overflow: hidden;
+      }
+
+      /* CodeMirror container will be styled by the library */
+      .cm-editor {
+        height: 100% !important;
+      }
+
+      .cm-focused {
+        outline: none !important;
+      }
+
+      /* AI Response Overlay */
+      .ai-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 999;
+        display: none;
+        backdrop-filter: blur(4px);
+      }
+
+      .ai-overlay.visible {
+        display: flex;
+        animation: fadeIn 0.2s ease-out;
+      }
+
+      /* Animations */
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      /* Focus Management */
+      .overlay-focus-trap {
+        position: absolute;
+        top: -1px;
+        left: -1px;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .status-right .status-item:not(.priority) {
+          display: none;
+        }
+      }
+
+      /* Hide scrollbars globally */
+      ::-webkit-scrollbar {
+        width: 0px;
+        background: transparent;
+      }
+
+      /* Conversation area */
+      #conversationContent {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        background: var(--bg-primary);
+        min-height: calc(100vh - 22px);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .ai-message {
+        margin: 10px 0;
+        padding: 10px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        font-family: var(--font-family);
+      }
+
+      .message-content {
+        color: var(--text-primary);
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Dev Container -->
+    <div class="dev-container">
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <div class="status-left">
+          <div class="status-item active">
+            <span>DEV MODE</span>
+          </div>
+          <div class="status-item" id="statusMessage">
+            <span>Ready • Ctrl+S (Screenshot→OCR→AI)</span>
+          </div>
+        </div>
+        <div class="status-right">
+          <div class="status-item" id="aiProvider">
+            <span>OLLAMA</span>
+          </div>
+          <div class="status-item" id="aiFlow">
+            <span>LOCAL</span>
+          </div>
+          <div class="status-item priority" id="messageCount">
+            <span>0 messages</span>
+          </div>
+          <div class="status-item" id="sessionStatus">
+            <span>NO SESSION</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- OCR overlay removed for simplicity - text goes directly to AI -->
+
+      <!-- AI Response Editor Overlay -->
+      <div class="ai-overlay" id="devAiResponse">
+        <div class="editor-container">
+          <div class="editor-header">
+            <div class="editor-title">
+              <span>AI Response</span>
+            </div>
+            <div class="editor-stats" id="devAiStats">
+              Processing... | Press Esc to close
+            </div>
+          </div>
+          <div class="editor-content">
+            <div id="aiEditor"></div>
+          </div>
+        </div>
+        <div class="overlay-focus-trap" tabindex="0"></div>
+      </div>
+    </div>
+
+    <!-- Main conversation area -->
+    <div id="conversationContent"></div>
+
+    <!-- Hidden elements for functionality -->
+    <div style="display: none">
+      <!-- Screenshot capture area -->
+      <img id="capturedScreenshot" />
+      <div id="screenshotGrid"></div>
+
+      <!-- Audio recording -->
+      <div id="recordingVisualizer"></div>
+
+      <!-- Text areas for processing -->
+      <textarea id="extractedText"></textarea>
+      <textarea id="mergedText"></textarea>
+      <textarea id="transcribedText"></textarea>
+
+      <!-- Question inputs -->
+      <textarea id="screenshotQuestion"></textarea>
+      <textarea id="multiQuestion"></textarea>
+      <textarea id="voiceQuestion"></textarea>
+      <textarea id="followUpQuestion"></textarea>
+
+      <!-- Settings -->
+      <select id="aiProvider"></select>
+      <select id="aiModel"></select>
+      <select id="aiFlow"></select>
+      <input id="apiKey" type="password" />
+
+      <!-- CodeMirror elements will be created here -->
+      <div id="devOcrText"></div>
+      <div id="devAiText"></div>
+    </div>
+
+    <!-- CodeMirror Setup Script -->
+    <script type="module">
+      import { EditorView, basicSetup } from 'codemirror';
+      import { EditorState } from '@codemirror/state';
+      import { oneDark } from '@codemirror/theme-one-dark';
+      import { markdown } from '@codemirror/lang-markdown';
+
+      // Store editor instances globally (OCR editor removed)
+      window.codeMirrorEditors = {
+        ai: null
+      };
+
+      // Initialize AI Editor
+      function initAiEditor() {
+        const state = EditorState.create({
+          doc: 'AI is processing your request...',
+          extensions: [
+            basicSetup,
+            oneDark,
+            markdown(),
+            EditorView.theme({
+              '&': { height: '100%' },
+              '.cm-content': { padding: '16px' },
+              '.cm-focused': { outline: 'none' }
+            }),
+            EditorState.readOnly.of(true)
+          ]
+        });
+
+        window.codeMirrorEditors.ai = new EditorView({
+          state,
+          parent: document.getElementById('aiEditor')
+        });
+      }
+
+      // Update editor content (replace)
+      window.updateEditorContent = function(editorType, content) {
+        const editor = window.codeMirrorEditors[editorType];
+        if (editor) {
+          const transaction = editor.state.update({
+            changes: {
+              from: 0,
+              to: editor.state.doc.length,
+              insert: content
+            }
+          });
+          editor.dispatch(transaction);
+        }
+      };
+
+      // Append content to editor
+      window.appendEditorContent = function(editorType, content, separator = '\n\n') {
+        const editor = window.codeMirrorEditors[editorType];
+        if (editor) {
+          const currentContent = editor.state.doc.toString();
+          const newContent = currentContent ? currentContent + separator + content : content;
+
+          const transaction = editor.state.update({
+            changes: {
+              from: 0,
+              to: editor.state.doc.length,
+              insert: newContent
+            }
+          });
+          editor.dispatch(transaction);
+        }
+      };
+
+      // Editor functions will be defined in separate non-module script
+
+      // Initialize editors when DOM is ready
+      document.addEventListener('DOMContentLoaded', () => {
+        initAiEditor();
+      });
+
+      // Keyboard shortcuts (simplified)
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          const aiOverlay = document.getElementById('devAiResponse');
+          if (aiOverlay && aiOverlay.classList.contains('visible')) {
+            aiOverlay.classList.remove('visible');
+          }
+        }
+      });
+    </script>
+
+    <!-- Simple editor functions (non-module) -->
+    <script>
+      // Wait for DOM and CodeMirror to be ready
+      window.addEventListener('DOMContentLoaded', () => {
+        // Wait a bit for the module script to initialize
+        setTimeout(() => {
+          // Define simple editor functions that don't require imports
+          window.startAiResponse = function(initialText = 'AI is processing...') {
+            const editor = window.codeMirrorEditors?.ai;
+            if (editor) {
+              // Clear editor
+              const transaction = editor.state.update({
+                changes: {
+                  from: 0,
+                  to: editor.state.doc.length,
+                  insert: initialText
+                }
+              });
+              editor.dispatch(transaction);
+
+              // Show AI overlay
+              const aiOverlay = document.getElementById('devAiResponse');
+              if (aiOverlay) {
+                aiOverlay.classList.add('visible');
+              }
+            }
+          };
+
+          window.streamToAiEditor = function(chunk) {
+            const editor = window.codeMirrorEditors?.ai;
+            if (editor) {
+              // Just append the chunk to the end of current content
+              const currentLength = editor.state.doc.length;
+              const transaction = editor.state.update({
+                changes: {
+                  from: currentLength,
+                  to: currentLength,
+                  insert: chunk
+                }
+              });
+              editor.dispatch(transaction);
+
+              // Show the AI overlay if not visible
+              const aiOverlay = document.getElementById('devAiResponse');
+              if (aiOverlay && !aiOverlay.classList.contains('visible')) {
+                aiOverlay.classList.add('visible');
+              }
+            }
+          };
+
+          console.log('✅ Editor functions loaded');
+        }, 100);
+      });
+    </script>
+
+    <!-- Main Application Script -->
+    <script src="index.js"></script>
+  </body>
+</html>

@@ -48,6 +48,25 @@ class SpeechToTextService {
       // Create write stream for the audio file
       const fileStream = fs.createWriteStream(this.tempAudioPath);
       
+      // Detect recording program based on platform
+      let recordProgram;
+      if (process.platform === 'win32') {
+        recordProgram = 'sox'; // Assume sox is in PATH on Windows
+      } else if (process.platform === 'darwin') {
+        // Try common macOS paths for sox
+        const fs = require('fs');
+        const possiblePaths = ['/opt/homebrew/bin/sox', '/usr/local/bin/sox', 'sox'];
+        recordProgram = possiblePaths.find(path => {
+          try {
+            return fs.existsSync(path) || path === 'sox';
+          } catch {
+            return path === 'sox';
+          }
+        }) || 'sox';
+      } else {
+        recordProgram = 'sox'; // Default to sox in PATH for Linux
+      }
+
       // Start recording
       this.recordingProcess = record.record({
         sampleRate: 16000,
@@ -58,7 +77,7 @@ class SpeechToTextService {
         thresholdEnd: null,
         silence: '1.0',
         verbose: false,
-        recordProgram: '/opt/homebrew/bin/sox', // Full path to sox
+        recordProgram: recordProgram,
       });
 
       // Pipe the recording to the file
@@ -80,8 +99,27 @@ class SpeechToTextService {
       console.log('Speech recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
+      let errorMessage = `Failed to start recording: ${error.message}`;
+
+      // Provide platform-specific help for common issues
+      if (error.message.includes('sox') || error.message.includes('node-record-lpcm16')) {
+        if (process.platform === 'win32') {
+          errorMessage += '\n\nWindows users: Please install sox audio utility:\n' +
+                         '1. Download from https://sourceforge.net/projects/sox/\n' +
+                         '2. Add to your system PATH\n' +
+                         '3. Restart the application';
+        } else if (process.platform === 'darwin') {
+          errorMessage += '\n\nmacOS users: Please install sox:\n' +
+                         'brew install sox';
+        } else {
+          errorMessage += '\n\nLinux users: Please install sox:\n' +
+                         'sudo apt-get install sox (Ubuntu/Debian)\n' +
+                         'sudo yum install sox (CentOS/RHEL)';
+        }
+      }
+
       if (this.onError) {
-        this.onError(`Failed to start recording: ${error.message}`);
+        this.onError(errorMessage);
       }
     }
   }
