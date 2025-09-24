@@ -486,6 +486,8 @@ class ShortcutManager {
         this.unregisterGlobalShortcuts();
       }
     } else {
+      // Position window at cursor before showing
+      this.positionWindowAtCursor();
       mainWindow.show();
       if (process.platform === 'win32') {
         setTimeout(() => {
@@ -494,6 +496,38 @@ class ShortcutManager {
       } else {
         this.registerGlobalShortcuts();
       }
+    }
+  }
+
+  /**
+   * Position window at mouse cursor location
+   */
+  positionWindowAtCursor() {
+    const { mainWindow } = this.windowManager;
+
+    try {
+      // Get cursor position
+      const cursorPoint = screen.getCursorScreenPoint();
+      const [windowWidth, windowHeight] = mainWindow.getSize();
+
+      // Calculate window position to center it around cursor
+      const x = cursorPoint.x - Math.floor(windowWidth / 2);
+      const y = cursorPoint.y - Math.floor(windowHeight / 2);
+
+      // Get display bounds to ensure window stays on screen
+      const display = screen.getDisplayNearestPoint(cursorPoint);
+      const { x: displayX, y: displayY, width: displayWidth, height: displayHeight } = display.bounds;
+
+      // Clamp position to display bounds
+      const clampedX = Math.max(displayX, Math.min(x, displayX + displayWidth - windowWidth));
+      const clampedY = Math.max(displayY, Math.min(y, displayY + displayHeight - windowHeight));
+
+      mainWindow.setPosition(clampedX, clampedY);
+      console.log(`Window positioned at cursor: (${clampedX}, ${clampedY})`);
+    } catch (error) {
+      console.error('Failed to position window at cursor:', error);
+      // Fallback to center of primary display
+      this.centerWindow();
     }
   }
 

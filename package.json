@@ -61,13 +61,16 @@
   },
   "build": {
     "appId": "com.interview.deepseek-overlay",
-    "productName": "DeepSeek Overlay Helper",
+    "productName": "Overlay",
     "directories": {
       "output": "dist"
     },
     "files": [
       "src/**/*",
       "node_modules/**/*",
+      "index.html",
+      "conversation-history-websocket.html",
+      "eng.traineddata",
       "!tests/**/*",
       "!scripts/**/*",
       "!logs/**/*",
