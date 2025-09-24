@@ -105,7 +105,7 @@ class UltraMinimalCodeMirrorInterface {
           height: '100%',
           fontSize: '14px',
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          backgroundColor: 'rgba(13, 17, 23, 0.15)',
+          backgroundColor: 'rgba(13, 17, 23, 0.27)',
           color: '#f0f6fc',
           overflow: 'hidden',
         },
@@ -113,7 +113,7 @@ class UltraMinimalCodeMirrorInterface {
           padding: '16px',
           lineHeight: '1.6',
           minHeight: '100%',
-          backgroundColor: 'rgba(13, 17, 23, 0.15)',
+          backgroundColor: 'rgba(13, 17, 23, 0.27)',
           color: '#f0f6fc',
         },
         '.cm-focused': {
@@ -121,11 +121,11 @@ class UltraMinimalCodeMirrorInterface {
         },
         '.cm-editor': {
           height: '100%',
-          backgroundColor: 'rgba(13, 17, 23, 0.15)',
+          backgroundColor: 'rgba(13, 17, 23, 0.27)',
         },
         '.cm-scroller': {
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          backgroundColor: 'rgba(13, 17, 23, 0.15)',
+          backgroundColor: 'rgba(13, 17, 23, 0.27)',
           overflow: 'auto',
         },
       });
@@ -135,7 +135,7 @@ class UltraMinimalCodeMirrorInterface {
           height: '100%',
           fontSize: '14px',
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(255, 255, 255, 0.18)',
           color: '#24292f',
           overflow: 'hidden',
         },
@@ -143,7 +143,7 @@ class UltraMinimalCodeMirrorInterface {
           padding: '16px',
           lineHeight: '1.6',
           minHeight: '100%',
-          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(255, 255, 255, 0.18)',
           color: '#24292f',
         },
         '.cm-focused': {
@@ -151,11 +151,11 @@ class UltraMinimalCodeMirrorInterface {
         },
         '.cm-editor': {
           height: '100%',
-          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(255, 255, 255, 0.18)',
         },
         '.cm-scroller': {
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(255, 255, 255, 0.18)',
           overflow: 'auto',
         },
       });
