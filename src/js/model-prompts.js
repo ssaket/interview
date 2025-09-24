@@ -105,4 +105,6 @@ Clearly state the final time and space complexities of your provided solution in
 `,
 };
 
-module.exports = MODEL_PROMPTS;
+export function getModelPrompt(modelType) {
+  return MODEL_PROMPTS[modelType] || MODEL_PROMPTS['default'];
+}

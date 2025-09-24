@@ -12,12 +12,24 @@ class ShortcutManager {
     this.appController = appController;
     this.isSmallWindowMode = false; // Track window size state
     this.moveStep = 20; // Move this to instance variable for external access
-    this.mouseTrackingEnabled = false; // Track mouse position following state
-    this.lastMousePosition = { x: 0, y: 0 }; // Store last mouse position
   }
 
-  /** Register all global shortcuts using psychology-based design principles. */
+  /** Register all shortcuts - toggle + global shortcuts */
   register() {
+    this.registerToggleShortcut();
+    this.registerGlobalShortcuts();
+  }
+
+  /** Register only the window toggle shortcut (Cmd/Ctrl+B) */
+  registerToggleShortcut() {
+    const primary = process.platform === 'darwin' ? 'Command' : 'Control';
+    globalShortcut.register(`${primary}+B`, () => {
+      this.toggleWindowVisibility();
+    });
+  }
+
+  /** Register all other global shortcuts except toggle */
+  registerGlobalShortcuts() {
     const { mainWindow } = this.windowManager;
     let resizeStep = 50;
     const defaultWidth = 800;
@@ -31,8 +43,6 @@ class ShortcutManager {
     /* ═══ TIER 1: CORE FUNCTIONS (Primary Modifier - Most Used) ═══ */
 
     // Screenshot Functions (A = Area only)
-    // Full screenshot removed - only region capture available
-
     globalShortcut.register(`${primary}+A`, () => {
       this.windowManager.send('trigger-screenshot-region');
     });
@@ -44,11 +54,6 @@ class ShortcutManager {
 
     globalShortcut.register(`${primary}+T`, () => {
       this.windowManager.send('stop-speech-recording');
-    });
-
-    // Window Management (B = show/hide - preserving original)
-    globalShortcut.register(`${primary}+B`, () => {
-      this.toggleWindowVisibility();
     });
 
     // Window Movement (Arrow Keys = natural directional mapping)
@@ -193,7 +198,6 @@ class ShortcutManager {
       mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
     });
 
-
     /* ═══ LEGACY/ADDITIONAL FEATURES ═══ */
 
     // Page Scrolling (Alt/Option + Z/X)
@@ -218,40 +222,69 @@ class ShortcutManager {
     globalShortcut.register(`${secondary}+L`, () => {
       this.windowManager.toggleFormatter();
     });
+  }
 
-    // Mouse Tracking (for power users) - trying alternative key since = fails
-    // Try multiple key combinations until one works (avoiding conflicts with existing shortcuts)
-    const mouseTrackingKeys =
-      process.platform === 'darwin'
-        ? ['Command+Shift+Equal', 'Command+Option+M', 'Command+Shift+Q', 'Command+Shift+K']
-        : ['Control+Shift+Equal', 'Control+Alt+M', 'Control+Shift+Q', 'Control+Shift+K'];
+  /** Unregister all shortcuts except toggle */
+  unregisterGlobalShortcuts() {
+    const primary = process.platform === 'darwin' ? 'Command' : 'Control';
+    const secondary = process.platform === 'darwin' ? 'Command+Shift' : 'Control+Shift';
+    const altKey = process.platform === 'darwin' ? 'Option' : 'Alt';
 
-    let mouseRegistered = false;
-    for (const key of mouseTrackingKeys) {
-      try {
-        mouseRegistered = globalShortcut.register(key, () => {
-          console.log(`[ShortcutManager] Mouse tracking shortcut triggered: ${key}`);
-          this.toggleMouseTracking();
-        });
-        if (mouseRegistered) {
-          console.log(`[ShortcutManager] Mouse tracking registration SUCCESS with: ${key}`);
-          break;
-        }
-      } catch (err) {
-        console.log(`[ShortcutManager] Failed to register ${key}: ${err.message}`);
-      }
-    }
+    // Unregister all global shortcuts specifically (not cmd+B)
+    globalShortcut.unregister(`${primary}+A`);
+    globalShortcut.unregister(`${primary}+R`);
+    globalShortcut.unregister(`${primary}+T`);
 
-    if (!mouseRegistered) {
-      console.log('[ShortcutManager] WARNING: No mouse tracking shortcut could be registered');
-    }
+    // Arrow keys
+    ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
+      globalShortcut.unregister(`${primary}+${dir}`);
+    });
+
+    // Number keys
+    globalShortcut.unregister(`${primary}+1`);
+    globalShortcut.unregister(`${primary}+2`);
+    globalShortcut.unregister(`${primary}+3`);
+
+    // Function keys
+    globalShortcut.unregister('F1');
+    globalShortcut.unregister('F11');
+
+    // Secondary modifier shortcuts
+    globalShortcut.unregister(`${secondary}+0`);
+    globalShortcut.unregister(`${secondary}+R`);
+    globalShortcut.unregister(`${secondary}+F`);
+    globalShortcut.unregister(`${secondary}+O`);
+    globalShortcut.unregister(`${secondary}+D`);
+    globalShortcut.unregister(`${secondary}+V`);
+    globalShortcut.unregister(`${secondary}+C`);
+    globalShortcut.unregister(`${secondary}+I`);
+
+    // Window resizing
+    globalShortcut.unregister(`${secondary}+Right`);
+    globalShortcut.unregister(`${secondary}+Left`);
+    globalShortcut.unregister(`${secondary}+Down`);
+    globalShortcut.unregister(`${secondary}+Up`);
+
+    // Movement step adjustment
+    globalShortcut.unregister(`${secondary}+Plus`);
+    globalShortcut.unregister(`${secondary}+-`);
+
+    // Window width controls
+    globalShortcut.unregister(`${secondary}+]`);
+    globalShortcut.unregister(`${secondary}+[`);
+
+    // Page scrolling
+    globalShortcut.unregister(`${altKey}+Z`);
+    globalShortcut.unregister(`${altKey}+X`);
+
+    // Additional features
+    globalShortcut.unregister(`${secondary}+M`);
+    globalShortcut.unregister(`${secondary}+Y`);
+    globalShortcut.unregister(`${secondary}+W`);
+    globalShortcut.unregister(`${secondary}+L`);
   }
 
   unregisterAll() {
-    // Stop mouse tracking if active
-    this.stopMouseTracking();
-    this.mouseTrackingEnabled = false;
-
     globalShortcut.unregisterAll();
   }
 
@@ -284,8 +317,6 @@ class ShortcutManager {
     console.log(`  ${mod}+Shift+Arrows      - Resize window height`);
     console.log(`  ${mod}+Shift+[ ]         - Resize window width`);
     console.log(`  ${mod}+Shift+Plus/-      - Adjust movement step`);
-    const mouseKey = process.platform === 'darwin' ? 'Cmd+Option+M' : 'Ctrl+Alt+M';
-    console.log(`  ${mouseKey}           - Mouse tracking toggle`);
     console.log('\nOTHER:');
     console.log('  Alt/Opt+Z/X            - Scroll page up/down');
     console.log(`  ${mod}+Shift+M/Y/W/L/I   - Model/System/Warmup/Format/DevTools`);
@@ -436,112 +467,27 @@ class ShortcutManager {
 
     if (mainWindow.isVisible()) {
       mainWindow.hide();
-      // Deregister all shortcuts when hiding
-      this.unregisterAll();
-      // Re-register only the special Cmd+B shortcut to allow showing window again
-      this.registerSpecialToggleShortcut();
+      // Unregister all shortcuts except cmd/ctrl-b to allow other apps to use them
+      if (process.platform === 'win32') {
+        setTimeout(() => {
+          this.unregisterGlobalShortcuts();
+        }, 500);
+      } else {
+        this.unregisterGlobalShortcuts();
+      }
     } else {
       mainWindow.show();
-      // Deregister all shortcuts and re-register them fresh
-      this.unregisterAll();
-      this.register();
-    }
-  }
-
-  /**
-   * Register only the special Cmd+B shortcut for showing window when hidden
-   */
-  registerSpecialToggleShortcut() {
-    const primary = process.platform === 'darwin' ? 'Command' : 'Control';
-    globalShortcut.register(`${primary}+B`, () => {
-      this.toggleWindowVisibility();
-    });
-  }
-
-  /**
-   * Toggle mouse tracking mode - when enabled, window follows mouse cursor
-   */
-  toggleMouseTracking() {
-    this.mouseTrackingEnabled = !this.mouseTrackingEnabled;
-
-    if (this.mouseTrackingEnabled) {
-      this.startMouseTracking();
-      console.log('Mouse tracking enabled - window will follow cursor');
-    } else {
-      this.stopMouseTracking();
-      console.log('Mouse tracking disabled');
-    }
-  }
-
-  /**
-   * Start tracking mouse position and moving window accordingly
-   */
-  startMouseTracking() {
-    const { screen } = require('electron');
-
-    console.log(
-      'Mouse tracking enabled - LEFT CLICK anywhere to take region screenshot + AI query'
-    );
-    this.windowManager.send('show-notification', {
-      type: 'info',
-      message: 'Mouse tracking ON - Click anywhere to screenshot + AI query',
-    });
-
-    // Set up interval to check mouse position and clicks
-    this.mouseTrackingInterval = setInterval(() => {
-      const mousePos = screen.getCursorScreenPoint();
-      const { mainWindow } = this.windowManager;
-
-      // Check if mouse position has changed significantly
-      if (
-        Math.abs(mousePos.x - this.lastMousePosition.x) > 5 ||
-        Math.abs(mousePos.y - this.lastMousePosition.y) > 5
-      ) {
-        // Get window size to center it on mouse cursor
-        const [windowWidth, windowHeight] = mainWindow.getSize();
-        const newX = mousePos.x - Math.floor(windowWidth / 2);
-        const newY = mousePos.y - Math.floor(windowHeight / 2);
-
-        // Update window position
-        mainWindow.setPosition(newX, newY);
-
-        // Update last mouse position
-        this.lastMousePosition = { x: mousePos.x, y: mousePos.y };
+      if (process.platform === 'win32') {
+        setTimeout(() => {
+          this.registerGlobalShortcuts();
+        }, 500);
+      } else {
+        this.registerGlobalShortcuts();
       }
-    }, 50); // Check every 50ms for smooth tracking
-
-    // Add click detection via renderer process
-    this.windowManager.send('mouse-tracking-started');
-  }
-
-  /**
-   * Stop tracking mouse position
-   */
-  stopMouseTracking() {
-    if (this.mouseTrackingInterval) {
-      clearInterval(this.mouseTrackingInterval);
-      this.mouseTrackingInterval = null;
     }
-
-    // Stop click detection
-    this.windowManager.send('mouse-tracking-stopped');
   }
 
-  /**
-   * Handle left click during mouse tracking - take screenshot and query AI
-   */
-  handleMouseTrackingClick() {
-    console.log('[ShortcutManager] Triggering region screenshot + AI query from mouse tracking');
 
-    // Disable mouse tracking temporarily
-    this.stopMouseTracking();
-    this.mouseTrackingEnabled = false;
-
-    // Trigger region screenshot
-    this.windowManager.send('trigger-screenshot-region');
-
-    console.log('Mouse tracking disabled - region screenshot triggered');
-  }
 
   /**
    * Cycle through AI flows: LOCAL -> CLOUD -> HYBRID -> LOCAL

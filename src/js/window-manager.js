@@ -32,21 +32,22 @@ class WindowManager {
     });
 
     this.mainWindow.setContentProtection(true);
-    this.mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     this.mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
     this.mainWindow.setIgnoreMouseEvents(true, { forward: true });
-    this.mainWindow.webContents.openDevTools({ mode: 'detach' });
+    this.mainWindow.setFocusable(false);
+    // this.mainWindow.webContents.openDevTools({ mode: 'detach' });
 
     if (process.platform === 'darwin') {
       this.mainWindow.setHiddenInMissionControl(true);
       this.mainWindow.setWindowButtonVisibility(false);
-      this.mainWindow.setBackgroundColor('#00000000');
-      this.mainWindow.setSkipTaskbar(true);
-      this.mainWindow.setHasShadow(false);
     }
+    this.mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     this.mainWindow.webContents.setBackgroundThrottling(false);
     this.mainWindow.webContents.setFrameRate(60);
+    this.mainWindow.setBackgroundColor('#00000000');
+    this.mainWindow.setSkipTaskbar(true);
+    this.mainWindow.setHasShadow(false);
     this.mainWindow.loadFile('index.html');
   }
 

@@ -1,5 +1,4 @@
 const { app, ipcMain, desktopCapturer, nativeImage, screen } = require('electron');
-const path = require('path');
 const WindowManager = require('./window-manager');
 const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
@@ -698,22 +697,12 @@ class AppController {
     }
   }
 
-  /** Register mouse tracking click handler */
-  registerMouseTrackingHandlers() {
-    const { ipcMain } = require('electron');
-
-    ipcMain.on('mouse-tracking-click-detected', () => {
-      console.log('[AppController] Mouse tracking click detected');
-      this.shortcutManager.handleMouseTrackingClick();
-    });
-  }
 
   start() {
     app.whenReady().then(() => {
       this.windowManager.create();
       this.shortcutManager.register();
       this.registerIpc();
-      this.registerMouseTrackingHandlers();
       this.aiManager.initialize();
     });
     app.on('before-quit', async () => {
