@@ -421,7 +421,6 @@ class CodeMirrorRenderer {
     }
   }
 
-
   // Utility methods
   updateStatusDisplay() {
     if (this.interface) {
@@ -452,7 +451,7 @@ class CodeMirrorRenderer {
         completed: 'Completed',
         error: 'Error',
         idle: 'Ready',
-      }
+      },
     };
 
     return {
@@ -461,7 +460,7 @@ class CodeMirrorRenderer {
         this.status[type] = statusMap[status] || status;
         this.statusUpdateDebounced();
       },
-      show: (message, options) => this.showMessage(type, message, options)
+      show: (message, options) => this.showMessage(type, message, options),
     };
   }
 
@@ -674,7 +673,9 @@ class CodeMirrorRenderer {
           // Starting a code block
           inCodeBlock = true;
           codeBlockLanguage = codeBlockMatch[1] || '';
-          codeLines.push(`## ${codeBlockLanguage ? codeBlockLanguage.toUpperCase() + ' ' : ''}Code Block`);
+          codeLines.push(
+            `## ${codeBlockLanguage ? codeBlockLanguage.toUpperCase() + ' ' : ''}Code Block`
+          );
           codeLines.push('```' + codeBlockLanguage);
         } else {
           // Ending a code block
@@ -697,7 +698,7 @@ class CodeMirrorRenderer {
         const inlineCodeMatches = line.match(/`([^`]+)`/g);
         if (inlineCodeMatches) {
           codeLines.push(`## Inline Code`);
-          inlineCodeMatches.forEach(match => {
+          inlineCodeMatches.forEach((match) => {
             const code = match.replace(/`/g, '');
             if (code.trim()) {
               codeLines.push(code.trim());
@@ -733,7 +734,7 @@ class CodeMirrorRenderer {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
     return hash.toString();

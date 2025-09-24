@@ -42,7 +42,9 @@ class AppController {
    * Cancel all active streaming AI requests
    */
   cancelAllStreamingRequests() {
-    console.log(`[AppController] Cancelling ${this.activeStreamingRequests.size} active streaming requests`);
+    console.log(
+      `[AppController] Cancelling ${this.activeStreamingRequests.size} active streaming requests`
+    );
     this.activeStreamingRequests.clear();
   }
 
@@ -68,7 +70,7 @@ class AppController {
 
     return {
       mode: newMode,
-      previousMode: newMode === 'ALL' ? 'CODE_ONLY' : 'ALL'
+      previousMode: newMode === 'ALL' ? 'CODE_ONLY' : 'ALL',
     };
   }
 
@@ -110,7 +112,9 @@ class AppController {
       const physicalWidth = Math.round(bounds.width * scaleFactor);
       const physicalHeight = Math.round(bounds.height * scaleFactor);
 
-      console.log(`[Screenshot] Display: ${bounds.width}x${bounds.height} logical, ${physicalWidth}x${physicalHeight} physical (${scaleFactor}x scale)`);
+      console.log(
+        `[Screenshot] Display: ${bounds.width}x${bounds.height} logical, ${physicalWidth}x${physicalHeight} physical (${scaleFactor}x scale)`
+      );
 
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
@@ -124,7 +128,7 @@ class AppController {
         x: Math.round(windowX * scaleFactor),
         y: Math.round(windowY * scaleFactor),
         width: Math.round(windowWidth * scaleFactor),
-        height: Math.round(windowHeight * scaleFactor)
+        height: Math.round(windowHeight * scaleFactor),
       };
 
       try {
@@ -173,7 +177,6 @@ class AppController {
           console.log('[AppController] Cleaned text length:', finalText.length);
           console.log('[AppController] Cleaned text preview:', finalText.substring(0, 200));
         }
-
 
         // Mark this as OCR context for the next query (simple flag for UI)
         this.lastOcrText = finalText;
@@ -345,7 +348,7 @@ class AppController {
       if (this.isStreamingActive()) {
         return {
           success: false,
-          error: 'Cannot toggle syntax while streaming is active'
+          error: 'Cannot toggle syntax while streaming is active',
         };
       }
 
@@ -617,7 +620,7 @@ class AppController {
       x: Math.round(windowX * scaleFactor),
       y: Math.round(windowY * scaleFactor),
       width: Math.round(windowWidth * scaleFactor),
-      height: Math.round(windowHeight * scaleFactor)
+      height: Math.round(windowHeight * scaleFactor),
     };
 
     try {
@@ -683,7 +686,6 @@ class AppController {
         combinedText += `--- Screenshot ${i + 1} (${screenshot.type}) - OCR FAILED ---\nError: ${error.message}\n\n`;
       }
     }
-
 
     // Mark this as OCR context for the next AI query
     this.lastOcrText = combinedText;
@@ -795,7 +797,6 @@ class AppController {
     }
   }
 
-
   start() {
     app.whenReady().then(() => {
       this.windowManager.create();
@@ -861,7 +862,7 @@ class AppController {
       const networkUrls = this.conversationWebSocketServer.getNetworkUrls();
       console.log(`[AppController] WebSocket server started at ${url}`);
       console.log('[AppController] Network accessible URLs:');
-      networkUrls.forEach(networkUrl => {
+      networkUrls.forEach((networkUrl) => {
         console.log(`  - ${networkUrl}`);
       });
     } catch (error) {

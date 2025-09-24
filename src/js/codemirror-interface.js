@@ -28,7 +28,7 @@ class UltraMinimalCodeMirrorInterface {
     this.syntaxCompartment = new Compartment();
     this.languageCompartments = {
       python: new Compartment(),
-      markdown: new Compartment()
+      markdown: new Compartment(),
     };
 
     // Debouncing for rapid operations
@@ -73,7 +73,7 @@ class UltraMinimalCodeMirrorInterface {
 
         // Dynamic language compartments based on mode
         this.languageCompartments.python.of(python()),
-        this.languageCompartments.markdown.of(this.syntaxMode === 0 ? markdown() : [])
+        this.languageCompartments.markdown.of(this.syntaxMode === 0 ? markdown() : []),
       ];
 
       // Create state with dynamic extensions
@@ -170,7 +170,8 @@ class UltraMinimalCodeMirrorInterface {
     const timestamp = new Date().toLocaleTimeString();
 
     // Get current status line from document or use default
-    let currentStatusLine = '🔍 OCR: Ready | 🎤 Speech: Ready | 🧠 AI: LOCAL | 📊 Session: 0 messages';
+    let currentStatusLine =
+      '🔍 OCR: Ready | 🎤 Speech: Ready | 🧠 AI: LOCAL | 📊 Session: 0 messages';
     if (this.editor) {
       const currentDoc = this.editor.state.doc.toString();
       const lines = currentDoc.split('\n');
@@ -230,22 +231,26 @@ Activity log:
     if (!this.editor || !content) return;
 
     // Batch content updates to avoid multiple renders
-    this.debounce('content', () => {
-      try {
-        const separator = addSeparator ? '\n\n' : '\n';
-        const insertText = separator + content;
-        const docLength = this.editor.state.doc.length;
+    this.debounce(
+      'content',
+      () => {
+        try {
+          const separator = addSeparator ? '\n\n' : '\n';
+          const insertText = separator + content;
+          const docLength = this.editor.state.doc.length;
 
-        // Single transaction for better performance
-        this.editor.dispatch({
-          changes: { from: docLength, to: docLength, insert: insertText },
-          // Batch scroll into view with content change
-          effects: EditorView.scrollIntoView(docLength + insertText.length, { y: 'end' })
-        });
-      } catch (error) {
-        console.warn('Failed to append content:', error);
-      }
-    }, 16); // 60fps debouncing for smooth updates
+          // Single transaction for better performance
+          this.editor.dispatch({
+            changes: { from: docLength, to: docLength, insert: insertText },
+            // Batch scroll into view with content change
+            effects: EditorView.scrollIntoView(docLength + insertText.length, { y: 'end' }),
+          });
+        } catch (error) {
+          console.warn('Failed to append content:', error);
+        }
+      },
+      16
+    ); // 60fps debouncing for smooth updates
   }
 
   // Transient message system - messages that auto-remove after a timeout
@@ -265,7 +270,7 @@ Activity log:
       // Insert the message
       this.editor.dispatch({
         changes: { from: docLength, to: docLength, insert: insertText },
-        effects: EditorView.scrollIntoView(endPos, { y: 'end' })
+        effects: EditorView.scrollIntoView(endPos, { y: 'end' }),
       });
 
       // Set timer for removal
@@ -278,7 +283,7 @@ Activity log:
         startPos,
         endPos,
         timer,
-        content: insertText
+        content: insertText,
       });
 
       return messageId;
@@ -309,8 +314,8 @@ Activity log:
           changes: {
             from: messageIndex,
             to: messageIndex + messageContent.length,
-            insert: ''
-          }
+            insert: '',
+          },
         });
       }
 
@@ -330,7 +335,6 @@ Activity log:
     }
   }
 
-
   setContent(content) {
     if (!this.editor) return;
 
@@ -342,7 +346,7 @@ Activity log:
 
       // Single efficient transaction
       this.editor.dispatch({
-        changes: { from: 0, to: docLength, insert: content }
+        changes: { from: 0, to: docLength, insert: content },
       });
     } catch (error) {
       console.warn('Failed to set content:', error);
@@ -414,8 +418,6 @@ Activity log:
     }
   }
 
-
-
   streamAIChunk(chunk) {
     if (!this.editor || !chunk) return;
 
@@ -426,7 +428,10 @@ Activity log:
       this.editor.dispatch({
         changes: { from: docLength, to: docLength, insert: chunk },
         // Only scroll every few chunks to reduce DOM manipulation
-        effects: docLength % 100 === 0 ? EditorView.scrollIntoView(docLength + chunk.length, { y: 'end' }) : []
+        effects:
+          docLength % 100 === 0
+            ? EditorView.scrollIntoView(docLength + chunk.length, { y: 'end' })
+            : [],
       });
     } catch (error) {
       console.warn('Failed to stream chunk:', error);
@@ -470,10 +475,14 @@ Activity log:
 
         // High-performance: reconfigure theme compartment without recreation
         this.editor.dispatch({
-          effects: this.themeCompartment.reconfigure(this.getTheme())
+          effects: this.themeCompartment.reconfigure(this.getTheme()),
         });
 
-        this.appendTransientContent(`Theme changed to ${this.isDark ? 'dark' : 'light'} mode`, 1500, false);
+        this.appendTransientContent(
+          `Theme changed to ${this.isDark ? 'dark' : 'light'} mode`,
+          1500,
+          false
+        );
       } catch (error) {
         console.warn('Failed to toggle theme:', error);
       }
@@ -494,25 +503,21 @@ Activity log:
       // Mode 0: ALL - Both Python and Markdown highlighting
       // Mode 1: PYTHON_ONLY - Only Python highlighting (no confusing markdown on mixed content)
       const effects = [
-        this.languageCompartments.markdown.reconfigure(this.syntaxMode === 0 ? markdown() : [])
+        this.languageCompartments.markdown.reconfigure(this.syntaxMode === 0 ? markdown() : []),
         // Python is always enabled (configured in initialization)
       ];
 
       this.editor.dispatch({ effects });
       // No transient message - visual highlighting change is immediate feedback
       // This prevents auto-scroll disruption while maintaining current scroll position
-
     } catch (error) {
       console.warn('Failed to toggle syntax highlighting:', error);
     }
   }
 
-
-
   clearContent() {
     this.setContent(this.getInitialDocument());
   }
-
 
   // Toggle between minimal status and help content
   toggleHelp() {
@@ -556,7 +561,7 @@ Activity log:
       const docLength = this.editor.state.doc.length;
       // Efficient scrolling using built-in CodeMirror method
       this.editor.dispatch({
-        effects: EditorView.scrollIntoView(docLength, { y: 'end' })
+        effects: EditorView.scrollIntoView(docLength, { y: 'end' }),
       });
     } catch (error) {
       console.warn('Failed to scroll:', error);

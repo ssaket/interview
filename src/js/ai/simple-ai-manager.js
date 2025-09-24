@@ -214,7 +214,6 @@ class SimpleAIManager {
     this.sessions.clear();
   }
 
-
   /**
    * Get session information
    * @returns {Object} Session info
@@ -390,43 +389,46 @@ class SimpleAIManager {
         // Start both phases simultaneously (TRUE parallel execution)
         this._processLocalPhase(question, {
           ...options,
-          onChunk: localOnChunk
-        }).then(response => {
-          localResponse = response;
-          localCompleted = true;
-          console.log('[SimpleAIManager] Local phase completed, adding separator...');
+          onChunk: localOnChunk,
+        })
+          .then((response) => {
+            localResponse = response;
+            localCompleted = true;
+            console.log('[SimpleAIManager] Local phase completed, adding separator...');
 
-          // Add separator after local completes
-          if (options.onChunk) {
-            options.onChunk('\n\n---\n\n**🧠 DeepSeek Analysis:**\n\n');
-          }
-          separatorAdded = true;
+            // Add separator after local completes
+            if (options.onChunk) {
+              options.onChunk('\n\n---\n\n**🧠 DeepSeek Analysis:**\n\n');
+            }
+            separatorAdded = true;
 
-          checkCompletion();
-        }).catch(error => {
-          console.error('[SimpleAIManager] Local phase failed:', error);
-          localCompleted = true; // Mark as complete to allow cloud to continue
-          checkCompletion();
-        });
+            checkCompletion();
+          })
+          .catch((error) => {
+            console.error('[SimpleAIManager] Local phase failed:', error);
+            localCompleted = true; // Mark as complete to allow cloud to continue
+            checkCompletion();
+          });
 
         this._processCloudPhase(question, {
           ...options,
-          onChunk: cloudOnChunk
-        }).then(response => {
-          cloudResponse = response;
-          cloudCompleted = true;
-          console.log('[SimpleAIManager] Cloud phase completed');
-          checkCompletion();
-        }).catch(error => {
-          console.error('[SimpleAIManager] Cloud phase failed:', error);
-          cloudResponse = `\n\n**❌ DeepSeek Error:** ${error.message}`;
-          cloudCompleted = true;
-          checkCompletion();
-        });
+          onChunk: cloudOnChunk,
+        })
+          .then((response) => {
+            cloudResponse = response;
+            cloudCompleted = true;
+            console.log('[SimpleAIManager] Cloud phase completed');
+            checkCompletion();
+          })
+          .catch((error) => {
+            console.error('[SimpleAIManager] Cloud phase failed:', error);
+            cloudResponse = `\n\n**❌ DeepSeek Error:** ${error.message}`;
+            cloudCompleted = true;
+            checkCompletion();
+          });
 
         // Don't await here - let them run in parallel!
         // The checkCompletion() function will resolve the promise when both are done
-
       } catch (error) {
         console.error('[SimpleAIManager] Hybrid flow setup failed:', error);
         reject(this._handleHybridError(error, '', options.onChunk));
@@ -473,8 +475,8 @@ class SimpleAIManager {
         onChunk: options.onChunk, // Direct streaming to UI
         parameters: {
           temperature: 0.7, // Slightly higher for creativity
-          max_tokens: 512,  // Limit for quick response
-          ...options.parameters
+          max_tokens: 512, // Limit for quick response
+          ...options.parameters,
         },
       });
 
@@ -524,7 +526,7 @@ Please include:
         parameters: {
           temperature: 0.1, // Lower for precision
           max_tokens: 4096, // Higher for detailed response
-          ...options.parameters
+          ...options.parameters,
         },
       });
 
@@ -656,7 +658,6 @@ Please include:
     return this.systemPromptsEnabled;
   }
 
-
   // Private methods
 
   _getDefaultModelForProvider(providerName) {
@@ -700,7 +701,7 @@ Please include:
     }
 
     // Fallback to default prompt
-    return  prompt || null;
+    return prompt || null;
   }
 
   _getModelType(modelName = '') {

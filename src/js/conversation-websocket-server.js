@@ -47,7 +47,9 @@ class ConversationWebSocketServer {
           } else {
             this.actualPort = this.httpServer.address().port;
             this.isRunning = true;
-            console.log(`[ConversationWebSocketServer] Started on port ${this.actualPort}, accessible on all network interfaces`);
+            console.log(
+              `[ConversationWebSocketServer] Started on port ${this.actualPort}, accessible on all network interfaces`
+            );
             resolve();
           }
         });

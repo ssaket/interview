@@ -14,17 +14,17 @@ const aiConfig = require('./ai-config');
 // Connection pooling agents for better streaming performance
 const httpAgent = new http.Agent({
   keepAlive: true,
-  maxSockets: 5,        // Max concurrent connections per host
-  maxFreeSockets: 2,    // Keep 2 idle connections ready
-  timeout: 60000,       // Socket timeout (60s)
+  maxSockets: 5, // Max concurrent connections per host
+  maxFreeSockets: 2, // Keep 2 idle connections ready
+  timeout: 60000, // Socket timeout (60s)
   freeSocketTimeout: 30000, // How long to keep idle sockets (30s)
 });
 
 const httpsAgent = new https.Agent({
   keepAlive: true,
-  maxSockets: 5,        // Max concurrent connections per host
-  maxFreeSockets: 2,    // Keep 2 idle connections ready
-  timeout: 60000,       // Socket timeout (60s)
+  maxSockets: 5, // Max concurrent connections per host
+  maxFreeSockets: 2, // Keep 2 idle connections ready
+  timeout: 60000, // Socket timeout (60s)
   freeSocketTimeout: 30000, // How long to keep idle sockets (30s)
 });
 
@@ -672,7 +672,7 @@ function getConnectionPoolStats() {
       freeSockets: httpsAgent.freeSockets ? Object.keys(httpsAgent.freeSockets).length : 0,
       timeout: 60000, // Static value since agent.timeout might be undefined
       freeSocketTimeout: 30000, // Static value since agent.freeSocketTimeout might be undefined
-    }
+    },
   };
 }
 

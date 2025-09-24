@@ -516,7 +516,12 @@ class ShortcutManager {
 
       // Get display bounds to ensure window stays on screen
       const display = screen.getDisplayNearestPoint(cursorPoint);
-      const { x: displayX, y: displayY, width: displayWidth, height: displayHeight } = display.bounds;
+      const {
+        x: displayX,
+        y: displayY,
+        width: displayWidth,
+        height: displayHeight,
+      } = display.bounds;
 
       // Clamp position to display bounds
       const clampedX = Math.max(displayX, Math.min(x, displayX + displayWidth - windowWidth));
@@ -530,8 +535,6 @@ class ShortcutManager {
       this.centerWindow();
     }
   }
-
-
 
   /**
    * Cycle through AI flows: LOCAL -> CLOUD -> HYBRID -> LOCAL
@@ -562,7 +565,7 @@ class ShortcutManager {
       if (this.appController.isStreamingActive()) {
         this.windowManager.send('show-notification', {
           type: 'warning',
-          message: 'Cannot toggle code view while AI is streaming'
+          message: 'Cannot toggle code view while AI is streaming',
         });
         return;
       }
@@ -573,14 +576,14 @@ class ShortcutManager {
       // Send toggle result to renderer with extracted content
       this.windowManager.send('syntax-mode-toggled', {
         mode: result.mode,
-        previousMode: result.previousMode
+        previousMode: result.previousMode,
       });
 
       // Show notification about the mode change
       const modeText = result.mode === 'CODE_ONLY' ? 'Code Only' : 'All Content';
       this.windowManager.send('show-notification', {
         type: 'info',
-        message: `Switched to ${modeText} mode`
+        message: `Switched to ${modeText} mode`,
       });
 
       console.log(`[Shortcut] Syntax mode toggled to: ${result.mode}`);
@@ -588,7 +591,7 @@ class ShortcutManager {
       console.error('[Shortcut] Failed to toggle syntax code-only:', error);
       this.windowManager.send('show-notification', {
         type: 'error',
-        message: 'Failed to toggle code view'
+        message: 'Failed to toggle code view',
       });
     }
   }
