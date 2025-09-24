@@ -14,8 +14,22 @@ class ShortcutManager {
     this.moveStep = 20; // Move this to instance variable for external access
   }
 
-  /** Register all global shortcuts using psychology-based design principles. */
+  /** Register all shortcuts - toggle + global shortcuts */
   register() {
+    this.registerToggleShortcut();
+    this.registerGlobalShortcuts();
+  }
+
+  /** Register only the window toggle shortcut (Cmd/Ctrl+B) */
+  registerToggleShortcut() {
+    const primary = process.platform === 'darwin' ? 'Command' : 'Control';
+    globalShortcut.register(`${primary}+B`, () => {
+      this.toggleWindowVisibility();
+    });
+  }
+
+  /** Register all other global shortcuts except toggle */
+  registerGlobalShortcuts() {
     const { mainWindow } = this.windowManager;
     let resizeStep = 50;
     const defaultWidth = 800;
@@ -29,8 +43,6 @@ class ShortcutManager {
     /* ═══ TIER 1: CORE FUNCTIONS (Primary Modifier - Most Used) ═══ */
 
     // Screenshot Functions (A = Area only)
-    // Full screenshot removed - only region capture available
-
     globalShortcut.register(`${primary}+A`, () => {
       this.windowManager.send('trigger-screenshot-region');
     });
@@ -42,11 +54,6 @@ class ShortcutManager {
 
     globalShortcut.register(`${primary}+T`, () => {
       this.windowManager.send('stop-speech-recording');
-    });
-
-    // Window Management (B = show/hide - preserving original)
-    globalShortcut.register(`${primary}+B`, () => {
-      this.toggleWindowVisibility();
     });
 
     // Window Movement (Arrow Keys = natural directional mapping)
@@ -191,7 +198,6 @@ class ShortcutManager {
       mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
     });
 
-
     /* ═══ LEGACY/ADDITIONAL FEATURES ═══ */
 
     // Page Scrolling (Alt/Option + Z/X)
@@ -216,7 +222,66 @@ class ShortcutManager {
     globalShortcut.register(`${secondary}+L`, () => {
       this.windowManager.toggleFormatter();
     });
+  }
 
+  /** Unregister all shortcuts except toggle */
+  unregisterGlobalShortcuts() {
+    const primary = process.platform === 'darwin' ? 'Command' : 'Control';
+    const secondary = process.platform === 'darwin' ? 'Command+Shift' : 'Control+Shift';
+    const altKey = process.platform === 'darwin' ? 'Option' : 'Alt';
+
+    // Unregister all global shortcuts specifically (not cmd+B)
+    globalShortcut.unregister(`${primary}+A`);
+    globalShortcut.unregister(`${primary}+R`);
+    globalShortcut.unregister(`${primary}+T`);
+
+    // Arrow keys
+    ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
+      globalShortcut.unregister(`${primary}+${dir}`);
+    });
+
+    // Number keys
+    globalShortcut.unregister(`${primary}+1`);
+    globalShortcut.unregister(`${primary}+2`);
+    globalShortcut.unregister(`${primary}+3`);
+
+    // Function keys
+    globalShortcut.unregister('F1');
+    globalShortcut.unregister('F11');
+
+    // Secondary modifier shortcuts
+    globalShortcut.unregister(`${secondary}+0`);
+    globalShortcut.unregister(`${secondary}+R`);
+    globalShortcut.unregister(`${secondary}+F`);
+    globalShortcut.unregister(`${secondary}+O`);
+    globalShortcut.unregister(`${secondary}+D`);
+    globalShortcut.unregister(`${secondary}+V`);
+    globalShortcut.unregister(`${secondary}+C`);
+    globalShortcut.unregister(`${secondary}+I`);
+
+    // Window resizing
+    globalShortcut.unregister(`${secondary}+Right`);
+    globalShortcut.unregister(`${secondary}+Left`);
+    globalShortcut.unregister(`${secondary}+Down`);
+    globalShortcut.unregister(`${secondary}+Up`);
+
+    // Movement step adjustment
+    globalShortcut.unregister(`${secondary}+Plus`);
+    globalShortcut.unregister(`${secondary}+-`);
+
+    // Window width controls
+    globalShortcut.unregister(`${secondary}+]`);
+    globalShortcut.unregister(`${secondary}+[`);
+
+    // Page scrolling
+    globalShortcut.unregister(`${altKey}+Z`);
+    globalShortcut.unregister(`${altKey}+X`);
+
+    // Additional features
+    globalShortcut.unregister(`${secondary}+M`);
+    globalShortcut.unregister(`${secondary}+Y`);
+    globalShortcut.unregister(`${secondary}+W`);
+    globalShortcut.unregister(`${secondary}+L`);
   }
 
   unregisterAll() {
@@ -402,27 +467,26 @@ class ShortcutManager {
 
     if (mainWindow.isVisible()) {
       mainWindow.hide();
-      // Deregister all shortcuts when hiding
-      this.unregisterAll();
-      // Re-register only the special Cmd+B shortcut to allow showing window again
-      this.registerSpecialToggleShortcut();
+      // Unregister all shortcuts except cmd/ctrl-b to allow other apps to use them
+      if (process.platform === 'win32') {
+        setTimeout(() => {
+          this.unregisterGlobalShortcuts();
+        }, 500);
+      } else {
+        this.unregisterGlobalShortcuts();
+      }
     } else {
       mainWindow.show();
-      // Deregister all shortcuts and re-register them fresh
-      this.unregisterAll();
-      this.register();
+      if (process.platform === 'win32') {
+        setTimeout(() => {
+          this.registerGlobalShortcuts();
+        }, 500);
+      } else {
+        this.registerGlobalShortcuts();
+      }
     }
   }
 
-  /**
-   * Register only the special Cmd+B shortcut for showing window when hidden
-   */
-  registerSpecialToggleShortcut() {
-    const primary = process.platform === 'darwin' ? 'Command' : 'Control';
-    globalShortcut.register(`${primary}+B`, () => {
-      this.toggleWindowVisibility();
-    });
-  }
 
 
   /**
