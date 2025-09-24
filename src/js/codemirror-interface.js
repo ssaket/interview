@@ -20,6 +20,9 @@ class UltraMinimalCodeMirrorInterface {
     this.isHelpVisible = false; // Track help state
     this.syntaxHighlightingEnabled = true; // Track syntax highlighting state
 
+    // Simple 2-mode syntax: 0=ALL, 1=PYTHON_ONLY
+    this.syntaxMode = 0;
+
     // Create compartments for dynamic reconfiguration
     this.themeCompartment = new Compartment();
     this.syntaxCompartment = new Compartment();
@@ -50,6 +53,10 @@ class UltraMinimalCodeMirrorInterface {
       const savedHighlighting = localStorage.getItem('codemirror-syntax-highlighting');
       this.syntaxHighlightingEnabled = savedHighlighting ? savedHighlighting === 'true' : true;
 
+      // Load syntax mode preference
+      const savedSyntaxMode = localStorage.getItem('codemirror-syntax-mode');
+      this.syntaxMode = savedSyntaxMode ? parseInt(savedSyntaxMode) : 0;
+
       // Create the simplest possible editor
       const initialDoc = this.getInitialDocument();
 
@@ -62,12 +69,11 @@ class UltraMinimalCodeMirrorInterface {
         this.themeCompartment.of(this.getTheme()),
 
         // Dynamic syntax highlighting compartment
-        this.syntaxCompartment.of(this.syntaxHighlightingEnabled ?
-          syntaxHighlighting(defaultHighlightStyle) : []),
+        this.syntaxCompartment.of(syntaxHighlighting(defaultHighlightStyle)),
 
-        // Dynamic language compartments
-        this.languageCompartments.python.of(this.syntaxHighlightingEnabled ? python() : []),
-        this.languageCompartments.markdown.of(this.syntaxHighlightingEnabled ? markdown() : [])
+        // Dynamic language compartments based on mode
+        this.languageCompartments.python.of(python()),
+        this.languageCompartments.markdown.of(this.syntaxMode === 0 ? markdown() : [])
       ];
 
       // Create state with dynamic extensions
@@ -324,6 +330,7 @@ Activity log:
     }
   }
 
+
   setContent(content) {
     if (!this.editor) return;
 
@@ -462,43 +469,39 @@ Activity log:
     });
   }
 
-  // High-performance syntax highlighting toggle using dynamic reconfiguration
+  // Smart syntax highlighting toggle: ALL ↔ PYTHON_ONLY
   toggleSyntaxHighlighting() {
     if (!this.editor) return;
 
-    this.syntaxHighlightingEnabled = !this.syntaxHighlightingEnabled;
+    // Toggle between 2 modes: 0=ALL, 1=PYTHON_ONLY
+    this.syntaxMode = (this.syntaxMode + 1) % 2;
 
-    // Debounce rapid syntax highlighting toggles
-    this.debounce('syntax', () => {
-      try {
-        // Save preference
-        localStorage.setItem('codemirror-syntax-highlighting', this.syntaxHighlightingEnabled.toString());
+    try {
+      // Save preference
+      localStorage.setItem('codemirror-syntax-mode', this.syntaxMode.toString());
 
-        // High-performance: batch all extension reconfigurations in a single dispatch
-        const effects = [
-          this.syntaxCompartment.reconfigure(
-            this.syntaxHighlightingEnabled ? syntaxHighlighting(defaultHighlightStyle) : []
-          ),
-          this.languageCompartments.python.reconfigure(
-            this.syntaxHighlightingEnabled ? python() : []
-          ),
-          this.languageCompartments.markdown.reconfigure(
-            this.syntaxHighlightingEnabled ? markdown() : []
-          )
-        ];
+      // Mode 0: ALL - Both Python and Markdown highlighting
+      // Mode 1: PYTHON_ONLY - Only Python highlighting (no confusing markdown on mixed content)
+      const effects = [
+        this.languageCompartments.markdown.reconfigure(this.syntaxMode === 0 ? markdown() : [])
+        // Python is always enabled (configured in initialization)
+      ];
 
-        this.editor.dispatch({ effects });
+      this.editor.dispatch({ effects });
+      // No transient message - visual highlighting change is immediate feedback
+      // This prevents auto-scroll disruption while maintaining current scroll position
 
-        this.appendTransientContent(`Syntax highlighting ${this.syntaxHighlightingEnabled ? 'enabled' : 'disabled'}`, 1500, false);
-      } catch (error) {
-        console.warn('Failed to toggle syntax highlighting:', error);
-      }
-    });
+    } catch (error) {
+      console.warn('Failed to toggle syntax highlighting:', error);
+    }
   }
+
+
 
   clearContent() {
     this.setContent(this.getInitialDocument());
   }
+
 
   // Toggle between minimal status and help content
   toggleHelp() {
