@@ -62,10 +62,9 @@ class WindowManager {
     }
   }
 
-  /** Quickly flip the code‑formatter overlay on/off and notify the UI. */
+  /** Toggle CodeMirror syntax highlighting and notify the UI. */
   toggleFormatter() {
-    this.formatterEnabled = !this.formatterEnabled;
-    this.send('formatter-toggled', this.formatterEnabled);
+    this.send('toggle-syntax-highlighting');
   }
 
   /** Open developer tools */

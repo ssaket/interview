@@ -3,8 +3,11 @@
  * Removes all complex features to avoid any conflicts
  */
 
-const { EditorState } = require('@codemirror/state');
+const { EditorState, Compartment } = require('@codemirror/state');
 const { EditorView } = require('@codemirror/view');
+const { python } = require('@codemirror/lang-python');
+const { markdown } = require('@codemirror/lang-markdown');
+const { syntaxHighlighting, defaultHighlightStyle } = require('@codemirror/language');
 
 /**
  * Ultra-minimal working CodeMirror interface
@@ -14,6 +17,23 @@ class UltraMinimalCodeMirrorInterface {
     this.container = container;
     this.editor = null;
     this.isDark = false;
+    this.isHelpVisible = false; // Track help state
+    this.syntaxHighlightingEnabled = true; // Track syntax highlighting state
+
+    // Create compartments for dynamic reconfiguration
+    this.themeCompartment = new Compartment();
+    this.syntaxCompartment = new Compartment();
+    this.languageCompartments = {
+      python: new Compartment(),
+      markdown: new Compartment()
+    };
+
+    // Debouncing for rapid operations
+    this.debounceTimers = new Map();
+
+    // Transient message tracking
+    this.transientMessages = new Map(); // messageId -> { startPos, endPos, timer }
+    this.messageIdCounter = 0;
 
     this.initialize();
   }
@@ -26,19 +46,34 @@ class UltraMinimalCodeMirrorInterface {
       const savedTheme = localStorage.getItem('codemirror-theme');
       this.isDark = savedTheme ? savedTheme === 'dark' : false;
 
+      // Load syntax highlighting preference
+      const savedHighlighting = localStorage.getItem('codemirror-syntax-highlighting');
+      this.syntaxHighlightingEnabled = savedHighlighting ? savedHighlighting === 'true' : true;
+
       // Create the simplest possible editor
       const initialDoc = this.getInitialDocument();
 
-      // Create state with theme-aware configuration
+      // Create extensions with compartments for dynamic reconfiguration
+      const extensions = [
+        // Line wrapping (static)
+        EditorView.lineWrapping,
+
+        // Dynamic theme compartment
+        this.themeCompartment.of(this.getTheme()),
+
+        // Dynamic syntax highlighting compartment
+        this.syntaxCompartment.of(this.syntaxHighlightingEnabled ?
+          syntaxHighlighting(defaultHighlightStyle) : []),
+
+        // Dynamic language compartments
+        this.languageCompartments.python.of(this.syntaxHighlightingEnabled ? python() : []),
+        this.languageCompartments.markdown.of(this.syntaxHighlightingEnabled ? markdown() : [])
+      ];
+
+      // Create state with dynamic extensions
       const state = EditorState.create({
         doc: initialDoc,
-        extensions: [
-          // Only line wrapping - nothing else
-          EditorView.lineWrapping,
-
-          // Theme-aware styling
-          this.getTheme(),
-        ],
+        extensions: extensions,
       });
 
       // Create editor view
@@ -122,12 +157,30 @@ class UltraMinimalCodeMirrorInterface {
   }
 
   getInitialDocument() {
+    return `🔍 OCR: Ready | 🎤 Speech: Ready | 🧠 AI: LOCAL | 📊 Session: 0 messages`;
+  }
+
+  getHelpContent() {
     const timestamp = new Date().toLocaleTimeString();
+
+    // Get current status line from document or use default
+    let currentStatusLine = '🔍 OCR: Ready | 🎤 Speech: Ready | 🧠 AI: LOCAL | 📊 Session: 0 messages';
+    if (this.editor) {
+      const currentDoc = this.editor.state.doc.toString();
+      const lines = currentDoc.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('🔍 OCR:')) {
+          currentStatusLine = lines[i];
+          break;
+        }
+      }
+    }
+
     return `# DeepSeek Overlay Helper - Text Interface
 Initialized at ${timestamp}
 
 ## Status
-🔍 OCR: Ready | 🎤 Speech: Ready | 🧠 AI: LOCAL | 📊 Session: 0 messages
+${currentStatusLine}
 
 ## Quick Start Guide
 This text interface provides AI-powered coding interview assistance.
@@ -145,6 +198,7 @@ This text interface provides AI-powered coding interview assistance.
 ### Interface Controls
 ⌘+B - Hide/show application
 ⌘+Shift+D - Toggle dark/light theme
+F1 - Toggle this help guide
 
 ### Text Features
 - Standard text editing shortcuts work
@@ -165,26 +219,108 @@ Activity log:
 `;
   }
 
-  // Content management - simplified
+  // High-performance content management - batch operations and reduce DOM manipulation
   appendContent(content, addSeparator = true) {
-    if (!this.editor) return;
+    if (!this.editor || !content) return;
+
+    // Batch content updates to avoid multiple renders
+    this.debounce('content', () => {
+      try {
+        const separator = addSeparator ? '\n\n' : '\n';
+        const insertText = separator + content;
+        const docLength = this.editor.state.doc.length;
+
+        // Single transaction for better performance
+        this.editor.dispatch({
+          changes: { from: docLength, to: docLength, insert: insertText },
+          // Batch scroll into view with content change
+          effects: EditorView.scrollIntoView(docLength + insertText.length, { y: 'end' })
+        });
+      } catch (error) {
+        console.warn('Failed to append content:', error);
+      }
+    }, 16); // 60fps debouncing for smooth updates
+  }
+
+  // Transient message system - messages that auto-remove after a timeout
+  appendTransientContent(content, timeout = 1000, addSeparator = true) {
+    if (!this.editor || !content) return;
 
     try {
       const separator = addSeparator ? '\n\n' : '\n';
       const insertText = separator + content;
+      const docLength = this.editor.state.doc.length;
+      const startPos = docLength;
+      const endPos = docLength + insertText.length;
 
-      const transaction = this.editor.state.update({
-        changes: {
-          from: this.editor.state.doc.length,
-          to: this.editor.state.doc.length,
-          insert: insertText,
-        },
+      // Generate unique message ID
+      const messageId = ++this.messageIdCounter;
+
+      // Insert the message
+      this.editor.dispatch({
+        changes: { from: docLength, to: docLength, insert: insertText },
+        effects: EditorView.scrollIntoView(endPos, { y: 'end' })
       });
 
-      this.editor.dispatch(transaction);
-      this.scrollToBottom();
+      // Set timer for removal
+      const timer = setTimeout(() => {
+        this.removeTransientMessage(messageId);
+      }, timeout);
+
+      // Track this transient message
+      this.transientMessages.set(messageId, {
+        startPos,
+        endPos,
+        timer,
+        content: insertText
+      });
+
+      return messageId;
     } catch (error) {
-      console.warn('Failed to append content:', error);
+      console.warn('Failed to append transient content:', error);
+      return null;
+    }
+  }
+
+  // Remove a specific transient message
+  removeTransientMessage(messageId) {
+    if (!this.editor || !this.transientMessages.has(messageId)) return;
+
+    try {
+      const messageInfo = this.transientMessages.get(messageId);
+
+      // Clear the timer
+      clearTimeout(messageInfo.timer);
+
+      // Find current position of the message by searching for its content
+      const currentDoc = this.editor.state.doc.toString();
+      const messageContent = messageInfo.content;
+      const messageIndex = currentDoc.indexOf(messageContent);
+
+      if (messageIndex !== -1) {
+        // Remove the message
+        this.editor.dispatch({
+          changes: {
+            from: messageIndex,
+            to: messageIndex + messageContent.length,
+            insert: ''
+          }
+        });
+      }
+
+      // Remove from tracking
+      this.transientMessages.delete(messageId);
+    } catch (error) {
+      console.warn('Failed to remove transient message:', error);
+      // Still remove from tracking to prevent memory leaks
+      this.transientMessages.delete(messageId);
+    }
+  }
+
+  // Clear all transient messages immediately
+  clearAllTransientMessages() {
+    for (const messageId of this.transientMessages.keys()) {
+      this.removeTransientMessage(messageId);
     }
   }
 
@@ -192,15 +328,15 @@ Activity log:
     if (!this.editor) return;
 
     try {
-      const transaction = this.editor.state.update({
-        changes: {
-          from: 0,
-          to: this.editor.state.doc.length,
-          insert: content,
-        },
-      });
+      const docLength = this.editor.state.doc.length;
 
-      this.editor.dispatch(transaction);
+      // Skip if content hasn't changed to avoid unnecessary work
+      if (this.editor.state.doc.toString() === content) return;
+
+      // Single efficient transaction
+      this.editor.dispatch({
+        changes: { from: 0, to: docLength, insert: content }
+      });
     } catch (error) {
       console.warn('Failed to set content:', error);
     }
@@ -227,21 +363,20 @@ Activity log:
     }
   }
 
-  // AI response handling
+  // AI response handling - always clear completely for fresh responses
   startAIResponse(message = 'AI is processing your request...') {
-    // Clear content but preserve status line
-    this.clearToStatusOnly();
-    this.appendContent(`## AI Response\n${message}`);
+    // Always clear completely - conversation history is on WebSocket page
+    this.clearToJustStatus();
   }
 
-  // Clear document content but keep only the status line
-  clearToStatusOnly() {
+  // Clear everything except the current status line with AI response structure ready
+  clearToJustStatus() {
     try {
       const currentDoc = this.editor.state.doc.toString();
       const lines = currentDoc.split('\n');
 
-      // Find the status line
-      let statusLine = '';
+      // Find the current status line
+      let statusLine = '🔍 OCR: Ready | 🎤 Speech: Ready | 🧠 AI: LOCAL | 📊 Session: 0 messages';
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].startsWith('🔍 OCR:')) {
           statusLine = lines[i];
@@ -249,38 +384,32 @@ Activity log:
         }
       }
 
-      // Set content to just the header and status
-      const timestamp = new Date().toLocaleTimeString();
-      const minimalContent = `# DeepSeek Overlay Helper - Text Interface
-Initialized at ${timestamp}
+      // Set up document with status line and proper AI response structure for streaming
+      const contentWithResponseStructure = `${statusLine}
 
-## Status
-${statusLine}
+## AI Response
+`;
 
----
-
-Activity log:`;
-
-      this.setContent(minimalContent);
+      this.setContent(contentWithResponseStructure);
     } catch (error) {
-      console.warn('Failed to clear to status only:', error);
+      console.warn('Failed to clear to just status:', error);
     }
   }
 
+
+
   streamAIChunk(chunk) {
-    if (!this.editor) return;
+    if (!this.editor || !chunk) return;
 
     try {
-      const transaction = this.editor.state.update({
-        changes: {
-          from: this.editor.state.doc.length,
-          to: this.editor.state.doc.length,
-          insert: chunk,
-        },
-      });
+      const docLength = this.editor.state.doc.length;
 
-      this.editor.dispatch(transaction);
-      this.scrollToBottom();
+      // High-performance streaming: minimal transaction with batched scrolling
+      this.editor.dispatch({
+        changes: { from: docLength, to: docLength, insert: chunk },
+        // Only scroll every few chunks to reduce DOM manipulation
+        effects: docLength % 100 === 0 ? EditorView.scrollIntoView(docLength + chunk.length, { y: 'end' }) : []
+      });
     } catch (error) {
       console.warn('Failed to stream chunk:', error);
     }
@@ -290,31 +419,96 @@ Activity log:`;
     this.appendContent('', false);
   }
 
-  // Theme management - simple recreation
+  // Debounced operation helper for rapid toggles
+  debounce(key, operation, delay = 100) {
+    // Clear existing timer
+    if (this.debounceTimers.has(key)) {
+      clearTimeout(this.debounceTimers.get(key));
+    }
+
+    // Set new timer
+    const timer = setTimeout(() => {
+      operation();
+      this.debounceTimers.delete(key);
+    }, delay);
+
+    this.debounceTimers.set(key, timer);
+  }
+
+  // High-performance theme toggle using dynamic reconfiguration
   toggleTheme() {
+    if (!this.editor) return;
+
     this.isDark = !this.isDark;
 
-    try {
-      // Save preference
-      localStorage.setItem('codemirror-theme', this.isDark ? 'dark' : 'light');
+    // Debounce rapid theme toggles
+    this.debounce('theme', () => {
+      try {
+        // Save preference
+        localStorage.setItem('codemirror-theme', this.isDark ? 'dark' : 'light');
 
-      // Update document theme
-      document.documentElement.setAttribute('data-theme', this.isDark ? 'dark' : 'light');
+        // Update document theme
+        document.documentElement.setAttribute('data-theme', this.isDark ? 'dark' : 'light');
 
-      // Simple approach: recreate editor with new theme
-      const currentContent = this.editor.state.doc.toString();
-      this.destroy();
-      this.initialize();
-      this.setContent(currentContent);
+        // High-performance: reconfigure theme compartment without recreation
+        this.editor.dispatch({
+          effects: this.themeCompartment.reconfigure(this.getTheme())
+        });
 
-      this.appendContent(`Theme changed to ${this.isDark ? 'dark' : 'light'} mode`, false);
-    } catch (error) {
-      console.warn('Failed to toggle theme:', error);
-    }
+        this.appendTransientContent(`Theme changed to ${this.isDark ? 'dark' : 'light'} mode`, 1500, false);
+      } catch (error) {
+        console.warn('Failed to toggle theme:', error);
+      }
+    });
+  }
+
+  // High-performance syntax highlighting toggle using dynamic reconfiguration
+  toggleSyntaxHighlighting() {
+    if (!this.editor) return;
+
+    this.syntaxHighlightingEnabled = !this.syntaxHighlightingEnabled;
+
+    // Debounce rapid syntax highlighting toggles
+    this.debounce('syntax', () => {
+      try {
+        // Save preference
+        localStorage.setItem('codemirror-syntax-highlighting', this.syntaxHighlightingEnabled.toString());
+
+        // High-performance: batch all extension reconfigurations in a single dispatch
+        const effects = [
+          this.syntaxCompartment.reconfigure(
+            this.syntaxHighlightingEnabled ? syntaxHighlighting(defaultHighlightStyle) : []
+          ),
+          this.languageCompartments.python.reconfigure(
+            this.syntaxHighlightingEnabled ? python() : []
+          ),
+          this.languageCompartments.markdown.reconfigure(
+            this.syntaxHighlightingEnabled ? markdown() : []
+          )
+        ];
+
+        this.editor.dispatch({ effects });
+
+        this.appendTransientContent(`Syntax highlighting ${this.syntaxHighlightingEnabled ? 'enabled' : 'disabled'}`, 1500, false);
+      } catch (error) {
+        console.warn('Failed to toggle syntax highlighting:', error);
+      }
+    });
   }
 
   clearContent() {
     this.setContent(this.getInitialDocument());
+  }
+
+  // Toggle between minimal status and help content
+  toggleHelp() {
+    this.isHelpVisible = !this.isHelpVisible;
+
+    if (this.isHelpVisible) {
+      this.setContent(this.getHelpContent());
+    } else {
+      this.setContent(this.getInitialDocument());
+    }
   }
 
   // Page scrolling
@@ -340,27 +534,15 @@ Activity log:`;
     }
   }
 
-  // Utilities
+  // High-performance scrolling utility
   scrollToBottom() {
     if (!this.editor) return;
 
     try {
-      // More reliable scrolling approach
-      const doc = this.editor.state.doc;
-      const lastPos = doc.length;
-
-      // Use requestAnimationFrame to ensure DOM is updated
-      requestAnimationFrame(() => {
-        this.editor.dispatch({
-          selection: { anchor: lastPos, head: lastPos },
-          scrollIntoView: true,
-        });
-
-        // Also try direct scrolling as fallback
-        const scroller = this.editor.scrollDOM;
-        if (scroller) {
-          scroller.scrollTop = scroller.scrollHeight;
-        }
+      const docLength = this.editor.state.doc.length;
+      // Efficient scrolling using built-in CodeMirror method
+      this.editor.dispatch({
+        effects: EditorView.scrollIntoView(docLength, { y: 'end' })
       });
     } catch (error) {
       console.warn('Failed to scroll:', error);
@@ -394,6 +576,19 @@ Activity log:`;
   }
 
   destroy() {
+    // Clean up debounce timers
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
+
+    // Clean up transient message timers
+    for (const messageInfo of this.transientMessages.values()) {
+      clearTimeout(messageInfo.timer);
+    }
+    this.transientMessages.clear();
+
+    // Destroy editor
     if (this.editor) {
       try {
         this.editor.destroy();

@@ -72,20 +72,21 @@ class CodeMirrorRenderer {
     ipcRenderer.on('cycle-ai-flow', () => this.cycleAIFlow());
     ipcRenderer.on('session-reset', () => this.resetSession());
     ipcRenderer.on('toggle-theme', () => this.toggleTheme());
+    ipcRenderer.on('toggle-syntax-highlighting', () => this.toggleSyntaxHighlighting());
 
     // Provider events
     ipcRenderer.on('provider-switched', (event, data) => {
-      this.showMessage(`✅ Switched to ${data.to}`);
+      this.showTransientMessage(`✅ Switched to ${data.to}`, 2000);
     });
 
     ipcRenderer.on('model-switched', (event, data) => {
-      this.showMessage(`🔄 Model: ${data.model}`);
+      this.showTransientMessage(`🔄 Model: ${data.model}`, 2000);
     });
 
     // Error events
     ipcRenderer.on('speech-error', (event, error) => {
       this.updateSpeechStatus('error');
-      this.showMessage(`❌ Speech error: ${error}`);
+      this.showPersistentMessage(`❌ Speech error: ${error}`);
     });
 
     // Window control
@@ -115,39 +116,47 @@ class CodeMirrorRenderer {
       this.handleScrollPage(direction);
     });
 
+    // Help toggle event
+    ipcRenderer.on('toggle-help', () => {
+      this.toggleHelp();
+    });
+
     console.log('✅ IPC event listeners setup complete');
   }
 
   // Screenshot handling (region only)
   async handleScreenshot() {
     this.updateOCRStatus('capturing');
-    this.showMessage('📸 Capturing region...');
+    this.showTransientMessage('📸 Capturing region...', 2000);
 
     try {
       const image = await ipcRenderer.invoke('capture-screen-region');
 
       this.updateOCRStatus('processing');
-      this.showMessage('🔍 Running OCR...');
+      this.showTransientMessage('🔍 Running OCR...', 3000);
 
       const ocrText = await ipcRenderer.invoke('perform-ocr', image);
 
       if (!ocrText || !ocrText.trim()) {
         this.updateOCRStatus('error');
-        this.showMessage('❌ No text found in screenshot');
+        this.showPersistentMessage('❌ No text found in screenshot');
         setTimeout(() => this.updateOCRStatus('idle'), 3000);
         return;
       }
 
       this.updateOCRStatus('completed');
 
-      // Start AI processing (this clears content but preserves status)
+      // Update status and start AI processing with complete clearing
+      this.status.ai = `${this.aiFlow} Processing`;
+      this.updateStatusDisplay();
       this.interface.startAIResponse();
+
       await this.queryAI(ocrText);
 
       setTimeout(() => this.updateOCRStatus('idle'), 2000);
     } catch (error) {
       this.updateOCRStatus('error');
-      this.showMessage(`❌ Screenshot error: ${error.message}`);
+      this.showPersistentMessage(`❌ Screenshot error: ${error.message}`);
       setTimeout(() => this.updateOCRStatus('idle'), 3000);
     }
   }
@@ -155,12 +164,12 @@ class CodeMirrorRenderer {
   // Speech handling
   handleSpeechStart() {
     this.updateSpeechStatus('recording');
-    this.showMessage('🎤 Recording started...');
+    this.showTransientMessage('🎤 Recording started...', 1500);
   }
 
   handleSpeechStop() {
     this.updateSpeechStatus('processing');
-    this.showMessage('📝 Processing audio...');
+    this.showTransientMessage('📝 Processing audio...', 2000);
   }
 
   updateSpeechStatus(status) {
@@ -180,7 +189,7 @@ class CodeMirrorRenderer {
 
   handleTranscription(text, metadata) {
     this.updateSpeechStatus('completed');
-    this.showMessage(`📝 Transcribed: "${text}"`);
+    this.showTransientMessage(`📝 Transcribed: "${text}"`, 3000);
 
     setTimeout(() => {
       this.updateSpeechStatus('idle');
@@ -190,8 +199,11 @@ class CodeMirrorRenderer {
   // Integrated speech-to-AI workflow
   handleSpeechToAIStarted(data) {
     this.updateSpeechStatus('ai-processing');
-    // Start AI processing (this clears content but preserves status)
-    this.interface.startAIResponse('Processing your voice input...');
+
+    // Update status and start AI processing with complete clearing
+    this.status.ai = `${this.aiFlow} Processing`;
+    this.updateStatusDisplay();
+    this.interface.startAIResponse();
   }
 
   handleSpeechToAICompleted(data) {
@@ -200,14 +212,14 @@ class CodeMirrorRenderer {
     const confidenceText = data.confidence
       ? ` (${(data.confidence * 100).toFixed(1)}% confidence)`
       : '';
-    this.showMessage(`✅ Speech processed${confidenceText}`);
+    this.showTransientMessage(`✅ Speech processed${confidenceText}`, 2000);
 
     setTimeout(() => this.updateSpeechStatus('idle'), 3000);
   }
 
   handleSpeechToAIError(data) {
     this.updateSpeechStatus('error');
-    this.showMessage(`❌ Speech processing failed: ${data.error}`);
+    this.showPersistentMessage(`❌ Speech processing failed: ${data.error}`);
 
     setTimeout(() => this.updateSpeechStatus('idle'), 5000);
   }
@@ -263,41 +275,45 @@ class CodeMirrorRenderer {
 
     this.status.ai = this.aiFlow;
     this.updateStatusDisplay();
-    this.showMessage(`🔄 AI Flow: ${this.aiFlow}`);
+    this.showTransientMessage(`🔄 AI Flow: ${this.aiFlow}`, 2000);
   }
 
   // Screenshot stack operations
   async addScreenshotToStack(type) {
-    this.showMessage(`📸 Adding ${type} screenshot to stack...`);
+    this.showTransientMessage(`📸 Adding ${type} screenshot to stack...`, 1500);
 
     try {
       const result = await ipcRenderer.invoke('add-screenshot-to-stack', type);
       if (result.success) {
-        this.showMessage(`✅ Added to stack (${result.count} total)`);
+        this.showTransientMessage(`✅ Added to stack (${result.count} total)`, 2000);
       } else {
-        this.showMessage(`❌ Failed: ${result.error}`);
+        this.showPersistentMessage(`❌ Failed: ${result.error}`);
       }
     } catch (error) {
-      this.showMessage(`❌ Stack error: ${error.message}`);
+      this.showPersistentMessage(`❌ Stack error: ${error.message}`);
     }
   }
 
   async processScreenshotStack() {
-    this.showMessage('📸 Processing screenshot stack...');
+    this.showTransientMessage('📸 Processing screenshot stack...', 2000);
 
     try {
       const result = await ipcRenderer.invoke('process-screenshot-stack');
       if (result.success) {
         const count = result.text.split('---').length;
 
-        // Start AI processing (this clears content but preserves status)
-        this.interface.startAIResponse('Processing multiple screenshots...');
+        // Update status and start AI processing with complete clearing
+        this.status.ocr = 'Processing Stack';
+        this.status.ai = `${this.aiFlow} Processing`;
+        this.updateStatusDisplay();
+        this.interface.startAIResponse();
+
         await this.queryAI(result.text);
       } else {
-        this.showMessage(`❌ Processing failed: ${result.error}`);
+        this.showPersistentMessage(`❌ Processing failed: ${result.error}`);
       }
     } catch (error) {
-      this.showMessage(`❌ Stack error: ${error.message}`);
+      this.showPersistentMessage(`❌ Stack error: ${error.message}`);
     }
   }
 
@@ -305,10 +321,10 @@ class CodeMirrorRenderer {
     try {
       const result = await ipcRenderer.invoke('clear-screenshot-stack');
       if (result.success) {
-        this.showMessage('📸 Screenshot stack cleared');
+        this.showTransientMessage('📸 Screenshot stack cleared', 1500);
       }
     } catch (error) {
-      this.showMessage(`❌ Clear error: ${error.message}`);
+      this.showPersistentMessage(`❌ Clear error: ${error.message}`);
     }
   }
 
@@ -330,15 +346,23 @@ class CodeMirrorRenderer {
     this.updateStatusDisplay();
 
     if (this.interface) {
+      // Clear all transient messages before clearing content
+      this.interface.clearAllTransientMessages();
       this.interface.clearContent();
     }
 
-    this.showMessage('🔄 Session reset - ready for new conversation');
+    this.showTransientMessage('🔄 Session reset - ready for new conversation', 3000);
   }
 
   toggleTheme() {
     if (this.interface) {
       this.interface.toggleTheme();
+    }
+  }
+
+  toggleSyntaxHighlighting() {
+    if (this.interface) {
+      this.interface.toggleSyntaxHighlighting();
     }
   }
 
@@ -348,6 +372,14 @@ class CodeMirrorRenderer {
       this.interface.scrollPage(direction);
     }
   }
+
+  // Help toggle handling
+  toggleHelp() {
+    if (this.interface) {
+      this.interface.toggleHelp();
+    }
+  }
+
 
   // Utility methods
   updateStatusDisplay() {
@@ -362,6 +394,23 @@ class CodeMirrorRenderer {
   }
 
   showMessage(message) {
+    if (this.interface) {
+      const timestamp = new Date().toLocaleTimeString();
+      this.interface.appendContent(`[${timestamp}] ${message}`, false);
+    }
+  }
+
+  // Show transient message that auto-removes after timeout
+  showTransientMessage(message, timeout = 1000) {
+    if (this.interface) {
+      const timestamp = new Date().toLocaleTimeString();
+      return this.interface.appendTransientContent(`[${timestamp}] ${message}`, timeout, false);
+    }
+    return null;
+  }
+
+  // Show persistent message that stays visible
+  showPersistentMessage(message) {
     if (this.interface) {
       const timestamp = new Date().toLocaleTimeString();
       this.interface.appendContent(`[${timestamp}] ${message}`, false);

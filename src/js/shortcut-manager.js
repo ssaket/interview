@@ -83,8 +83,8 @@ class ShortcutManager {
 
     /* ═══ TIER 3: UTILITIES (Function Keys - Universal Standards) ═══ */
 
-    // Help (F1 = universal help key)
-    globalShortcut.register('F1', () => this.showHelp());
+    // Help toggle (F1 = universal help key)
+    globalShortcut.register('F1', () => this.toggleHelp());
 
     // Toggle Window Size (preserving original Cmd+Shift+0)
     globalShortcut.register(`${secondary}+0`, () => {
@@ -218,7 +218,7 @@ class ShortcutManager {
       }
     });
 
-    // Formatter Toggle
+    // Syntax Highlighting Toggle
     globalShortcut.register(`${secondary}+L`, () => {
       this.windowManager.toggleFormatter();
     });
@@ -289,6 +289,10 @@ class ShortcutManager {
   }
 
   /* ---------- Helpers ---------- */
+  toggleHelp() {
+    this.windowManager.send('toggle-help');
+  }
+
   showHelp() {
     const mod = process.platform === 'darwin' ? 'Cmd' : 'Ctrl';
     console.log('\n=== PSYCHOLOGY-OPTIMIZED SHORTCUTS ===');
@@ -303,7 +307,7 @@ class ShortcutManager {
     console.log(`  ${mod}+2                 - Process screenshot stack`);
     console.log(`  ${mod}+3                 - Clear screenshot stack`);
     console.log('\nTIER 3 - UTILITIES (Function Keys):');
-    console.log('  F1                     - Show this help');
+    console.log('  F1                     - Toggle help guide in interface');
     console.log('  F11                    - Toggle window size (alternative)');
     console.log(`\nTIER 4 - ADVANCED (${mod}+Shift + Key):`);
     console.log(`  ${mod}+Shift+0           - Toggle window size`);
@@ -319,7 +323,7 @@ class ShortcutManager {
     console.log(`  ${mod}+Shift+Plus/-      - Adjust movement step`);
     console.log('\nOTHER:');
     console.log('  Alt/Opt+Z/X            - Scroll page up/down');
-    console.log(`  ${mod}+Shift+M/Y/W/L/I   - Model/System/Warmup/Format/DevTools`);
+    console.log(`  ${mod}+Shift+M/Y/W/L/I   - Model/System/Warmup/Syntax/DevTools`);
     console.log('=====================================\n');
   }
 
