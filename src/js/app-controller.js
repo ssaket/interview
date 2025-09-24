@@ -4,6 +4,7 @@ const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
 const SpeechToTextService = require('./speech-to-text-service');
 const ConversationWebSocketServer = require('./conversation-websocket-server');
+const CodeDetector = require('./codedetector');
 
 class AppController {
   constructor() {
@@ -21,11 +22,63 @@ class AppController {
     // Screenshot stack for batch processing
     this.screenshotStack = [];
 
+    // Track active streaming requests for cancellation
+    this.activeStreamingRequests = new Set();
+
+    // Content preservation for syntax toggle
+    this.originalResponses = new Map();
+    this.currentSyntaxMode = 'ALL'; // 'ALL' or 'CODE_ONLY'
+
     // Set up speech service callbacks
     this.setupSpeechCallbacks();
 
     // Start WebSocket server
     this.startWebSocketServer();
+  }
+
+  /* ---------- Streaming Management ---------- */
+
+  /**
+   * Cancel all active streaming AI requests
+   */
+  cancelAllStreamingRequests() {
+    console.log(`[AppController] Cancelling ${this.activeStreamingRequests.size} active streaming requests`);
+    this.activeStreamingRequests.clear();
+  }
+
+  /**
+   * Check if any streaming requests are currently active
+   * @returns {boolean} True if streaming is active
+   */
+  isStreamingActive() {
+    return this.activeStreamingRequests.size > 0;
+  }
+
+  /* ---------- Syntax Toggle Management ---------- */
+
+  /**
+   * Toggle between ALL content and CODE_ONLY modes
+   * @returns {Object} Result with mode and content info
+   */
+  toggleSyntaxMode() {
+    const newMode = this.currentSyntaxMode === 'ALL' ? 'CODE_ONLY' : 'ALL';
+    this.currentSyntaxMode = newMode;
+
+    console.log(`[AppController] Syntax mode toggled to: ${newMode}`);
+
+    return {
+      mode: newMode,
+      previousMode: newMode === 'ALL' ? 'CODE_ONLY' : 'ALL'
+    };
+  }
+
+  /**
+   * Extract code content from text using CodeDetector
+   * @param {string} content - The content to extract code from
+   * @returns {string} Extracted code content
+   */
+  extractCodeFromContent(content) {
+    return CodeDetector.extractCodeFromContent(content);
   }
 
   /* ---------- IPC handlers ---------- */
@@ -135,26 +188,51 @@ class AppController {
 
     /* ------------ Ask ChatGPT / AI ------------ */
     ipcMain.handle('ask-chatgpt', async (event, question, options = {}) => {
+      const requestId = Math.random().toString(36).substring(2, 15);
+
       try {
+        // Track this request for potential cancellation
+        this.activeStreamingRequests.add(requestId);
+
         // Set up streaming callback if requested
         if (options.onChunk) {
           options.onChunk = (chunk) => {
-            // Send chunk to renderer process
-            event.sender.send('ai-chunk', chunk);
+            // Check if request was cancelled before sending chunk
+            if (this.activeStreamingRequests.has(requestId)) {
+              // Send chunk to renderer process
+              event.sender.send('ai-chunk', chunk);
+            }
           };
         }
 
         // Check if this is the initial OCR query (question matches OCR text)
         const isInitialOcrQuery = this.isOcrContext && question === this.lastOcrText;
 
+        let response;
         if (isInitialOcrQuery) {
           // Initial OCR query - clear OCR flag since we're now in session history
           this.clearOcrContext();
-          return await this.handleOcrQuery(question, options);
+          response = await this.handleOcrQuery(question, options);
+        } else {
+          // Regular query - AI session handles all conversation context automatically
+          response = await this.aiManager.ask(question, options);
         }
 
-        // Regular query - AI session handles all conversation context automatically
-        const response = await this.aiManager.ask(question, options);
+        // Clean up tracking
+        this.activeStreamingRequests.delete(requestId);
+
+        // Store original response for syntax toggle
+        if (response && typeof response === 'string') {
+          const responseId = `response_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+          this.originalResponses.set(responseId, response);
+
+          // Clean up old responses (keep last 10)
+          if (this.originalResponses.size > 10) {
+            const entries = Array.from(this.originalResponses.entries());
+            const toDelete = entries.slice(0, entries.length - 10);
+            toDelete.forEach(([key]) => this.originalResponses.delete(key));
+          }
+        }
 
         // Broadcast history update via WebSocket
         if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
@@ -163,6 +241,9 @@ class AppController {
 
         return response;
       } catch (err) {
+        // Clean up tracking on error
+        this.activeStreamingRequests.delete(requestId);
+
         const info = this.aiManager.getProviderInfo();
 
         // Format a user‑friendly error string
@@ -257,6 +338,23 @@ class AppController {
       const currentStep = this.shortcutManager.adjustMovementStep(direction);
       this.windowManager.send('movement-step-changed', currentStep);
       return currentStep;
+    });
+
+    /* ------------ Syntax Toggle (Code-Only Mode) ------------ */
+    ipcMain.handle('toggle-syntax-code-only', async () => {
+      if (this.isStreamingActive()) {
+        return {
+          success: false,
+          error: 'Cannot toggle syntax while streaming is active'
+        };
+      }
+
+      try {
+        const result = this.toggleSyntaxMode();
+        return { success: true, ...result };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
     });
 
     /* ------------ Screenshot Stack Management ------------ */

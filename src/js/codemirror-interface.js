@@ -349,6 +349,17 @@ Activity log:
     }
   }
 
+  getContent() {
+    if (!this.editor) return '';
+
+    try {
+      return this.editor.state.doc.toString();
+    } catch (error) {
+      console.warn('Failed to get content:', error);
+      return '';
+    }
+  }
+
   // Status management - find and replace in document
   updateStatus(ocrStatus = 'Ready', speechStatus = 'Ready', aiStatus = 'LOCAL', sessionCount = 0) {
     const statusLine = `🔍 OCR: ${ocrStatus} | 🎤 Speech: ${speechStatus} | 🧠 AI: ${aiStatus} | 📊 Session: ${sessionCount} messages`;

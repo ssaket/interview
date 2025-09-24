@@ -161,7 +161,7 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - `Shift+X/Z` - Scroll page up/down
 - `Cmd/Ctrl+Shift+M` - Switch Ollama **M**odel
 - `Cmd/Ctrl+Shift+W` - Model **W**armup (Ollama)
-- `Cmd/Ctrl+Shift+L` - Toggle syntax highlighting (**L**anguage)
+- `Cmd/Ctrl+Shift+L` - Toggle syntax: ALL ↔ PYTHON_ONLY (**L**anguage)
 - `Cmd/Ctrl+Shift+I` - Developer tools (**I**nspect)
 
 ### **Psychology Benefits**

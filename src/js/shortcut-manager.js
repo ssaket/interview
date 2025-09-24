@@ -114,7 +114,13 @@ class ShortcutManager {
 
     // Session & AI Management
     globalShortcut.register(`${secondary}+R`, () => {
+      // Cancel any active streaming requests first
+      this.appController.cancelAllStreamingRequests();
+
+      // Clear sessions
       this.aiManager.clearAllSessions();
+
+      // Send reset signals to UI
       this.windowManager.send('session-reset');
       this.windowManager.send('session-length', 0);
     });
@@ -218,9 +224,9 @@ class ShortcutManager {
       }
     });
 
-    // Syntax Highlighting Toggle
+    // Syntax Highlighting Toggle (Code-Only Mode)
     globalShortcut.register(`${secondary}+L`, () => {
-      this.windowManager.toggleFormatter();
+      this.toggleSyntaxCodeOnly();
     });
   }
 
@@ -511,6 +517,46 @@ class ShortcutManager {
       message: `System prompts ${enabled ? 'enabled' : 'disabled'}`,
     });
     console.log(`[Shortcut] System prompts ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Toggle syntax code-only mode (only when streaming is complete)
+   */
+  async toggleSyntaxCodeOnly() {
+    try {
+      // Check with AppController if streaming is active
+      if (this.appController.isStreamingActive()) {
+        this.windowManager.send('show-notification', {
+          type: 'warning',
+          message: 'Cannot toggle code view while AI is streaming'
+        });
+        return;
+      }
+
+      // Toggle syntax mode through AppController
+      const result = this.appController.toggleSyntaxMode();
+
+      // Send toggle result to renderer with extracted content
+      this.windowManager.send('syntax-mode-toggled', {
+        mode: result.mode,
+        previousMode: result.previousMode
+      });
+
+      // Show notification about the mode change
+      const modeText = result.mode === 'CODE_ONLY' ? 'Code Only' : 'All Content';
+      this.windowManager.send('show-notification', {
+        type: 'info',
+        message: `Switched to ${modeText} mode`
+      });
+
+      console.log(`[Shortcut] Syntax mode toggled to: ${result.mode}`);
+    } catch (error) {
+      console.error('[Shortcut] Failed to toggle syntax code-only:', error);
+      this.windowManager.send('show-notification', {
+        type: 'error',
+        message: 'Failed to toggle code view'
+      });
+    }
   }
 }
 

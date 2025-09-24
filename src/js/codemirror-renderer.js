@@ -13,12 +13,23 @@ class CodeMirrorRenderer {
     this.sessionCount = 0;
     this.aiFlow = 'LOCAL';
 
+    // Content storage for code-only toggle
+    this.originalContent = null;
+    this.isCodeOnlyMode = false;
+
     // Status tracking
     this.status = {
       ocr: 'Ready',
       speech: 'Ready',
       ai: 'LOCAL',
     };
+
+    // Event listener tracking for cleanup
+    this.eventListeners = [];
+
+    // Performance optimizations
+    this.statusUpdateDebounced = this.debounce(this.updateStatusDisplay.bind(this), 100);
+    this.contentProcessingCache = new Map();
   }
 
   async initialize() {
@@ -46,78 +57,90 @@ class CodeMirrorRenderer {
   setupEventListeners() {
     console.log('🔧 Setting up IPC event listeners...');
 
+    // Helper to track event listeners for cleanup
+    const addListener = (channel, handler) => {
+      ipcRenderer.on(channel, handler);
+      this.eventListeners.push({ channel, handler });
+    };
+
     // Screenshot events (region only)
-    ipcRenderer.on('trigger-overlay-region-screenshot', () => this.handleScreenshot());
-    ipcRenderer.on('trigger-screenshot-region', () => this.handleScreenshot());
+    addListener('trigger-overlay-region-screenshot', () => this.handleScreenshot());
+    addListener('trigger-screenshot-region', () => this.handleScreenshot());
 
     // Speech events
-    ipcRenderer.on('start-speech-recording', () => this.handleSpeechStart());
-    ipcRenderer.on('stop-speech-recording', () => this.handleSpeechStop());
-    ipcRenderer.on('speech-status-update', (event, status) => this.updateSpeechStatus(status));
-    ipcRenderer.on('transcription-received', (event, text, metadata) => {
+    addListener('start-speech-recording', () => this.handleSpeechStart());
+    addListener('stop-speech-recording', () => this.handleSpeechStop());
+    addListener('speech-status-update', (event, status) => this.updateSpeechStatus(status));
+    addListener('transcription-received', (event, text, metadata) => {
       this.handleTranscription(text, metadata);
     });
 
     // AI events
-    ipcRenderer.on('ai-chunk', (event, chunk) => this.streamAIResponse(chunk));
-    ipcRenderer.on('ai-processing-started', () => this.startAIProcessing());
-    ipcRenderer.on('ai-processing-complete', () => this.completeAIProcessing());
+    addListener('ai-chunk', (event, chunk) => this.streamAIResponse(chunk));
+    addListener('ai-processing-started', () => this.startAIProcessing());
+    addListener('ai-processing-complete', () => this.completeAIProcessing());
 
     // Session and flow events
-    ipcRenderer.on('session-length', (event, length) => {
+    addListener('session-length', (event, length) => {
       this.sessionCount = length;
-      this.updateStatusDisplay();
+      this.statusUpdateDebounced();
     });
 
-    ipcRenderer.on('cycle-ai-flow', () => this.cycleAIFlow());
-    ipcRenderer.on('session-reset', () => this.resetSession());
-    ipcRenderer.on('toggle-theme', () => this.toggleTheme());
-    ipcRenderer.on('toggle-syntax-highlighting', () => this.toggleSyntaxHighlighting());
+    addListener('cycle-ai-flow', () => this.cycleAIFlow());
+    addListener('session-reset', () => this.resetSession());
+    addListener('toggle-theme', () => this.toggleTheme());
+    addListener('toggle-syntax-highlighting', () => this.toggleSyntaxHighlighting());
+    addListener('toggle-syntax-code-only', () => this.toggleCodeOnlyMode());
+
+    // Syntax mode toggle events
+    addListener('syntax-mode-toggled', (event, data) => {
+      this.handleSyntaxModeToggled(data);
+    });
 
     // Provider events
-    ipcRenderer.on('provider-switched', (event, data) => {
-      this.showTransientMessage(`✅ Switched to ${data.to}`, 2000);
+    addListener('provider-switched', (event, data) => {
+      this.showMessage('info', `✅ Switched to ${data.to}`, { timeout: 2000 });
     });
 
-    ipcRenderer.on('model-switched', (event, data) => {
-      this.showTransientMessage(`🔄 Model: ${data.model}`, 2000);
+    addListener('model-switched', (event, data) => {
+      this.showMessage('info', `🔄 Model: ${data.model}`, { timeout: 2000 });
     });
 
     // Error events
-    ipcRenderer.on('speech-error', (event, error) => {
+    addListener('speech-error', (event, error) => {
       this.updateSpeechStatus('error');
-      this.showPersistentMessage(`❌ Speech error: ${error}`);
+      this.showMessage('error', `❌ Speech error: ${error}`, { persistent: true });
     });
 
     // Window control
-    ipcRenderer.on('hide-ui', () => this.hideInterface());
-    ipcRenderer.on('show-ui', () => this.showInterface());
+    addListener('hide-ui', () => this.hideInterface());
+    addListener('show-ui', () => this.showInterface());
 
     // Screenshot stack events
-    ipcRenderer.on('add-screenshot-to-stack', (event, type) => {
+    addListener('add-screenshot-to-stack', (event, type) => {
       this.addScreenshotToStack(type);
     });
-    ipcRenderer.on('process-screenshot-stack', () => this.processScreenshotStack());
-    ipcRenderer.on('clear-screenshot-stack', () => this.clearScreenshotStack());
+    addListener('process-screenshot-stack', () => this.processScreenshotStack());
+    addListener('clear-screenshot-stack', () => this.clearScreenshotStack());
 
     // Integrated speech-to-AI events
-    ipcRenderer.on('speech-to-ai-started', (event, data) => {
+    addListener('speech-to-ai-started', (event, data) => {
       this.handleSpeechToAIStarted(data);
     });
-    ipcRenderer.on('speech-to-ai-completed', (event, data) => {
+    addListener('speech-to-ai-completed', (event, data) => {
       this.handleSpeechToAICompleted(data);
     });
-    ipcRenderer.on('speech-to-ai-error', (event, data) => {
+    addListener('speech-to-ai-error', (event, data) => {
       this.handleSpeechToAIError(data);
     });
 
     // Scrolling events
-    ipcRenderer.on('scroll-page', (event, direction) => {
+    addListener('scroll-page', (event, direction) => {
       this.handleScrollPage(direction);
     });
 
     // Help toggle event
-    ipcRenderer.on('toggle-help', () => {
+    addListener('toggle-help', () => {
       this.toggleHelp();
     });
 
@@ -145,6 +168,10 @@ class CodeMirrorRenderer {
       }
 
       this.updateOCRStatus('completed');
+
+      // Clear stored content when new AI response starts
+      this.originalContent = null;
+      this.isCodeOnlyMode = false;
 
       // Update status and start AI processing with complete clearing
       this.status.ai = `${this.aiFlow} Processing`;
@@ -184,7 +211,7 @@ class CodeMirrorRenderer {
     };
 
     this.status.speech = statusMap[status] || status;
-    this.updateStatusDisplay();
+    this.statusUpdateDebounced();
   }
 
   handleTranscription(text, metadata) {
@@ -199,6 +226,10 @@ class CodeMirrorRenderer {
   // Integrated speech-to-AI workflow
   handleSpeechToAIStarted(data) {
     this.updateSpeechStatus('ai-processing');
+
+    // Clear stored content when new AI response starts
+    this.originalContent = null;
+    this.isCodeOnlyMode = false;
 
     // Update status and start AI processing with complete clearing
     this.status.ai = `${this.aiFlow} Processing`;
@@ -235,7 +266,7 @@ class CodeMirrorRenderer {
     };
 
     this.status.ocr = statusMap[status] || status;
-    this.updateStatusDisplay();
+    this.statusUpdateDebounced();
   }
 
   // AI handling
@@ -248,7 +279,7 @@ class CodeMirrorRenderer {
 
   startAIProcessing() {
     this.status.ai = `${this.aiFlow} Processing`;
-    this.updateStatusDisplay();
+    this.statusUpdateDebounced();
   }
 
   streamAIResponse(chunk) {
@@ -259,7 +290,7 @@ class CodeMirrorRenderer {
 
   completeAIProcessing() {
     this.status.ai = this.aiFlow;
-    this.updateStatusDisplay();
+    this.statusUpdateDebounced();
 
     if (this.interface) {
       this.interface.completeAIResponse();
@@ -274,8 +305,8 @@ class CodeMirrorRenderer {
     this.aiFlow = flows[nextIndex];
 
     this.status.ai = this.aiFlow;
-    this.updateStatusDisplay();
-    this.showTransientMessage(`🔄 AI Flow: ${this.aiFlow}`, 2000);
+    this.statusUpdateDebounced();
+    this.showMessage('info', `🔄 AI Flow: ${this.aiFlow}`, { timeout: 2000 });
   }
 
   // Screenshot stack operations
@@ -301,6 +332,10 @@ class CodeMirrorRenderer {
       const result = await ipcRenderer.invoke('process-screenshot-stack');
       if (result.success) {
         const count = result.text.split('---').length;
+
+        // Clear stored content when new AI response starts
+        this.originalContent = null;
+        this.isCodeOnlyMode = false;
 
         // Update status and start AI processing with complete clearing
         this.status.ocr = 'Processing Stack';
@@ -343,7 +378,13 @@ class CodeMirrorRenderer {
 
   resetSession() {
     this.sessionCount = 0;
-    this.updateStatusDisplay();
+
+    // Clear code-only mode state
+    this.originalContent = null;
+    this.isCodeOnlyMode = false;
+    this.contentProcessingCache.clear();
+
+    this.statusUpdateDebounced();
 
     if (this.interface) {
       // Clear all transient messages before clearing content
@@ -351,7 +392,7 @@ class CodeMirrorRenderer {
       this.interface.clearContent();
     }
 
-    this.showTransientMessage('🔄 Session reset - ready for new conversation', 3000);
+    this.showMessage('info', '🔄 Session reset - ready for new conversation', { timeout: 3000 });
   }
 
   toggleTheme() {
@@ -393,28 +434,72 @@ class CodeMirrorRenderer {
     }
   }
 
-  showMessage(message) {
-    if (this.interface) {
-      const timestamp = new Date().toLocaleTimeString();
-      this.interface.appendContent(`[${timestamp}] ${message}`, false);
+  // Generic status handler to reduce duplication
+  createStatusHandler(type) {
+    const statusMaps = {
+      ocr: {
+        capturing: 'Capturing',
+        processing: 'Processing',
+        completed: 'Completed',
+        error: 'Error',
+        idle: 'Ready',
+      },
+      speech: {
+        recording: 'Recording',
+        processing: 'Processing',
+        transcribing: 'Transcribing',
+        'ai-processing': 'AI Processing',
+        completed: 'Completed',
+        error: 'Error',
+        idle: 'Ready',
+      }
+    };
+
+    return {
+      update: (status) => {
+        const statusMap = statusMaps[type] || {};
+        this.status[type] = statusMap[status] || status;
+        this.statusUpdateDebounced();
+      },
+      show: (message, options) => this.showMessage(type, message, options)
+    };
+  }
+
+  // Performance utilities
+  debounce(func, wait) {
+    let timeout;
+    const debounced = (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+    debounced.cancel = () => clearTimeout(timeout);
+    return debounced;
+  }
+
+  // Unified message handling
+  showMessage(type, message, options = {}) {
+    const { persistent = false, timeout = 2000 } = options;
+
+    if (!this.interface) return null;
+
+    const timestamp = new Date().toLocaleTimeString();
+    const formattedMessage = `[${timestamp}] ${message}`;
+
+    if (persistent) {
+      this.interface.appendContent(formattedMessage, false);
+      return null;
+    } else {
+      return this.interface.appendTransientContent(formattedMessage, timeout, false);
     }
   }
 
-  // Show transient message that auto-removes after timeout
-  showTransientMessage(message, timeout = 1000) {
-    if (this.interface) {
-      const timestamp = new Date().toLocaleTimeString();
-      return this.interface.appendTransientContent(`[${timestamp}] ${message}`, timeout, false);
-    }
-    return null;
+  // Legacy methods for backward compatibility
+  showTransientMessage(message, timeout = 2000) {
+    return this.showMessage('info', message, { timeout });
   }
 
-  // Show persistent message that stays visible
   showPersistentMessage(message) {
-    if (this.interface) {
-      const timestamp = new Date().toLocaleTimeString();
-      this.interface.appendContent(`[${timestamp}] ${message}`, false);
-    }
+    return this.showMessage('info', message, { persistent: true });
   }
 
   showError(message) {
@@ -432,7 +517,243 @@ class CodeMirrorRenderer {
     }
   }
 
+  /* ---------- Code-Only Toggle Functionality ---------- */
+
+  /**
+   * Toggle between full content and code-only view
+   */
+  toggleCodeOnlyMode() {
+    if (!this.interface) {
+      console.warn('[CodeMirrorRenderer] Interface not available for toggle');
+      return;
+    }
+
+    try {
+      if (this.isCodeOnlyMode) {
+        // Restore original content
+        this.restoreOriginalContent();
+      } else {
+        // Switch to code-only mode
+        this.showCodeOnlyContent();
+      }
+    } catch (error) {
+      console.error('[CodeMirrorRenderer] Failed to toggle code-only mode:', error);
+      this.showMessage('error', '❌ Failed to toggle code view', { timeout: 3000 });
+    }
+  }
+
+  /**
+   * Handle syntax mode toggle event from shortcut manager
+   * @param {Object} data - Toggle data with mode information
+   */
+  handleSyntaxModeToggled(data) {
+    console.log('[CodeMirrorRenderer] Syntax mode toggled:', data);
+
+    if (data.mode === 'CODE_ONLY') {
+      if (!this.isCodeOnlyMode) {
+        this.showCodeOnlyContent();
+      }
+    } else {
+      if (this.isCodeOnlyMode) {
+        this.restoreOriginalContent();
+      }
+    }
+  }
+
+  /**
+   * Extract and show only code from the current content (async)
+   */
+  async showCodeOnlyContent() {
+    const currentContent = this.interface.getContent();
+
+    if (!currentContent || !currentContent.trim()) {
+      this.showMessage('warning', '⚠️ No content to filter', { timeout: 2000 });
+      return;
+    }
+
+    // Store original content
+    this.originalContent = currentContent;
+
+    // Show processing message
+    this.showMessage('info', '🔄 Processing content...', { timeout: 1000 });
+
+    try {
+      // Extract code asynchronously
+      const codeOnlyContent = await this.extractCodeFromContentAsync(currentContent);
+
+      if (!codeOnlyContent || !codeOnlyContent.trim()) {
+        this.showMessage('warning', '⚠️ No code blocks found', { timeout: 2000 });
+        return;
+      }
+
+      // Update content and state
+      this.interface.setContent(codeOnlyContent);
+      this.isCodeOnlyMode = true;
+
+      this.showMessage('success', '🔍 Code-only view enabled', { timeout: 2000 });
+    } catch (error) {
+      console.error('Failed to extract code:', error);
+      this.showMessage('error', '❌ Failed to process content', { timeout: 3000 });
+    }
+  }
+
+  /**
+   * Restore the original full content
+   */
+  restoreOriginalContent() {
+    if (!this.originalContent) {
+      this.showMessage('warning', '⚠️ No original content to restore', { timeout: 2000 });
+      return;
+    }
+
+    this.interface.setContent(this.originalContent);
+    this.isCodeOnlyMode = false;
+    this.originalContent = null;
+
+    this.showMessage('success', '📄 Full content restored', { timeout: 2000 });
+  }
+
+  /**
+   * Extract only code blocks and inline code from content (async with caching)
+   * @param {string} content - Full content to filter
+   * @returns {Promise<string>} Content with only code
+   */
+  async extractCodeFromContentAsync(content) {
+    // Check cache first
+    const cacheKey = this.hashString(content);
+    if (this.contentProcessingCache.has(cacheKey)) {
+      return this.contentProcessingCache.get(cacheKey);
+    }
+
+    return new Promise((resolve) => {
+      // Use requestIdleCallback for better performance
+      const processContent = () => {
+        try {
+          const result = this.extractCodeFromContent(content);
+          // Cache the result
+          this.contentProcessingCache.set(cacheKey, result);
+          // Limit cache size
+          if (this.contentProcessingCache.size > 50) {
+            const firstKey = this.contentProcessingCache.keys().next().value;
+            this.contentProcessingCache.delete(firstKey);
+          }
+          resolve(result);
+        } catch (error) {
+          console.error('Content processing error:', error);
+          resolve('## Processing Error\n\nFailed to extract code from content.');
+        }
+      };
+
+      // Use requestIdleCallback if available, otherwise setTimeout
+      if (window.requestIdleCallback) {
+        requestIdleCallback(processContent, { timeout: 1000 });
+      } else {
+        setTimeout(processContent, 0);
+      }
+    });
+  }
+
+  /**
+   * Extract only code blocks and inline code from content (synchronous)
+   * @param {string} content - Full content to filter
+   * @returns {string} Content with only code
+   */
+  extractCodeFromContent(content) {
+    const lines = content.split('\n');
+    const codeLines = [];
+    let inCodeBlock = false;
+    let codeBlockLanguage = '';
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Check for fenced code block start
+      const codeBlockMatch = line.match(/^```(\w+)?/);
+      if (codeBlockMatch) {
+        if (!inCodeBlock) {
+          // Starting a code block
+          inCodeBlock = true;
+          codeBlockLanguage = codeBlockMatch[1] || '';
+          codeLines.push(`## ${codeBlockLanguage ? codeBlockLanguage.toUpperCase() + ' ' : ''}Code Block`);
+          codeLines.push('```' + codeBlockLanguage);
+        } else {
+          // Ending a code block
+          codeLines.push('```');
+          codeLines.push(''); // Add spacing between blocks
+          inCodeBlock = false;
+          codeBlockLanguage = '';
+        }
+        continue;
+      }
+
+      // If inside code block, include the line
+      if (inCodeBlock) {
+        codeLines.push(line);
+        continue;
+      }
+
+      // Check for inline code (lines with backticks)
+      if (line.includes('`')) {
+        const inlineCodeMatches = line.match(/`([^`]+)`/g);
+        if (inlineCodeMatches) {
+          codeLines.push(`## Inline Code`);
+          inlineCodeMatches.forEach(match => {
+            const code = match.replace(/`/g, '');
+            if (code.trim()) {
+              codeLines.push(code.trim());
+            }
+          });
+          codeLines.push(''); // Add spacing
+        }
+        continue;
+      }
+
+      // Check for indented code (4+ spaces at start)
+      if (line.match(/^    \S/)) {
+        // This looks like indented code
+        codeLines.push(line);
+        continue;
+      }
+    }
+
+    // If no code found, return a message
+    if (codeLines.length === 0) {
+      return '## No Code Blocks Found\n\nThe current content does not contain any recognizable code blocks or inline code.';
+    }
+
+    return codeLines.join('\n');
+  }
+
+  /**
+   * Simple hash function for cache keys
+   * @param {string} str - String to hash
+   * @returns {string} Hash value
+   */
+  hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
+  }
+
   destroy() {
+    // Clean up event listeners
+    this.eventListeners.forEach(({ channel, handler }) => {
+      ipcRenderer.removeListener(channel, handler);
+    });
+    this.eventListeners = [];
+
+    // Clear cache
+    this.contentProcessingCache.clear();
+
+    // Cancel any pending debounced calls
+    if (this.statusUpdateDebounced.cancel) {
+      this.statusUpdateDebounced.cancel();
+    }
+
     if (this.interface) {
       this.interface.destroy();
     }
