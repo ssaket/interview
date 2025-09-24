@@ -1,4 +1,6 @@
 const axios = require('axios');
+const http = require('http');
+const https = require('https');
 const aiConfig = require('./ai-config');
 
 /**
@@ -6,7 +8,34 @@ const aiConfig = require('./ai-config');
  *
  * Replaces complex provider class hierarchy with simple functions.
  * Most AI providers use OpenAI-compatible APIs, so we can unify them.
+ * Optimized for streaming responses with connection pooling for better performance.
  */
+
+// Connection pooling agents for better streaming performance
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 5,        // Max concurrent connections per host
+  maxFreeSockets: 2,    // Keep 2 idle connections ready
+  timeout: 60000,       // Socket timeout (60s)
+  freeSocketTimeout: 30000, // How long to keep idle sockets (30s)
+});
+
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 5,        // Max concurrent connections per host
+  maxFreeSockets: 2,    // Keep 2 idle connections ready
+  timeout: 60000,       // Socket timeout (60s)
+  freeSocketTimeout: 30000, // How long to keep idle sockets (30s)
+});
+
+/**
+ * Get appropriate HTTP agent for URL
+ * @param {string} url - Request URL
+ * @returns {http.Agent|https.Agent} Appropriate pooling agent
+ */
+function getHttpAgent(url) {
+  return url.startsWith('https:') ? httpsAgent : httpAgent;
+}
 
 /**
  * Make a chat completion request to any AI provider
@@ -67,11 +96,13 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
 
   try {
     if (stream && onChunk) {
-      // Streaming response
+      // Streaming response with connection pooling
       const response = await axios.post(`${config.baseUrl}/api/chat`, requestBody, {
         timeout: config.timeout,
         headers: { 'Content-Type': 'application/json' },
         responseType: 'stream',
+        httpAgent: getHttpAgent(config.baseUrl),
+        httpsAgent: getHttpAgent(config.baseUrl),
       });
 
       let fullContent = '';
@@ -134,10 +165,12 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
         });
       });
     } else {
-      // Non-streaming response
+      // Non-streaming response with connection pooling
       const response = await axios.post(`${config.baseUrl}/api/chat`, requestBody, {
         timeout: config.timeout,
         headers: { 'Content-Type': 'application/json' },
+        httpAgent: getHttpAgent(config.baseUrl),
+        httpsAgent: getHttpAgent(config.baseUrl),
       });
 
       return {
@@ -208,7 +241,7 @@ function buildOpenAIHeaders(apiKey) {
 }
 
 /**
- * Handle OpenAI streaming response
+ * Handle OpenAI streaming response with connection pooling
  * @private
  */
 async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
@@ -216,6 +249,8 @@ async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
     timeout: config.timeout,
     headers,
     responseType: 'stream',
+    httpAgent: getHttpAgent(config.baseUrl),
+    httpsAgent: getHttpAgent(config.baseUrl),
   });
 
   let fullContent = '';
@@ -287,13 +322,15 @@ async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
 }
 
 /**
- * Handle OpenAI non-streaming response
+ * Handle OpenAI non-streaming response with connection pooling
  * @private
  */
 async function handleOpenAINonStreaming(config, requestBody, headers) {
   const response = await axios.post(`${config.baseUrl}/chat/completions`, requestBody, {
     timeout: config.timeout,
     headers,
+    httpAgent: getHttpAgent(config.baseUrl),
+    httpsAgent: getHttpAgent(config.baseUrl),
   });
 
   return {
@@ -330,7 +367,7 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
 
   try {
     if (stream && onChunk) {
-      // Streaming response
+      // Streaming response with connection pooling
       const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
         timeout: config.timeout,
         headers: {
@@ -338,6 +375,8 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
           Authorization: `Bearer ${config.apiKey}`,
         },
         responseType: 'stream',
+        httpAgent: getHttpAgent(baseUrl),
+        httpsAgent: getHttpAgent(baseUrl),
       });
 
       let fullContent = '';
@@ -412,13 +451,15 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         });
       });
     } else {
-      // Non-streaming response
+      // Non-streaming response with connection pooling
       const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
         timeout: config.timeout,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${config.apiKey}`,
         },
+        httpAgent: getHttpAgent(baseUrl),
+        httpsAgent: getHttpAgent(baseUrl),
       });
 
       return {
@@ -458,11 +499,13 @@ async function handleHuggingFace(config, messages, parameters, stream = false, o
 
   try {
     // Note: HuggingFace streaming implementation would depend on the specific provider
-    // For now, we'll implement basic streaming support
+    // For now, we'll implement basic streaming support with connection pooling
     const response = await axios.post(`${config.baseUrl}/models/${config.model}`, requestBody, {
       timeout: config.timeout,
       headers,
       responseType: stream && onChunk ? 'stream' : 'json',
+      httpAgent: getHttpAgent(config.baseUrl),
+      httpsAgent: getHttpAgent(config.baseUrl),
     });
 
     if (stream && onChunk) {
@@ -608,12 +651,48 @@ function updateProviderConfig(provider, updates) {
   aiConfig.updateProviderConfig(provider, updates);
 }
 
+/**
+ * Get connection pool statistics
+ * @returns {Object} Pool stats for monitoring
+ */
+function getConnectionPoolStats() {
+  return {
+    http: {
+      maxSockets: httpAgent.maxSockets,
+      maxFreeSockets: httpAgent.maxFreeSockets,
+      sockets: httpAgent.sockets ? Object.keys(httpAgent.sockets).length : 0,
+      freeSockets: httpAgent.freeSockets ? Object.keys(httpAgent.freeSockets).length : 0,
+      timeout: 60000, // Static value since agent.timeout might be undefined
+      freeSocketTimeout: 30000, // Static value since agent.freeSocketTimeout might be undefined
+    },
+    https: {
+      maxSockets: httpsAgent.maxSockets,
+      maxFreeSockets: httpsAgent.maxFreeSockets,
+      sockets: httpsAgent.sockets ? Object.keys(httpsAgent.sockets).length : 0,
+      freeSockets: httpsAgent.freeSockets ? Object.keys(httpsAgent.freeSockets).length : 0,
+      timeout: 60000, // Static value since agent.timeout might be undefined
+      freeSocketTimeout: 30000, // Static value since agent.freeSocketTimeout might be undefined
+    }
+  };
+}
+
+/**
+ * Close all pooled connections (useful for cleanup)
+ */
+function closeAllConnections() {
+  httpAgent.destroy();
+  httpsAgent.destroy();
+  console.log('[SimpleAI] All connection pools closed');
+}
+
 module.exports = {
   chatCompletion,
   testProvider,
   getAvailableModels,
   getCurrentModel,
   updateProviderConfig,
+  getConnectionPoolStats,
+  closeAllConnections,
 
   // Re-export config functions
   getDefaultProvider: () => aiConfig.getDefaultProvider(),

@@ -1,6 +1,4 @@
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const simpleAI = require('./simple-ai');
 const MODEL_PROMPTS = require('../model-prompts');
 
@@ -20,7 +18,6 @@ class SimpleAIManager {
 
     // Session management
     this.sessions = new Map(); // Per-provider-model session storage
-    this.globalCache = new Map(); // Shared cache across sessions
 
     // State
     this.isInitialized = true;
@@ -217,6 +214,7 @@ class SimpleAIManager {
     this.sessions.clear();
   }
 
+
   /**
    * Get session information
    * @returns {Object} Session info
@@ -254,7 +252,6 @@ class SimpleAIManager {
     if (!session) {
       return {
         historyLength: 0,
-        cacheSize: 0,
         isActive: false,
         provider: this.currentProvider,
         model: this.currentModel,
@@ -263,7 +260,6 @@ class SimpleAIManager {
 
     return {
       historyLength: session.messages.length,
-      cacheSize: this.globalCache.size,
       isActive: true,
       provider: this.currentProvider,
       model: this.currentModel,
@@ -351,22 +347,91 @@ class SimpleAIManager {
   }
 
   /**
-   * Execute hybrid flow
+   * Execute hybrid flow with TRUE parallel processing
+   * Total time = max(local_time, cloud_time) instead of local_time + cloud_time
    * @private
    */
   async _executeHybridFlow(question, options) {
-    let combinedResponse = '';
+    console.log('[SimpleAIManager] Starting TRUE parallel hybrid flow...');
 
-    try {
-      combinedResponse += await this._processLocalPhase(question, options);
-      combinedResponse += this._addPhaseSeparator(options.onChunk);
-      combinedResponse += await this._processDeepSeekPhase(question, options);
+    return new Promise((resolve, reject) => {
+      let localCompleted = false;
+      let cloudCompleted = false;
+      let localResponse = '';
+      let cloudResponse = '';
+      let separatorAdded = false;
 
-      console.log('[SimpleAIManager] Hybrid flow completed successfully');
-      return combinedResponse;
-    } catch (error) {
-      return this._handleHybridError(error, combinedResponse, options.onChunk);
-    }
+      const startTime = Date.now();
+
+      try {
+        // Create coordinated streaming handlers
+        const localOnChunk = (chunk) => {
+          if (options.onChunk) {
+            options.onChunk(chunk);
+          }
+        };
+
+        const cloudOnChunk = (chunk) => {
+          // Only stream cloud chunks after local completes and separator is added
+          if (localCompleted && separatorAdded && options.onChunk) {
+            options.onChunk(chunk);
+          }
+        };
+
+        // Check if both phases are complete
+        const checkCompletion = () => {
+          if (localCompleted && cloudCompleted) {
+            const totalTime = Date.now() - startTime;
+            console.log(`[SimpleAIManager] TRUE parallel hybrid flow completed in ${totalTime}ms`);
+            resolve(localResponse + '\n\n---\n\n**🧠 DeepSeek Analysis:**\n\n' + cloudResponse);
+          }
+        };
+
+        // Start both phases simultaneously (TRUE parallel execution)
+        this._processLocalPhase(question, {
+          ...options,
+          onChunk: localOnChunk
+        }).then(response => {
+          localResponse = response;
+          localCompleted = true;
+          console.log('[SimpleAIManager] Local phase completed, adding separator...');
+
+          // Add separator after local completes
+          if (options.onChunk) {
+            options.onChunk('\n\n---\n\n**🧠 DeepSeek Analysis:**\n\n');
+          }
+          separatorAdded = true;
+
+          checkCompletion();
+        }).catch(error => {
+          console.error('[SimpleAIManager] Local phase failed:', error);
+          localCompleted = true; // Mark as complete to allow cloud to continue
+          checkCompletion();
+        });
+
+        this._processCloudPhase(question, {
+          ...options,
+          onChunk: cloudOnChunk
+        }).then(response => {
+          cloudResponse = response;
+          cloudCompleted = true;
+          console.log('[SimpleAIManager] Cloud phase completed');
+          checkCompletion();
+        }).catch(error => {
+          console.error('[SimpleAIManager] Cloud phase failed:', error);
+          cloudResponse = `\n\n**❌ DeepSeek Error:** ${error.message}`;
+          cloudCompleted = true;
+          checkCompletion();
+        });
+
+        // Don't await here - let them run in parallel!
+        // The checkCompletion() function will resolve the promise when both are done
+
+      } catch (error) {
+        console.error('[SimpleAIManager] Hybrid flow setup failed:', error);
+        reject(this._handleHybridError(error, '', options.onChunk));
+      }
+    });
   }
 
   /**
@@ -381,31 +446,44 @@ class SimpleAIManager {
   }
 
   /**
-   * Process local AI phase
+   * Process local AI phase with optimized prompt (parallel execution)
    * @private
    */
   async _processLocalPhase(question, options) {
-    console.log('[SimpleAIManager] Phase 1: Streaming local response...');
+    console.log('[SimpleAIManager] Phase 1: Starting local response (TRUE parallel)...');
 
+    // Add local phase header immediately
     if (options.onChunk) {
       options.onChunk('🚀 **Local AI Response:**\n\n');
     }
 
-    const aiConfig = require('./ai-config');
-    const hybridModel = aiConfig.getHybridModel('ollama');
+    try {
+      const aiConfig = require('./ai-config');
+      const hybridModel = aiConfig.getHybridModel('ollama');
 
-    if (this.currentProvider !== 'ollama') {
-      await this.switchProvider('ollama', true);
+      if (this.currentProvider !== 'ollama') {
+        await this.switchProvider('ollama', true);
+      }
+      this.setModel(hybridModel);
+
+      // Use optimized prompt for quick local analysis
+      const localPrompt = `Quick summary and initial thoughts: ${question}`;
+      const localResponse = await this.query(localPrompt, {
+        stream: true,
+        onChunk: options.onChunk, // Direct streaming to UI
+        parameters: {
+          temperature: 0.7, // Slightly higher for creativity
+          max_tokens: 512,  // Limit for quick response
+          ...options.parameters
+        },
+      });
+
+      console.log('[SimpleAIManager] Local phase streaming completed');
+      return localResponse.content;
+    } catch (error) {
+      console.error('[SimpleAIManager] Local phase failed:', error);
+      throw error;
     }
-    this.setModel(hybridModel);
-
-    const localResponse = await this.query(`Brief analysis: ${question}`, {
-      stream: true,
-      onChunk: options.onChunk,
-      parameters: options.parameters || {},
-    });
-
-    return localResponse.content;
   }
 
   /**
@@ -421,21 +499,41 @@ class SimpleAIManager {
   }
 
   /**
-   * Process DeepSeek AI phase
+   * Process cloud AI phase (DeepSeek) with detailed analysis (parallel execution)
    * @private
    */
-  async _processDeepSeekPhase(question, options) {
-    console.log('[SimpleAIManager] Phase 2: Streaming DeepSeek response...');
+  async _processCloudPhase(question, options) {
+    console.log('[SimpleAIManager] Phase 2: Starting cloud response (TRUE parallel)...');
 
-    await this.switchProvider('deepseek', true);
+    try {
+      // Switch to cloud provider
+      await this.switchProvider('deepseek', true);
 
-    const deepseekResponse = await this.query(question, {
-      stream: true,
-      onChunk: options.onChunk,
-      parameters: options.parameters || {},
-    });
+      // Use detailed prompt for comprehensive analysis
+      const cloudPrompt = `Provide a detailed technical analysis and comprehensive solution for: ${question}
 
-    return deepseekResponse.content;
+Please include:
+- In-depth technical reasoning
+- Step-by-step solution approach
+- Best practices and considerations
+- Potential edge cases or alternatives`;
+
+      const cloudResponse = await this.query(cloudPrompt, {
+        stream: true,
+        onChunk: options.onChunk, // Will be controlled by hybrid flow coordination
+        parameters: {
+          temperature: 0.1, // Lower for precision
+          max_tokens: 4096, // Higher for detailed response
+          ...options.parameters
+        },
+      });
+
+      console.log('[SimpleAIManager] Cloud phase streaming completed');
+      return cloudResponse.content;
+    } catch (error) {
+      console.error('[SimpleAIManager] Cloud phase failed:', error);
+      throw error;
+    }
   }
 
   /**
@@ -488,7 +586,6 @@ class SimpleAIManager {
     if (!session) {
       return {
         history: [],
-        cache: new Map(),
         active: false,
       };
     }
@@ -503,7 +600,6 @@ class SimpleAIManager {
 
     return {
       history,
-      cache: new Map(), // Simple cache for compatibility
       active: true,
     };
   }
@@ -597,24 +693,21 @@ class SimpleAIManager {
     const modelType = this._getModelType(this.currentModel);
     console.log(`[SimpleAIManager] Model: ${this.currentModel} -> Type: ${modelType}`);
 
-    const prompt = MODEL_PROMPTS[modelType];
+    const prompt = MODEL_PROMPTS.getModelPrompt(modelType);
 
     if (prompt && typeof prompt === 'string') {
       return prompt;
     }
 
     // Fallback to default prompt
-    return MODEL_PROMPTS.default || null;
+    return  prompt || null;
   }
 
   _getModelType(modelName = '') {
     const name = modelName.toLowerCase();
-    if (name.includes('phi')) return 'phi';
     if (name.includes('mistral') || name.includes('magistral')) return 'mistral';
     if (name.includes('qwen')) return 'qwen';
     if (name.includes('codellama')) return 'codellama';
-    if (name.includes('gpt')) return 'gpt';
-    if (name.includes('deepseek-coder')) return 'deepseek_coder';
     if (name.includes('deepseek')) return 'deepseek';
     return 'default';
   }
