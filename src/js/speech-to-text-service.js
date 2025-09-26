@@ -97,7 +97,7 @@ class SpeechToTextService {
         this.onStatusChange('recording', 'Recording started...');
       }
 
-      console.log('Speech recording started');
+      console.log('🎤 [Speech Recording] Recording started - listening for speech...');
     } catch (error) {
       console.error('Error starting recording:', error);
       let errorMessage = `Failed to start recording: ${error.message}`;
@@ -142,7 +142,7 @@ class SpeechToTextService {
         this.onStatusChange('processing', 'Processing audio...');
       }
 
-      console.log('Speech recording stopped');
+      console.log('🛑 [Speech Recording] Recording stopped - processing audio...');
 
       // Wait a moment for the file to be written, then process
       setTimeout(() => {
@@ -218,10 +218,11 @@ class SpeechToTextService {
       const transcriptText = transcript.text || '';
       const confidence = transcript.confidence || 0;
 
-      console.log('Transcription completed:', {
+      console.log('📝 [Speech Transcription] Completed:', {
         text: transcriptText,
         confidence: confidence,
         duration: transcript.audio_duration,
+        language: transcript.language_code || this.language
       });
 
       if (this.onTranscriptReceived) {

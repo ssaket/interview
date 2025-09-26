@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek Overlay - Live Conversation History</title>
+    <!-- WebRTC adapter for cross-browser compatibility -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.3/adapter.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            line-height: 1.5;
+            padding: 16px;
+            font-size: 14px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            padding: 16px 0;
+            border-bottom: 1px solid #21262d;
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            color: #f0f6fc;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 12px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            border: 1px solid transparent;
+        }
+
+        .connection-status.connected {
+            background: #1a2e1a;
+            border-color: #2d4f2d;
+            color: #7ee787;
+        }
+
+        .connection-status.connecting {
+            background: #2e2a1a;
+            border-color: #4f4b2d;
+            color: #f0c674;
+        }
+
+        .connection-status.disconnected {
+            background: #2e1a1a;
+            border-color: #4f2d2d;
+            color: #ff7b72;
+        }
+
+        .status-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .info-section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .info-section h2 {
+            color: #f0f6fc;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+
+        .info-section p {
+            color: #8b949e;
+            margin-bottom: 8px;
+        }
+
+        .info-section code {
+            background: #0d1117;
+            color: #7ee787;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .speech-controls {
+            position: fixed;
+            bottom: 1rem;
+            right: 0.6rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .btn {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .btn:hover {
+            background: #2ea043;
+        }
+
+        .btn:disabled {
+            background: #21262d;
+            color: #7d8590;
+            cursor: not-allowed;
+            border-color: #30363d;
+        }
+
+        .btn.speech {
+            background: #8b5cf6;
+            border-color: #a78bfa;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            min-width: unset;
+            padding: 0;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .btn.speech:hover {
+            background: #7c3aed;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+        }
+
+        .btn.speech.recording {
+            background: #dc2626;
+            border-color: #ef4444;
+            animation: pulse 2s infinite;
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+        }
+
+        .btn.speech.recording:hover {
+            background: #b91c1c;
+            box-shadow: 0 6px 16px rgba(220, 38, 38, 0.5);
+        }
+
+        .btn.speech:disabled {
+            background: #374151;
+            border-color: #4b5563;
+            color: #9ca3af;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transform: none;
+        }
+
+        .btn.speech:disabled:hover {
+            background: #374151;
+            transform: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .speech-transcript {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 8px 12px;
+            max-width: 300px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+        }
+
+        .speech-transcript.partial {
+            border-color: #8b5cf6;
+            opacity: 0.7;
+        }
+
+        .speech-transcript.final {
+            border-color: #238636;
+        }
+
+        .speech-status {
+            font-size: 11px;
+            color: #7d8590;
+            text-align: center;
+        }
+
+        .notification {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            padding: 12px 16px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            font-size: 12px;
+            transform: translateX(400px);
+            transition: transform 0.2s ease;
+            z-index: 1000;
+            border: 1px solid transparent;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background: #238636;
+            border-color: #2ea043;
+        }
+
+        .notification.error {
+            background: #da3633;
+            border-color: #f85149;
+        }
+
+        .notification.info {
+            background: #1f6feb;
+            border-color: #388bfd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>DeepSeek Overlay - Live Conversation History</h1>
+            <div class="connection-status disconnected" id="connection-status">
+                <div class="status-indicator"></div>
+                <span>Demo Mode</span>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <h2>🎤 Microphone Test</h2>
+            <p>This is a standalone version to test microphone functionality on mobile devices.</p>
+            <p><strong>Features:</strong></p>
+            <p>• HTTPS support for iOS Safari microphone access</p>
+            <p>• WebRTC adapter for cross-browser compatibility</p>
+            <p>• Real-time speech recognition ready</p>
+            <p><strong>Usage:</strong> Tap the microphone button to test voice recording permissions.</p>
+        </div>
+
+        <div class="speech-controls" id="speech-controls">
+            <div class="speech-transcript" id="speech-transcript" style="display: none;"></div>
+            <div class="speech-status" id="speech-status">Loading...</div>
+            <button class="btn speech" id="speech-btn" onclick="testMicrophone()" disabled title="Test Microphone">🎤</button>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                enableSpeechControls(true);
+            }, 500);
+        });
+
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type} show`;
+
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        // Speech recognition functions
+        async function enableSpeechControls(enabled) {
+            const speechBtn = document.getElementById('speech-btn');
+            const speechStatus = document.getElementById('speech-status');
+
+            if (!enabled) {
+                speechBtn.disabled = true;
+                speechStatus.textContent = 'Not enabled';
+                return;
+            }
+
+            // Check if we're in a secure context (HTTPS required for getUserMedia)
+            if (!window.isSecureContext) {
+                speechBtn.disabled = true;
+                speechStatus.textContent = 'HTTPS required for microphone';
+                return;
+            }
+
+            // Wait a bit for WebRTC adapter to initialize
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Check for getUserMedia support (including legacy webkit)
+            const getUserMedia = navigator.mediaDevices?.getUserMedia ||
+                                 navigator.getUserMedia ||
+                                 navigator.webkitGetUserMedia ||
+                                 navigator.mozGetUserMedia ||
+                                 navigator.msGetUserMedia;
+
+            if (!getUserMedia) {
+                speechBtn.disabled = true;
+                speechStatus.textContent = 'Microphone not supported';
+                return;
+            }
+
+            try {
+                // Test microphone access using modern API
+                let stream;
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                } else {
+                    // Fallback for older browsers
+                    stream = await new Promise((resolve, reject) => {
+                        getUserMedia.call(navigator, { audio: true }, resolve, reject);
+                    });
+                }
+
+                // Clean up test stream
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+
+                speechBtn.disabled = false;
+                speechStatus.textContent = 'Ready to test';
+                showNotification('Microphone access granted!', 'success');
+                console.log('Microphone access granted and tested successfully');
+            } catch (error) {
+                speechBtn.disabled = true;
+                console.error('Microphone error:', error);
+
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    speechStatus.textContent = 'Access denied - tap to retry';
+                    speechBtn.disabled = false;
+                    showNotification('Microphone permission denied. Tap button to retry.', 'error');
+                } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                    speechStatus.textContent = 'No microphone found';
+                    showNotification('No microphone device found', 'error');
+                } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                    speechStatus.textContent = 'Microphone in use';
+                    showNotification('Microphone is being used by another app', 'error');
+                } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+                    speechStatus.textContent = 'Constraints not satisfied';
+                } else {
+                    speechStatus.textContent = `Error: ${error.message || 'Unknown error'}`;
+                    showNotification(`Microphone error: ${error.message || 'Unknown error'}`, 'error');
+                }
+            }
+        }
+
+        async function testMicrophone() {
+            const speechStatus = document.getElementById('speech-status');
+            const speechBtn = document.getElementById('speech-btn');
+
+            // If there's a permission error, retry enableSpeechControls first
+            if (speechStatus.textContent.includes('denied') || speechStatus.textContent.includes('retry')) {
+                await enableSpeechControls(true);
+                return;
+            }
+
+            // Simple test recording
+            try {
+                speechBtn.textContent = '🔴';
+                speechBtn.title = 'Recording...';
+                speechStatus.textContent = 'Recording for 3 seconds...';
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                showNotification('Recording started! Speaking now...', 'info');
+
+                setTimeout(() => {
+                    stream.getTracks().forEach(track => track.stop());
+                    speechBtn.textContent = '🎤';
+                    speechBtn.title = 'Test Microphone';
+                    speechStatus.textContent = 'Test completed successfully!';
+                    showNotification('Recording test completed successfully!', 'success');
+                }, 3000);
+
+            } catch (error) {
+                speechBtn.textContent = '🎤';
+                speechBtn.title = 'Test Microphone';
+                speechStatus.textContent = 'Test failed';
+                showNotification(`Test failed: ${error.message}`, 'error');
+                console.error('Test recording failed:', error);
+            }
+        }
+    </script>
+</body>
+</html>

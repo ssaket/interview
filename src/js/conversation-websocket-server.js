@@ -1,13 +1,17 @@
 const WebSocket = require('ws');
-const http = require('http');
+const https = require('https');
 const path = require('path');
 const fs = require('fs').promises;
+const crypto = require('crypto');
+const os = require('os');
+const selfsigned = require('selfsigned');
+const { AssemblyAI } = require('assemblyai');
 
 /**
  * WebSocket server for real-time conversation history updates
  */
 class ConversationWebSocketServer {
-  constructor(aiManager, port = 0) {
+  constructor(aiManager, port = 8443) {
     this.aiManager = aiManager;
     this.server = null;
     this.wss = null;
@@ -16,6 +20,8 @@ class ConversationWebSocketServer {
     this.actualPort = null;
     this.isRunning = false;
     this.clients = new Set();
+    this.assemblyAIConnections = new Map(); // sessionId -> AssemblyAI streaming transcriber
+    this.assemblyAIClient = null;
 
     console.log('[ConversationWebSocketServer] Initialized');
   }
@@ -30,8 +36,14 @@ class ConversationWebSocketServer {
     }
 
     try {
-      // Create HTTP server
-      this.httpServer = http.createServer(this.handleHttpRequest.bind(this));
+      // Generate proper self-signed certificate for HTTPS
+      const cert = await this.generateSelfSignedCert();
+
+      // Create HTTPS server
+      this.httpServer = https.createServer({
+        key: cert.key,
+        cert: cert.cert
+      }, this.handleHttpRequest.bind(this));
 
       // Create WebSocket server
       this.wss = new WebSocket.Server({ server: this.httpServer });
@@ -109,7 +121,7 @@ class ConversationWebSocketServer {
     if (!this.isRunning || !this.actualPort) {
       return null;
     }
-    return `http://0.0.0.0:${this.actualPort}`;
+    return `https://0.0.0.0:${this.actualPort}`;
   }
 
   /**
@@ -126,7 +138,7 @@ class ConversationWebSocketServer {
     const urls = [];
 
     // Add localhost
-    urls.push(`http://localhost:${this.actualPort}`);
+    urls.push(`https://localhost:${this.actualPort}`);
 
     // Add all network interfaces
     for (const name of Object.keys(interfaces)) {
@@ -135,7 +147,7 @@ class ConversationWebSocketServer {
         if (iface.internal || iface.family !== 'IPv4') {
           continue;
         }
-        urls.push(`http://${iface.address}:${this.actualPort}`);
+        urls.push(`https://${iface.address}:${this.actualPort}`);
       }
     }
 
@@ -289,6 +301,21 @@ class ConversationWebSocketServer {
           );
           break;
 
+        case 'start_speech':
+          console.log('🎤 [Speech Recording] Started recording session:', data.sessionId);
+          await this.startAssemblyAIStream(data.sessionId, ws);
+          break;
+
+        case 'audio_data':
+          console.log(`🎵 [Audio] Received ${data.audio.length} bytes for session: ${data.sessionId}`);
+          await this.forwardAudioToAssemblyAI(data.sessionId, data.audio);
+          break;
+
+        case 'stop_speech':
+          console.log('🛑 [Speech Recording] Stopped recording session:', data.sessionId);
+          await this.stopAssemblyAIStream(data.sessionId);
+          break;
+
         default:
           console.warn('[ConversationWebSocketServer] Unknown message type:', data.type);
       }
@@ -331,6 +358,274 @@ class ConversationWebSocketServer {
    * Get server statistics
    * @returns {Object} Server statistics
    */
+  /**
+   * Start AssemblyAI streaming connection using official SDK
+   */
+  async startAssemblyAIStream(sessionId, clientWS) {
+    try {
+      const apiKey = process.env.ASSEMBLYAI_API_KEY;
+      console.log('[AssemblyAI] API Key check:', apiKey ? `Key exists (${apiKey.substring(0, 8)}...)` : 'No API key found');
+
+      if (!apiKey || apiKey === 'your_assemblyai_api_key_here') {
+        throw new Error('AssemblyAI API key not configured. Please set ASSEMBLYAI_API_KEY in your .env file');
+      }
+
+      // Initialize AssemblyAI client if needed
+      if (!this.assemblyAIClient) {
+        this.assemblyAIClient = new AssemblyAI({
+          apiKey: apiKey
+        });
+      }
+
+      // Create streaming transcriber with explicit configuration
+      const rt = this.assemblyAIClient.streaming.transcriber({
+        apiKey: apiKey,  // Explicitly pass API key
+        sampleRate: 16000
+      });
+
+      // Set up event handlers
+      rt.on('open', ({ id }) => {
+        console.log(`🔗 [AssemblyAI] Session opened: ${id} for session: ${sessionId}`);
+
+        clientWS.send(JSON.stringify({
+          type: 'speech_started',
+          sessionId: sessionId,
+          timestamp: new Date().toISOString()
+        }));
+
+        // Send queued audio if any
+        const connection = this.assemblyAIConnections.get(sessionId);
+        if (connection && connection.audioQueue.length > 0) {
+          console.log(`📦 [AssemblyAI] Sending ${connection.audioQueue.length} queued audio chunks`);
+          connection.audioQueue.forEach(audioData => {
+            rt.sendAudio(audioData);
+          });
+          connection.audioQueue = [];
+        }
+      });
+
+      // Add comprehensive event logging to debug
+      const originalEmit = rt.emit;
+      rt.emit = function(event, ...args) {
+        console.log(`📡 [AssemblyAI Event: ${event}]`, ...args);
+        return originalEmit.call(this, event, ...args);
+      };
+
+      // Try intercepting WebSocket messages directly if possible
+      if (rt.ws) {
+        const originalWsOnMessage = rt.ws.onmessage;
+        rt.ws.onmessage = function(event) {
+          console.log('🔍 [AssemblyAI Raw WS Message]:', event.data);
+          if (originalWsOnMessage) {
+            originalWsOnMessage.call(this, event);
+          }
+        };
+      }
+
+      // Use the correct documented event names
+      rt.on("turn", ({ transcript }) => {
+        console.log(`📝 [AssemblyAI] turn event - transcript: "${transcript}"`);
+        if (transcript && clientWS.readyState === WebSocket.OPEN) {
+          clientWS.send(JSON.stringify({
+            type: 'speech_transcript',
+            text: transcript,
+            isFinal: true,  // Turn events are typically final
+            sessionId: sessionId,
+            timestamp: new Date().toISOString()
+          }));
+        }
+      });
+
+      rt.on("transcript", (message) => {
+        console.log(`📝 [AssemblyAI] transcript event:`, message);
+        const text = message.text || message.transcript || '';
+        if (text && clientWS.readyState === WebSocket.OPEN) {
+          clientWS.send(JSON.stringify({
+            type: 'speech_transcript',
+            text: text,
+            isFinal: false,  // Transcript events are typically partial
+            sessionId: sessionId,
+            timestamp: new Date().toISOString()
+          }));
+        }
+      });
+
+      rt.on('error', (error) => {
+        console.error(`❌ [AssemblyAI] Error for session ${sessionId}:`, error);
+
+        if (clientWS.readyState === WebSocket.OPEN) {
+          clientWS.send(JSON.stringify({
+            type: 'speech_error',
+            error: error.message || error,
+            sessionId: sessionId,
+            timestamp: new Date().toISOString()
+          }));
+        }
+      });
+
+      rt.on('close', () => {
+        console.log(`🔗 [AssemblyAI] Session closed for session: ${sessionId}`);
+        this.assemblyAIConnections.delete(sessionId);
+      });
+
+      // Connect to AssemblyAI
+      await rt.connect();
+
+      // Store the connection
+      this.assemblyAIConnections.set(sessionId, {
+        transcriber: rt,
+        connected: true,
+        audioQueue: []
+      });
+
+      console.log(`✅ [AssemblyAI] Successfully connected for session: ${sessionId}`);
+
+
+    } catch (error) {
+      console.error('[AssemblyAI] Error starting stream:', error);
+      clientWS.send(JSON.stringify({
+        type: 'speech_error',
+        error: error.message,
+        sessionId: sessionId,
+        timestamp: new Date().toISOString()
+      }));
+    }
+  }
+
+  /**
+   * Forward audio data to AssemblyAI using SDK
+   */
+  async forwardAudioToAssemblyAI(sessionId, base64Audio) {
+    const connection = this.assemblyAIConnections.get(sessionId);
+    if (!connection) {
+      console.warn(`⚠️  [AssemblyAI] No connection found for session: ${sessionId}`);
+      return;
+    }
+
+    try {
+      const audioBuffer = Buffer.from(base64Audio, 'base64');
+
+      // Log more details about the audio data
+      console.log(`🎵 [AssemblyAI] Audio chunk details: ${audioBuffer.length} bytes, first few bytes:`, audioBuffer.subarray(0, 8));
+
+      if (connection.connected && connection.transcriber) {
+        // Send immediately using SDK
+        connection.transcriber.sendAudio(audioBuffer);
+        console.log(`✅ [AssemblyAI] Sent audio chunk: ${audioBuffer.length} bytes`);
+      } else {
+        // Queue audio until connection is ready
+        connection.audioQueue.push(audioBuffer);
+        console.log(`📦 [AssemblyAI] Queued audio chunk: ${audioBuffer.length} bytes (queue: ${connection.audioQueue.length})`);
+      }
+    } catch (error) {
+      console.error(`❌ [AssemblyAI] Error forwarding audio for session ${sessionId}:`, error);
+      console.error(`❌ [AssemblyAI] Error details:`, {
+        message: error.message,
+        stack: error.stack
+      });
+    }
+  }
+
+  /**
+   * Handle transcript events from AssemblyAI
+   */
+  handleTranscriptEvent(data, isFinal, sessionId, clientWS) {
+    const text = data.text || data.transcript || data.message || '';
+
+    if (text && clientWS.readyState === WebSocket.OPEN) {
+      console.log(`📝 [AssemblyAI Response] ${isFinal ? 'FINAL' : 'PARTIAL'}: "${text}"`);
+
+      clientWS.send(JSON.stringify({
+        type: 'speech_transcript',
+        text: text,
+        isFinal: isFinal,
+        sessionId: sessionId,
+        timestamp: new Date().toISOString()
+      }));
+    }
+  }
+
+  /**
+   * Stop AssemblyAI streaming connection using SDK
+   */
+  async stopAssemblyAIStream(sessionId) {
+    const connection = this.assemblyAIConnections.get(sessionId);
+    if (connection && connection.transcriber) {
+      try {
+        await connection.transcriber.close();
+        console.log(`🛑 [AssemblyAI] Stopped stream for session: ${sessionId}`);
+      } catch (error) {
+        console.error(`❌ [AssemblyAI] Error stopping stream for session ${sessionId}:`, error);
+      }
+      this.assemblyAIConnections.delete(sessionId);
+    }
+  }
+
+  /**
+   * Generate a proper self-signed certificate for HTTPS using selfsigned package
+   * @returns {Promise<{cert: string, key: string}>} Certificate and private key
+   */
+  async generateSelfSignedCert() {
+    const attrs = [
+      { name: 'commonName', value: 'localhost' },
+      { name: 'countryName', value: 'US' },
+      { shortName: 'ST', value: 'CA' },
+      { name: 'localityName', value: 'San Francisco' },
+      { name: 'organizationName', value: 'DeepSeek Overlay Helper' },
+      { shortName: 'OU', value: 'Development' }
+    ];
+
+    const opts = {
+      keySize: 2048,
+      days: 365,
+      algorithm: 'sha256',
+      extensions: [
+        {
+          name: 'basicConstraints',
+          cA: true
+        },
+        {
+          name: 'keyUsage',
+          keyCertSign: true,
+          digitalSignature: true,
+          nonRepudiation: true,
+          keyEncipherment: true,
+          dataEncipherment: true
+        },
+        {
+          name: 'subjectAltName',
+          altNames: [
+            {
+              type: 2, // DNS
+              value: 'localhost'
+            },
+            {
+              type: 2, // DNS
+              value: '*.localhost'
+            },
+            {
+              type: 7, // IP
+              ip: '127.0.0.1'
+            },
+            {
+              type: 7, // IP
+              ip: '0.0.0.0'
+            }
+          ]
+        }
+      ]
+    };
+
+    const pems = selfsigned.generate(attrs, opts);
+
+    console.log('[ConversationWebSocketServer] Generated self-signed certificate for HTTPS');
+
+    return {
+      key: pems.private,
+      cert: pems.cert
+    };
+  }
+
   getStats() {
     return {
       isRunning: this.isRunning,

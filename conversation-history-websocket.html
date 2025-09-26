@@ -197,6 +197,16 @@
             color: #6e7681;
         }
 
+        .speech-controls {
+            position: fixed;
+            bottom: 1rem;
+            right: 0.6rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
         .controls {
             position: fixed;
             bottom: 16px;
@@ -237,6 +247,86 @@
 
         .btn.secondary:hover {
             background: #30363d;
+        }
+
+        .btn.speech {
+            background: #8b5cf6;
+            border-color: #a78bfa;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            min-width: unset;
+            padding: 0;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .btn.speech:hover {
+            background: #7c3aed;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+        }
+
+        .btn.speech.recording {
+            background: #dc2626;
+            border-color: #ef4444;
+            animation: pulse 2s infinite;
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+        }
+
+        .btn.speech.recording:hover {
+            background: #b91c1c;
+            box-shadow: 0 6px 16px rgba(220, 38, 38, 0.5);
+        }
+
+        .btn.speech:disabled {
+            background: #374151;
+            border-color: #4b5563;
+            color: #9ca3af;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transform: none;
+        }
+
+        .btn.speech:disabled:hover {
+            background: #374151;
+            transform: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .speech-transcript {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 8px 12px;
+            max-width: 300px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+        }
+
+        .speech-transcript.partial {
+            border-color: #8b5cf6;
+            opacity: 0.7;
+        }
+
+        .speech-transcript.final {
+            border-color: #238636;
+        }
+
+        .speech-status {
+            font-size: 11px;
+            color: #7d8590;
+            text-align: right;
         }
 
         .notification {
@@ -379,6 +469,12 @@
             </div>
         </div>
 
+        <div class="speech-controls" id="speech-controls">
+            <div class="speech-transcript" id="speech-transcript" style="display: none;"></div>
+            <div class="speech-status" id="speech-status"></div>
+            <button class="btn speech" id="speech-btn" onclick="toggleSpeech()" disabled title="Voice Recording">🎤</button>
+        </div>
+
         <div class="controls">
             <button class="btn secondary" id="clear-btn" onclick="clearHistory()" disabled>Clear History</button>
             <button class="btn" id="reconnect-btn" onclick="reconnect()">Reconnect</button>
@@ -394,13 +490,36 @@
         let maxReconnectAttempts = 5;
         let reconnectDelay = 1000;
 
+        // Speech recognition variables
+        let audioStream = null;
+        let isRecording = false;
+        let speechSessionId = null;
+        let currentTranscript = '';
+        let audioContext = null;
+        let processor = null;
+
+        // Audio buffering for optimal streaming
+        let audioBuffer = [];
+        let bufferSize = 0;
+        let targetChunkSize = 4000; // 250ms at 16kHz = 4000 samples = 8000 bytes PCM16
+        let lastChunkTime = 0;
+        let chunkInterval = 250; // Send chunks every 250ms
+        let totalBytesSent = 0;
+        let chunksSent = 0;
+
         // WebSocket URL - dynamically determine host from current page location
-        const WS_URL = `ws://${window.location.host}`;
+        const WS_URL = `wss://${window.location.host}`;
 
         // Initialize the page
         document.addEventListener('DOMContentLoaded', function() {
             connectWebSocket();
-            
+
+            // Initialize speech controls
+            enableSpeechControls(true);
+
+            // Request microphone permission on page load
+            requestMicrophonePermission();
+
             // Handle page visibility changes
             document.addEventListener('visibilitychange', function() {
                 if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN)) {
@@ -424,6 +543,7 @@
                     updateConnectionStatus('connected');
                     reconnectAttempts = 0;
                     enableControls(true);
+                    enableSpeechControls(true);
                     showNotification('Connected to live updates', 'success');
                 };
 
@@ -440,6 +560,7 @@
                     console.log('WebSocket disconnected');
                     updateConnectionStatus('disconnected');
                     enableControls(false);
+                    enableSpeechControls(false);
                     
                     // Attempt to reconnect
                     if (reconnectAttempts < maxReconnectAttempts) {
@@ -457,12 +578,14 @@
                     console.error('WebSocket error:', error);
                     updateConnectionStatus('disconnected');
                     enableControls(false);
+                    enableSpeechControls(false);
                 };
 
             } catch (error) {
                 console.error('Failed to connect WebSocket:', error);
                 updateConnectionStatus('disconnected');
                 enableControls(false);
+                enableSpeechControls(false);
             }
         }
 
@@ -480,7 +603,27 @@
                 case 'clear_acknowledged':
                     showNotification('History cleared', 'info');
                     break;
-                
+
+                case 'speech_started':
+                    handleSpeechStarted(message);
+                    break;
+
+                case 'speech_transcript':
+                    handleSpeechTranscript(message);
+                    break;
+
+                case 'speech_final':
+                    handleSpeechFinal(message);
+                    break;
+
+                case 'speech_stopped':
+                    handleSpeechStopped(message);
+                    break;
+
+                case 'speech_error':
+                    handleSpeechError(message);
+                    break;
+
                 default:
                     console.log('Unknown message type:', message.type);
             }
@@ -642,10 +785,356 @@
 
         // Handle page unload
         window.addEventListener('beforeunload', function() {
+            if (isRecording) {
+                stopSpeechRecording();
+            }
             if (ws) {
                 ws.close();
             }
         });
+
+        // Optimized audio processing functions
+        function convertFloat32ToPCM16(float32Array) {
+            const pcm16 = new Int16Array(float32Array.length);
+            for (let i = 0; i < float32Array.length; i++) {
+                // Clamp to [-1, 1] and convert to 16-bit integer
+                const sample = Math.max(-1, Math.min(1, float32Array[i]));
+                pcm16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            }
+            return pcm16;
+        }
+
+        function bufferAudioData(float32Data) {
+            // Add new audio data to buffer
+            const pcm16Data = convertFloat32ToPCM16(float32Data);
+            audioBuffer.push(pcm16Data);
+            bufferSize += pcm16Data.length;
+
+            // Check if we should send a chunk based on time or size
+            const now = Date.now();
+            const timeSinceLastChunk = now - lastChunkTime;
+
+            if (timeSinceLastChunk >= chunkInterval || bufferSize >= targetChunkSize) {
+                sendBufferedAudio();
+                lastChunkTime = now;
+            }
+        }
+
+        function sendBufferedAudio() {
+            if (audioBuffer.length === 0 || !ws || ws.readyState !== WebSocket.OPEN || !isRecording) {
+                return;
+            }
+
+            // Combine all buffered PCM16 data
+            const totalSamples = bufferSize;
+            const combinedBuffer = new Int16Array(totalSamples);
+            let offset = 0;
+
+            for (const chunk of audioBuffer) {
+                combinedBuffer.set(chunk, offset);
+                offset += chunk.length;
+            }
+
+            // Convert to base64 for transmission
+            const bytes = new Uint8Array(combinedBuffer.buffer);
+            const base64Audio = btoa(String.fromCharCode(...bytes));
+
+            // Send to server
+            ws.send(JSON.stringify({
+                type: 'audio_data',
+                audio: base64Audio,
+                sessionId: speechSessionId
+            }));
+
+            // Update statistics
+            chunksSent++;
+            totalBytesSent += bytes.length;
+
+            console.log(`🎵 [Optimized] Sent chunk ${chunksSent}: ${totalSamples} samples (${bytes.length} bytes)`);
+            console.log(`📊 [Stats] Total: ${totalBytesSent} bytes, Avg chunk: ${Math.round(totalBytesSent / chunksSent)} bytes`);
+
+            // Update UI with new chunk count
+            if (isRecording) {
+                updateSpeechUI();
+            }
+
+            // Clear buffer
+            audioBuffer = [];
+            bufferSize = 0;
+        }
+
+        function resetAudioBuffer() {
+            audioBuffer = [];
+            bufferSize = 0;
+            lastChunkTime = Date.now();
+            totalBytesSent = 0;
+            chunksSent = 0;
+            console.log('🔄 [Buffer] Audio buffer reset');
+        }
+
+        // Request microphone permission on page load
+        async function requestMicrophonePermission() {
+            try {
+                console.log('🎤 [Permission] Requesting microphone permission...');
+                showNotification('Requesting microphone permission...', 'info');
+
+                // Request microphone access to trigger browser permission dialog
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                // Stop the stream immediately after permission is granted
+                stream.getTracks().forEach(track => track.stop());
+
+                console.log('✅ [Permission] Microphone permission granted');
+                showNotification('Microphone permission granted', 'success');
+
+                // Re-enable speech controls now that we have permission
+                enableSpeechControls(true);
+
+            } catch (error) {
+                console.warn('❌ [Permission] Microphone permission denied:', error);
+
+                if (error.name === 'NotAllowedError') {
+                    showNotification('Microphone permission denied. Speech features disabled.', 'error');
+                } else if (error.name === 'NotFoundError') {
+                    showNotification('No microphone found. Speech features disabled.', 'error');
+                } else {
+                    showNotification('Microphone not available. Speech features disabled.', 'error');
+                }
+
+                // Disable speech controls if permission denied
+                enableSpeechControls(false);
+            }
+        }
+
+        // Speech recognition functions
+        function enableSpeechControls(enabled) {
+            const speechBtn = document.getElementById('speech-btn');
+            const speechStatus = document.getElementById('speech-status');
+
+            if (enabled && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                speechBtn.disabled = false;
+                speechStatus.textContent = '';
+            } else {
+                speechBtn.disabled = true;
+                speechStatus.textContent = enabled ? 'Microphone not available' : 'Not connected';
+                if (isRecording) {
+                    stopSpeechRecording();
+                }
+            }
+        }
+
+        async function toggleSpeech() {
+            if (isRecording) {
+                await stopSpeechRecording();
+            } else {
+                await startSpeechRecording();
+            }
+        }
+
+        async function startSpeechRecording() {
+            try {
+                console.log('🎤 [Speech Recording] Starting speech recording...');
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    showNotification('Not connected to server', 'error');
+                    return;
+                }
+
+                // Request microphone access
+                audioStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                // Use AudioWorklet or AudioContext for PCM16 (required by AssemblyAI)
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(audioStream);
+
+                speechSessionId = `speech-${Date.now()}`;
+                currentTranscript = '';
+
+                // Modern approach: AudioWorklet (fallback to ScriptProcessor if needed)
+                let processor;
+                try {
+                    // Try modern AudioWorklet first - optimized for buffering
+                    await audioContext.audioWorklet.addModule('data:text/javascript,class OptimizedPCMProcessor extends AudioWorkletProcessor { process(inputs, outputs) { if (inputs[0] && inputs[0][0]) { this.port.postMessage(inputs[0][0]); } return true; } } registerProcessor("optimized-pcm-processor", OptimizedPCMProcessor);');
+                    processor = new AudioWorkletNode(audioContext, 'optimized-pcm-processor');
+
+                    processor.port.onmessage = function(event) {
+                        if (isRecording) {
+                            const float32Data = event.data;
+                            bufferAudioData(float32Data);
+                        }
+                    };
+                } catch (e) {
+                    // Fallback to ScriptProcessor for older browsers
+                    console.log('🔄 [Audio] AudioWorklet not supported, using ScriptProcessor fallback');
+                    processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                    processor.onaudioprocess = function(event) {
+                        if (isRecording) {
+                            const inputData = event.inputBuffer.getChannelData(0);
+
+                            // Calculate audio level for monitoring
+                            let maxLevel = 0;
+                            for (let i = 0; i < inputData.length; i++) {
+                                maxLevel = Math.max(maxLevel, Math.abs(inputData[i]));
+                            }
+
+                            // Debug: Log audio level periodically
+                            if (maxLevel > 0.01 && Math.random() < 0.1) { // Log ~10% of the time
+                                console.log('🎵 [Audio Level]:', maxLevel.toFixed(3));
+                            }
+
+                            // Use optimized buffering system
+                            bufferAudioData(inputData);
+                        }
+                    };
+
+                    processor.connect(audioContext.destination);
+                }
+
+                source.connect(processor);
+                isRecording = true;
+
+                // Initialize audio buffering
+                resetAudioBuffer();
+
+                // Send start speech message
+                ws.send(JSON.stringify({
+                    type: 'start_speech',
+                    sessionId: speechSessionId,
+                    timestamp: new Date().toISOString()
+                }));
+
+                updateSpeechUI();
+
+            } catch (error) {
+                console.error('Error starting speech recognition:', error);
+                showNotification('Microphone access denied', 'error');
+                stopSpeechRecording();
+            }
+        }
+
+        async function stopSpeechRecording() {
+            try {
+                console.log('🛑 [Speech Recording] Stopping recording...');
+                isRecording = false;
+
+                // Send any remaining buffered audio
+                sendBufferedAudio();
+
+                // Clean up audio resources
+                if (processor) {
+                    processor.disconnect();
+                    processor = null;
+                }
+
+                if (audioContext) {
+                    audioContext.close();
+                    audioContext = null;
+                }
+
+                if (audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                    audioStream = null;
+                }
+
+                if (ws && ws.readyState === WebSocket.OPEN && speechSessionId) {
+                    ws.send(JSON.stringify({
+                        type: 'stop_speech',
+                        sessionId: speechSessionId,
+                        timestamp: new Date().toISOString()
+                    }));
+                }
+
+                // Reset buffer for next session
+                resetAudioBuffer();
+
+                updateSpeechUI();
+
+            } catch (error) {
+                console.error('Error stopping speech recognition:', error);
+            }
+        }
+
+        function updateSpeechUI() {
+            const speechBtn = document.getElementById('speech-btn');
+            const speechStatus = document.getElementById('speech-status');
+
+            if (isRecording) {
+                speechBtn.textContent = '🛑';
+                speechBtn.title = 'Stop Recording';
+                speechBtn.classList.add('recording');
+                speechStatus.textContent = `Recording... (${chunksSent} chunks sent)`;
+            } else {
+                speechBtn.textContent = '🎤';
+                speechBtn.title = 'Start Voice Recording';
+                speechBtn.classList.remove('recording');
+                speechBtn.disabled = false;
+                speechStatus.textContent = '';
+            }
+        }
+
+        function handleSpeechStarted(message) {
+            console.log('Speech recognition started:', message);
+            showNotification('Speech recognition started', 'success');
+        }
+
+        function handleSpeechTranscript(message) {
+            console.log('📝 [Speech Transcript]:', message.text, message.isFinal ? '(FINAL)' : '(partial)');
+
+            const transcriptElement = document.getElementById('speech-transcript');
+
+            if (message.isFinal) {
+                transcriptElement.textContent = currentTranscript + message.text;
+                transcriptElement.className = 'speech-transcript final';
+                currentTranscript += message.text + ' ';
+            } else {
+                transcriptElement.textContent = currentTranscript + message.text;
+                transcriptElement.className = 'speech-transcript partial';
+            }
+
+            transcriptElement.style.display = 'block';
+        }
+
+        function handleSpeechFinal(message) {
+            console.log('Final speech transcript:', message.text);
+
+            const transcriptElement = document.getElementById('speech-transcript');
+            transcriptElement.textContent = message.text;
+            transcriptElement.className = 'speech-transcript final';
+
+            showNotification('Speech processed successfully', 'success');
+
+            // Hide transcript after delay
+            setTimeout(() => {
+                transcriptElement.style.display = 'none';
+            }, 3000);
+        }
+
+        function handleSpeechStopped(message) {
+            console.log('Speech recognition stopped:', message);
+            updateSpeechUI();
+        }
+
+        function handleSpeechError(message) {
+            console.error('Speech recognition error:', message);
+            showNotification(`Speech error: ${message.error}`, 'error');
+            isRecording = false;
+            updateSpeechUI();
+            stopSpeechRecording();
+        }
     </script>
 </body>
 </html>
