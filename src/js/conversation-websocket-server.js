@@ -11,8 +11,9 @@ const { AssemblyAI } = require('assemblyai');
  * WebSocket server for real-time conversation history updates
  */
 class ConversationWebSocketServer {
-  constructor(aiManager, port = 8443) {
+  constructor(aiManager, windowManager, port = 8443) {
     this.aiManager = aiManager;
+    this.windowManager = windowManager;
     this.server = null;
     this.wss = null;
     this.httpServer = null;
@@ -23,7 +24,7 @@ class ConversationWebSocketServer {
     this.assemblyAIConnections = new Map(); // sessionId -> AssemblyAI streaming transcriber
     this.assemblyAIClient = null;
 
-    console.log('[ConversationWebSocketServer] Initialized');
+    console.log('[ConversationWebSocketServer] Initialized with WindowManager integration');
   }
 
   /**
@@ -433,6 +434,16 @@ class ConversationWebSocketServer {
             sessionId: sessionId,
             timestamp: new Date().toISOString()
           }));
+
+          // Send transcription to CodeMirror editor via WindowManager
+          if (this.windowManager) {
+            this.windowManager.send('transcription-to-editor', {
+              text: transcript,
+              sessionId: sessionId,
+              timestamp: new Date().toISOString(),
+              isFinal: true
+            });
+          }
         }
       });
 
@@ -447,6 +458,17 @@ class ConversationWebSocketServer {
             sessionId: sessionId,
             timestamp: new Date().toISOString()
           }));
+
+          // For final transcripts, also send to CodeMirror editor via WindowManager
+          // Only send final transcripts to avoid cluttering the editor with partial results
+          if (message.message_type === 'FinalTranscript' && this.windowManager) {
+            this.windowManager.send('transcription-to-editor', {
+              text: text,
+              sessionId: sessionId,
+              timestamp: new Date().toISOString(),
+              isFinal: true
+            });
+          }
         }
       });
 
