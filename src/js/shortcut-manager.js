@@ -47,14 +47,7 @@ class ShortcutManager {
       this.windowManager.send('trigger-screenshot-region');
     });
 
-    // Recording Functions (R = Record, T = sTop)
-    globalShortcut.register(`${primary}+R`, () => {
-      this.windowManager.send('start-speech-recording');
-    });
-
-    globalShortcut.register(`${primary}+T`, () => {
-      this.windowManager.send('stop-speech-recording');
-    });
+    // Note: Speech recording is now handled via WebSocket in browser
 
     // Window Movement (Arrow Keys = natural directional mapping)
     ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {

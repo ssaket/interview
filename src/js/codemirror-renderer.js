@@ -67,12 +67,15 @@ class CodeMirrorRenderer {
     addListener('trigger-overlay-region-screenshot', () => this.handleScreenshot());
     addListener('trigger-screenshot-region', () => this.handleScreenshot());
 
-    // Speech events
-    addListener('start-speech-recording', () => this.handleSpeechStart());
-    addListener('stop-speech-recording', () => this.handleSpeechStop());
+    // Note: Speech recording is now handled via WebSocket in browser
     addListener('speech-status-update', (event, status) => this.updateSpeechStatus(status));
     addListener('transcription-received', (event, text, metadata) => {
       this.handleTranscription(text, metadata);
+    });
+
+    // WebSocket transcription to editor integration
+    addListener('transcription-to-editor', (event, data) => {
+      this.handleTranscriptionToEditor(data);
     });
 
     // AI events
@@ -188,16 +191,7 @@ class CodeMirrorRenderer {
     }
   }
 
-  // Speech handling
-  handleSpeechStart() {
-    this.updateSpeechStatus('recording');
-    this.showTransientMessage('🎤 Recording started...', 1500);
-  }
-
-  handleSpeechStop() {
-    this.updateSpeechStatus('processing');
-    this.showTransientMessage('📝 Processing audio...', 2000);
-  }
+  // Note: Speech recording handlers removed - now handled via WebSocket in browser
 
   updateSpeechStatus(status) {
     const statusMap = {
@@ -221,6 +215,43 @@ class CodeMirrorRenderer {
     setTimeout(() => {
       this.updateSpeechStatus('idle');
     }, 3000);
+  }
+
+  /**
+   * Handle transcription from WebSocket and append to CodeMirror editor
+   * @param {Object} data - Transcription data with text, sessionId, timestamp
+   */
+  handleTranscriptionToEditor(data) {
+    try {
+      if (!this.interface || !data.text || !data.text.trim()) {
+        console.warn('[CodeMirrorRenderer] Invalid transcription data:', data);
+        return;
+      }
+
+      const transcriptionText = data.text.trim();
+      console.log(`📋 [CodeMirrorRenderer] Appending transcription to editor: "${transcriptionText}"`);
+
+      // Get current content
+      const currentContent = this.interface.getContent() || '';
+
+      // Append transcription with proper formatting
+      const separator = currentContent ? '\n\n' : '';
+      const formattedText = `${separator}${transcriptionText}`;
+
+      // Append to editor
+      this.interface.appendContent(formattedText, false);
+
+      // Show feedback message
+      this.showTransientMessage(`📝 Voice text added: "${transcriptionText}"`, 2500);
+
+      // Update speech status
+      this.updateSpeechStatus('completed');
+      setTimeout(() => this.updateSpeechStatus('idle'), 2000);
+
+    } catch (error) {
+      console.error('[CodeMirrorRenderer] Error handling transcription to editor:', error);
+      this.showPersistentMessage(`❌ Failed to add voice text: ${error.message}`);
+    }
   }
 
   // Integrated speech-to-AI workflow

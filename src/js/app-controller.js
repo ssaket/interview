@@ -2,7 +2,6 @@ const { app, ipcMain, desktopCapturer, nativeImage, screen } = require('electron
 const WindowManager = require('./window-manager');
 const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
-const SpeechToTextService = require('./speech-to-text-service');
 const ConversationWebSocketServer = require('./conversation-websocket-server');
 const CodeDetector = require('./codedetector');
 
@@ -10,9 +9,8 @@ class AppController {
   constructor() {
     this.windowManager = new WindowManager();
     this.aiManager = new SimpleAIManager(this);
-    this.conversationWebSocketServer = new ConversationWebSocketServer(this.aiManager);
+    this.conversationWebSocketServer = new ConversationWebSocketServer(this.aiManager, this.windowManager);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
-    this.speechService = new SpeechToTextService();
     this.ocrFilteringEnabled = true;
 
     // Track OCR context for initial query detection
@@ -29,8 +27,6 @@ class AppController {
     this.originalResponses = new Map();
     this.currentSyntaxMode = 'ALL'; // 'ALL' or 'CODE_ONLY'
 
-    // Set up speech service callbacks
-    this.setupSpeechCallbacks();
 
     // Start WebSocket server
     this.startWebSocketServer();
@@ -429,43 +425,6 @@ class AppController {
       }
     });
 
-    /* ------------ Speech-to-Text ------------ */
-    ipcMain.handle('start-speech-recording', async () => {
-      try {
-        await this.speechService.startRecording();
-        return { success: true };
-      } catch (error) {
-        console.error('Failed to start speech recording:', error);
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle('stop-speech-recording', async () => {
-      try {
-        this.speechService.stopRecording();
-        return { success: true };
-      } catch (error) {
-        console.error('Failed to stop speech recording:', error);
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle('get-speech-status', async () => {
-      return this.speechService.getStatus();
-    });
-
-    ipcMain.handle(
-      'set-speech-language',
-      async (_event, languageCode, useAutoDetection = false) => {
-        try {
-          this.speechService.setLanguage(languageCode, useAutoDetection);
-          return { success: true, config: this.speechService.getLanguageConfigDescription() };
-        } catch (error) {
-          console.error('Failed to set speech language:', error);
-          return { success: false, error: error.message };
-        }
-      }
-    );
 
     ipcMain.handle('speech-to-ai', async (_event, speechText, options = {}) => {
       try {
@@ -727,30 +686,6 @@ class AppController {
     this.windowManager.send('session-length', sess.history.length);
   }
 
-  /**
-   * Set up callbacks for the speech-to-text service
-   */
-  setupSpeechCallbacks() {
-    this.speechService.setCallbacks({
-      onTranscriptReceived: async (text, metadata) => {
-        console.log('Transcription received:', text);
-        this.windowManager.send('transcription-received', text, metadata);
-
-        // Auto-submit speech to AI if we have OCR context or ongoing conversation
-        if (text && text.trim()) {
-          await this.handleSpeechToAI(text, metadata);
-        }
-      },
-      onError: (error) => {
-        console.error('Speech service error:', error);
-        this.windowManager.send('speech-error', error);
-      },
-      onStatusChange: (status, message) => {
-        console.log('Speech status change:', status, message);
-        this.windowManager.send('speech-status-update', status, message);
-      },
-    });
-  }
 
   /**
    * Handle speech-to-text result by sending it to AI
