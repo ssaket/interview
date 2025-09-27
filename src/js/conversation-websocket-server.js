@@ -393,16 +393,6 @@ class ConversationWebSocketServer {
           sessionId: sessionId,
           timestamp: new Date().toISOString()
         }));
-
-        // Send queued audio if any
-        const connection = this.assemblyAIConnections.get(sessionId);
-        if (connection && connection.audioQueue.length > 0) {
-          console.log(`📦 [AssemblyAI] Sending ${connection.audioQueue.length} queued audio chunks`);
-          connection.audioQueue.forEach(audioData => {
-            rt.sendAudio(audioData);
-          });
-          connection.audioQueue = [];
-        }
       });
 
       // Add comprehensive event logging to debug
@@ -459,16 +449,7 @@ class ConversationWebSocketServer {
             timestamp: new Date().toISOString()
           }));
 
-          // For final transcripts, also send to CodeMirror editor via WindowManager
-          // Only send final transcripts to avoid cluttering the editor with partial results
-          if (message.message_type === 'FinalTranscript' && this.windowManager) {
-            this.windowManager.send('transcription-to-editor', {
-              text: text,
-              sessionId: sessionId,
-              timestamp: new Date().toISOString(),
-              isFinal: true
-            });
-          }
+          // Note: No CodeMirror integration here - only partial transcripts for WebSocket clients
         }
       });
 
@@ -496,8 +477,7 @@ class ConversationWebSocketServer {
       // Store the connection
       this.assemblyAIConnections.set(sessionId, {
         transcriber: rt,
-        connected: true,
-        audioQueue: []
+        connected: true
       });
 
       console.log(`✅ [AssemblyAI] Successfully connected for session: ${sessionId}`);
@@ -531,13 +511,12 @@ class ConversationWebSocketServer {
       console.log(`🎵 [AssemblyAI] Audio chunk details: ${audioBuffer.length} bytes, first few bytes:`, audioBuffer.subarray(0, 8));
 
       if (connection.connected && connection.transcriber) {
-        // Send immediately using SDK
+        // Send directly to AssemblyAI - no buffering
         connection.transcriber.sendAudio(audioBuffer);
-        console.log(`✅ [AssemblyAI] Sent audio chunk: ${audioBuffer.length} bytes`);
+        console.log(`✅ [AssemblyAI] Sent audio chunk directly: ${audioBuffer.length} bytes`);
       } else {
-        // Queue audio until connection is ready
-        connection.audioQueue.push(audioBuffer);
-        console.log(`📦 [AssemblyAI] Queued audio chunk: ${audioBuffer.length} bytes (queue: ${connection.audioQueue.length})`);
+        // Drop audio if connection not ready - real-time audio should be processed real-time
+        console.log(`⚠️ [AssemblyAI] Dropping audio chunk - connection not ready for session: ${sessionId}`);
       }
     } catch (error) {
       console.error(`❌ [AssemblyAI] Error forwarding audio for session ${sessionId}:`, error);

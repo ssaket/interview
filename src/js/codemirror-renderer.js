@@ -234,8 +234,9 @@ class CodeMirrorRenderer {
       // Get current content
       const currentContent = this.interface.getContent() || '';
 
-      // Append transcription with proper formatting
-      const separator = currentContent ? '\n\n' : '';
+      // Concatenate transcription into one continuous paragraph
+      // Only add a space separator if there's existing content, no line breaks
+      const separator = currentContent && !currentContent.endsWith(' ') ? ' ' : '';
       const formattedText = `${separator}${transcriptionText}`;
 
       // Append to editor
