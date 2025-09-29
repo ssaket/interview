@@ -9,6 +9,7 @@ const { python } = require('@codemirror/lang-python');
 const { markdown } = require('@codemirror/lang-markdown');
 const { syntaxHighlighting, defaultHighlightStyle } = require('@codemirror/language');
 
+
 /**
  * Ultra-minimal working CodeMirror interface
  */
@@ -37,6 +38,8 @@ class UltraMinimalCodeMirrorInterface {
     // Transient message tracking
     this.transientMessages = new Map(); // messageId -> { startPos, endPos, timer }
     this.messageIdCounter = 0;
+
+    // Math formula detection for notification
 
     this.initialize();
   }
@@ -74,6 +77,8 @@ class UltraMinimalCodeMirrorInterface {
         // Dynamic language compartments based on mode
         this.languageCompartments.python.of(python()),
         this.languageCompartments.markdown.of(this.syntaxMode === 0 ? markdown() : []),
+
+        // No additional extensions needed for math formula detection
       ];
 
       // Create state with dynamic extensions
@@ -388,6 +393,7 @@ Activity log:
   // AI response handling - always clear completely for fresh responses
   startAIResponse(message = 'AI is processing your request...') {
     // Always clear completely - conversation history is on WebSocket page
+    // this.clearMathFormulas();
     this.clearToJustStatus();
   }
 
@@ -440,6 +446,51 @@ Activity log:
 
   completeAIResponse() {
     this.appendContent('', false);
+
+    // Add visual indication that math formulas are present
+    this.highlightMathFormulas();
+  }
+
+  /**
+   * Add visual indicators for LaTeX math formulas in the text
+   */
+  highlightMathFormulas() {
+    if (!this.editor) return;
+
+    try {
+      const text = this.editor.state.doc.toString();
+      const blockMathRegex = /\$\$([^$]+)\$\$/g;
+      const inlineMathRegex = /(?<!\$)\$([^$\n]+)\$(?!\$)/g;
+
+      let blockMathCount = 0;
+      let inlineMathCount = 0;
+
+      // Count block math formulas
+      let match;
+      while ((match = blockMathRegex.exec(text)) !== null) {
+        if (match[1].trim()) blockMathCount++;
+      }
+
+      // Count inline math formulas
+      while ((match = inlineMathRegex.exec(text)) !== null) {
+        if (match[1].trim()) inlineMathCount++;
+      }
+
+      // Show a message about detected math formulas
+      if (blockMathCount > 0 || inlineMathCount > 0) {
+        const mathSummary = [];
+        if (inlineMathCount > 0) mathSummary.push(`${inlineMathCount} inline math`);
+        if (blockMathCount > 0) mathSummary.push(`${blockMathCount} display math`);
+
+        this.appendTransientContent(
+          `📐 LaTeX Math detected: ${mathSummary.join(', ')} - Use browser view for rendered formulas`,
+          4000,
+          false
+        );
+      }
+    } catch (error) {
+      console.warn('Failed to highlight math formulas:', error);
+    }
   }
 
   // Debounced operation helper for rapid toggles
@@ -516,6 +567,7 @@ Activity log:
   }
 
   clearContent() {
+    // this.clearMathFormulas();
     this.setContent(this.getInitialDocument());
   }
 

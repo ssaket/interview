@@ -164,21 +164,16 @@ class DeepSeekFormatter {
   }
 
   /**
-   * Render a LaTeX math formula to HTML
+   * Render a LaTeX math formula to HTML (placeholder for browser-side rendering)
    * @param {string} formula - LaTeX formula
    * @param {boolean} displayMode - True for block display, false for inline
-   * @returns {string} Rendered HTML
+   * @returns {string} HTML with LaTeX preserved for browser-side KaTeX rendering
    */
   renderMathFormula(formula, displayMode = false) {
-    // Escape the formula for safety
-    const escapedFormula = this.escapeHtml(formula);
-
-    // For now, return a styled span that can be rendered by KaTeX on the frontend
-    // The actual rendering will happen in the browser using KaTeX
+    // Return LaTeX formulas as-is for browser-side KaTeX rendering
     const className = displayMode ? 'math-block' : 'math-inline';
-    const displayAttr = displayMode ? ' data-display="true"' : '';
-
-    return `<span class="${className}" data-formula="${escapedFormula}"${displayAttr}>${escapedFormula}</span>`;
+    const mathDelimiter = displayMode ? '$$' : '$';
+    return `<span class="${className}">${mathDelimiter}${this.escapeHtml(formula.trim())}${mathDelimiter}</span>`;
   }
 
   highlightCode(code, lang) {
