@@ -395,61 +395,35 @@ class ConversationWebSocketServer {
         }));
       });
 
-      // Add comprehensive event logging to debug
-      const originalEmit = rt.emit;
-      rt.emit = function(event, ...args) {
-        console.log(`📡 [AssemblyAI Event: ${event}]`, ...args);
-        return originalEmit.call(this, event, ...args);
-      };
+      // Removed debug event interception to prevent interference
 
-      // Try intercepting WebSocket messages directly if possible
-      if (rt.ws) {
-        const originalWsOnMessage = rt.ws.onmessage;
-        rt.ws.onmessage = function(event) {
-          console.log('🔍 [AssemblyAI Raw WS Message]:', event.data);
-          if (originalWsOnMessage) {
-            originalWsOnMessage.call(this, event);
-          }
-        };
-      }
+      // Removed "turn" event handler to prevent duplicates
 
-      // Use the correct documented event names
-      rt.on("turn", ({ transcript }) => {
-        console.log(`📝 [AssemblyAI] turn event - transcript: "${transcript}"`);
-        if (transcript && clientWS.readyState === WebSocket.OPEN) {
+      rt.on("transcript", (message) => {
+        const text = message.text || message.transcript || '';
+        const isFinal = message.message_type === 'FinalTranscript';
+
+        console.log(`📝 [AssemblyAI] ${isFinal ? 'FINAL' : 'PARTIAL'} transcript: "${text}"`);
+
+        if (text && clientWS.readyState === WebSocket.OPEN) {
+          // Send all transcripts (partial and final) to WebSocket clients for real-time feedback
           clientWS.send(JSON.stringify({
             type: 'speech_transcript',
-            text: transcript,
-            isFinal: true,  // Turn events are typically final
+            text: text,
+            isFinal: isFinal,
             sessionId: sessionId,
             timestamp: new Date().toISOString()
           }));
 
-          // Send transcription to CodeMirror editor via WindowManager
-          if (this.windowManager) {
+          // Only send FINAL transcripts to CodeMirror editor
+          if (isFinal && this.windowManager) {
             this.windowManager.send('transcription-to-editor', {
-              text: transcript,
+              text: text,
               sessionId: sessionId,
               timestamp: new Date().toISOString(),
               isFinal: true
             });
           }
-        }
-      });
-
-      rt.on("transcript", (message) => {
-        console.log(`📝 [AssemblyAI] transcript event:`, message);
-        const text = message.text || message.transcript || '';
-        if (text && clientWS.readyState === WebSocket.OPEN) {
-          clientWS.send(JSON.stringify({
-            type: 'speech_transcript',
-            text: text,
-            isFinal: false,  // Transcript events are typically partial
-            sessionId: sessionId,
-            timestamp: new Date().toISOString()
-          }));
-
-          // Note: No CodeMirror integration here - only partial transcripts for WebSocket clients
         }
       });
 
