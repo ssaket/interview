@@ -3,7 +3,6 @@ const WindowManager = require('./window-manager');
 const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
 const ConversationWebSocketServer = require('./conversation-websocket-server');
-const CodeDetector = require('./codedetector');
 
 class AppController {
   constructor() {
@@ -68,15 +67,6 @@ class AppController {
       mode: newMode,
       previousMode: newMode === 'ALL' ? 'CODE_ONLY' : 'ALL',
     };
-  }
-
-  /**
-   * Extract code content from text using CodeDetector
-   * @param {string} content - The content to extract code from
-   * @returns {string} Extracted code content
-   */
-  extractCodeFromContent(content) {
-    return CodeDetector.extractCodeFromContent(content);
   }
 
   /* ---------- IPC handlers ---------- */
