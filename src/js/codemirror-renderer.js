@@ -6,12 +6,16 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
 const CodeMirrorInterface = require(path.join(__dirname, 'src', 'js', 'codemirror-interface'));
+const InterviewCodeFormatter = require(path.join(__dirname, 'src', 'js', 'formatter'));
 
 class CodeMirrorRenderer {
   constructor() {
     this.interface = null;
     this.sessionCount = 0;
     this.aiFlow = 'LOCAL';
+
+    // Initialize Python-focused formatter
+    this.formatter = new InterviewCodeFormatter();
 
     // Content storage for code-only toggle
     this.originalContent = null;
@@ -229,7 +233,9 @@ class CodeMirrorRenderer {
       }
 
       const transcriptionText = data.text.trim();
-      console.log(`📋 [CodeMirrorRenderer] Appending transcription to editor: "${transcriptionText}"`);
+      console.log(
+        `📋 [CodeMirrorRenderer] Appending transcription to editor: "${transcriptionText}"`
+      );
 
       // Get current content
       const currentContent = this.interface.getContent() || '';
@@ -248,7 +254,6 @@ class CodeMirrorRenderer {
       // Update speech status
       this.updateSpeechStatus('completed');
       setTimeout(() => this.updateSpeechStatus('idle'), 2000);
-
     } catch (error) {
       console.error('[CodeMirrorRenderer] Error handling transcription to editor:', error);
       this.showPersistentMessage(`❌ Failed to add voice text: ${error.message}`);
@@ -685,76 +690,24 @@ class CodeMirrorRenderer {
   }
 
   /**
-   * Extract only code blocks and inline code from content (synchronous)
+   * Extract only Python code blocks from content using InterviewCodeFormatter
    * @param {string} content - Full content to filter
-   * @returns {string} Content with only code
+   * @returns {string} Content with only Python code blocks
    */
   extractCodeFromContent(content) {
-    const lines = content.split('\n');
-    const codeLines = [];
-    let inCodeBlock = false;
-    let codeBlockLanguage = '';
+    try {
+      // Use the InterviewCodeFormatter to extract Python code with codeOnly=true
+      const result = this.formatter.formatResponse(content, true, true);
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // Check for fenced code block start
-      const codeBlockMatch = line.match(/^```(\w+)?/);
-      if (codeBlockMatch) {
-        if (!inCodeBlock) {
-          // Starting a code block
-          inCodeBlock = true;
-          codeBlockLanguage = codeBlockMatch[1] || '';
-          codeLines.push(
-            `## ${codeBlockLanguage ? codeBlockLanguage.toUpperCase() + ' ' : ''}Code Block`
-          );
-          codeLines.push('```' + codeBlockLanguage);
-        } else {
-          // Ending a code block
-          codeLines.push('```');
-          codeLines.push(''); // Add spacing between blocks
-          inCodeBlock = false;
-          codeBlockLanguage = '';
-        }
-        continue;
+      if (!result.hasCode || !result.text || !result.text.trim()) {
+        return '## No Python Code Found\n\nThe current content does not contain any substantial Python code blocks.\n\nMake sure your AI response includes Python code in ```python blocks, especially in the "Optimised solution" section.';
       }
 
-      // If inside code block, include the line
-      if (inCodeBlock) {
-        codeLines.push(line);
-        continue;
-      }
-
-      // Check for inline code (lines with backticks)
-      if (line.includes('`')) {
-        const inlineCodeMatches = line.match(/`([^`]+)`/g);
-        if (inlineCodeMatches) {
-          codeLines.push(`## Inline Code`);
-          inlineCodeMatches.forEach((match) => {
-            const code = match.replace(/`/g, '');
-            if (code.trim()) {
-              codeLines.push(code.trim());
-            }
-          });
-          codeLines.push(''); // Add spacing
-        }
-        continue;
-      }
-
-      // Check for indented code (4+ spaces at start)
-      if (line.match(/^    \S/)) {
-        // This looks like indented code
-        codeLines.push(line);
-        continue;
-      }
+      return result.text;
+    } catch (error) {
+      console.error('Failed to extract Python code:', error);
+      return '## Code Extraction Error\n\nFailed to process content for Python code extraction. Please try again.';
     }
-
-    // If no code found, return a message
-    if (codeLines.length === 0) {
-      return '## No Code Blocks Found\n\nThe current content does not contain any recognizable code blocks or inline code.';
-    }
-
-    return codeLines.join('\n');
   }
 
   /**

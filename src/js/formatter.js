@@ -1,15 +1,31 @@
-class DeepSeekFormatter {
+class InterviewCodeFormatter {
   constructor() {
-    this.codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    this.thinkingRegex = /<think>[\s\S]*?<\/think>/gi;
+    // Python code block patterns (strict)
+    this.pythonCodeRegex = /```(?:python|py)\n([\s\S]*?)```/g;
+
+    // Interview section patterns
+    this.optimizedSectionRegex = /###?\s*(?:Optimized?|Optimal)\s*(?:solution|approach|algorithm)[\s\S]*?(?=###|$)/i;
+    this.bruteForceRegex = /###?\s*(?:Brute.?force|Brute.force)\s*(?:reasoning|approach|solution)[\s\S]*?(?=###|$)/i;
+    this.exampleSectionRegex = /###?\s*(?:Guided?\s*)?(?:examples?|walkthrough)[\s\S]*?(?=###|$)/i;
+
+    // LaTeX formulas (preserve for browser rendering)
     this.blockMathRegex = /\$\$([^$]+)\$\$/g;
     this.inlineMathRegex = /(?<!\$)\$([^$\n]+)\$(?!\$)/g;
+
+    // Thinking blocks to remove
+    this.thinkingRegex = /<think>[\s\S]*?<\/think>/gi;
+
+    // Minimum code length to consider (filters out tiny snippets)
+    this.minCodeLength = 50;
+    this.minSignificantLength = 100; // For "main" algorithms
   }
 
   /**
-   * @param {string} raw – raw model response
-   * @param {boolean} formatterEnabled – bypass if false
-   * @param {boolean} codeOnly – if true, only show code blocks in output
+   * Extract Python code with interview-aware prioritization
+   * @param {string} raw - Raw AI response
+   * @param {boolean} formatterEnabled - Enable/disable formatting
+   * @param {boolean} codeOnly - Show only code blocks
+   * @returns {Object} Formatted result with prioritized Python code
    */
   formatResponse(raw, formatterEnabled = true, codeOnly = true) {
     if (!raw || typeof raw !== 'string') {
@@ -20,195 +36,268 @@ class DeepSeekFormatter {
       return { text: raw, html: this.escapeHtml(raw), hasCode: false };
     }
 
-    // Normalize custom "[LANG CODE]" headings into fenced blocks
-    raw = raw.replace(/^\[ *([A-Za-z]+) CODE *\]\s*$/gim, (_, lang) => '```' + lang.toLowerCase());
+    // Remove thinking blocks first
+    raw = raw.replace(this.thinkingRegex, '').trim();
 
-    // --- Split into code and non-code segments, preserving order ---
-    const segments = [];
-    let lastIndex = 0;
-    let m;
-    while ((m = this.codeBlockRegex.exec(raw)) !== null) {
-      if (m.index > lastIndex) {
-        segments.push({ type: 'text', content: raw.slice(lastIndex, m.index) });
+    // Extract interview sections
+    const sections = this.extractInterviewSections(raw);
+
+    // Extract and prioritize Python code blocks
+    const codeBlocks = this.extractPythonCode(raw, sections);
+
+    if (!codeOnly) {
+      // Return full formatted content with LaTeX support
+      return this.formatFullResponse(raw, codeBlocks);
+    }
+
+    // Code-only mode: return prioritized Python algorithms
+    return this.formatCodeOnly(codeBlocks);
+  }
+
+  /**
+   * Extract interview sections based on your 3-phase structure
+   */
+  extractInterviewSections(text) {
+    const sections = {};
+
+    const optimizedMatch = text.match(this.optimizedSectionRegex);
+    if (optimizedMatch) {
+      sections.optimized = optimizedMatch[0];
+    }
+
+    const bruteForceMatch = text.match(this.bruteForceRegex);
+    if (bruteForceMatch) {
+      sections.bruteForce = bruteForceMatch[0];
+    }
+
+    const exampleMatch = text.match(this.exampleSectionRegex);
+    if (exampleMatch) {
+      sections.examples = exampleMatch[0];
+    }
+
+    return sections;
+  }
+
+  /**
+   * Extract Python code blocks with smart prioritization
+   */
+  extractPythonCode(text, sections) {
+    const codeBlocks = [];
+    let match;
+
+    // Reset regex
+    this.pythonCodeRegex.lastIndex = 0;
+
+    while ((match = this.pythonCodeRegex.exec(text)) !== null) {
+      const code = match[1].trim();
+
+      // Filter out tiny snippets (likely not main algorithms)
+      if (code.length < this.minCodeLength) {
+        continue;
       }
-      segments.push({ type: 'code', language: m[1] || 'text', content: m[2] });
-      lastIndex = this.codeBlockRegex.lastIndex;
-    }
-    if (lastIndex < raw.length) {
-      segments.push({ type: 'text', content: raw.slice(lastIndex) });
-    }
 
-    // --- Build outputs ---
-    const plain = [],
-      html = [];
-    let hasCode = false;
+      // Determine section and priority
+      const position = match.index;
+      let section = 'unknown';
+      let priority = 3;
 
-    for (const seg of segments) {
-      if (seg.type === 'code') {
-        hasCode = true;
-        plain.push(`\n[${seg.language.toUpperCase()} CODE]\n${seg.content}\n`);
-        html.push(
-          `<div class="code-section">
-            <div class="code-language">${seg.language.toUpperCase()}</div>
-            <pre class="code-block"><code>${this.highlightCode(
-              this.escapeHtml(seg.content),
-              seg.language
-            )}</code></pre>
-          </div>`
-        );
-      } else if (!codeOnly) {
-        // Remove <think>...</think> and trim
-        let cleaned = seg.content.replace(this.thinkingRegex, '').trim();
-        if (!cleaned) continue;
-
-        // Markdown headers
-        cleaned = cleaned.replace(/^#### (.*)$/gm, '<div class="response-header h4">$1</div>');
-        cleaned = cleaned.replace(/^### (.*)$/gm, '<div class="response-header h3">$1</div>');
-        cleaned = cleaned.replace(/^## (.*)$/gm, '<div class="response-header h2">$1</div>');
-        cleaned = cleaned.replace(/^# (.*)$/gm, '<div class="response-header h1">$1</div>');
-
-        // Lists
-        cleaned = cleaned.replace(/^\s*[-*] (.*)$/gm, '<li>$1</li>');
-        // Wrap consecutive <li> in <ul>
-        cleaned = cleaned.replace(/(<li>.*?<\/li>)/gs, '<ul>$1</ul>');
-
-        // Process math formulas before other formatting
-        cleaned = this.processMathFormulas(cleaned);
-
-        // Bold, italic, inline code
-        cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        cleaned = cleaned.replace(/\*(.*?)\*/g, '<em>$1</em>');
-        cleaned = cleaned.replace(/`([^`]+)`/g, '<span class="inline-code">$1</span>');
-
-        // Complexity and reasoning highlights
-        cleaned = cleaned.replace(
-          /📊 (.*?(?:Time|Space).*?Complexity.*?O\([^)]+\).*?)$/gm,
-          '<div class="complexity-section"><span class="complexity-icon">📊</span><span class="complexity-text">$1</span></div>'
-        );
-        cleaned = cleaned.replace(
-          /💭 REASONING:\n([\s\S]*?)(?=\n\n|\n$|$)/g,
-          '<div class="thinking-section"><div class="thinking-header">💭 Reasoning Process</div><div class="thinking-content">$1</div></div>'
-        );
-
-        // Paragraphs for remaining text (split by double newlines)
-        cleaned.split(/\n{2,}/).forEach((paragraph) => {
-          if (paragraph.trim()) {
-            html.push(`<p class="text-section">${paragraph.trim()}</p>`);
-            plain.push(paragraph.trim());
-          }
-        });
+      // Check which section this code belongs to
+      if (sections.optimized) {
+        const optStart = text.indexOf(sections.optimized);
+        const optEnd = optStart + sections.optimized.length;
+        if (position >= optStart && position <= optEnd) {
+          section = 'optimized';
+          priority = 1; // Highest priority
+        }
       }
+
+      if (sections.bruteForce && section === 'unknown') {
+        const bruteStart = text.indexOf(sections.bruteForce);
+        const bruteEnd = bruteStart + sections.bruteForce.length;
+        if (position >= bruteStart && position <= bruteEnd) {
+          section = 'bruteForce';
+          priority = 2;
+        }
+      }
+
+      if (sections.examples && section === 'unknown') {
+        const exStart = text.indexOf(sections.examples);
+        const exEnd = exStart + sections.examples.length;
+        if (position >= exStart && position <= exEnd) {
+          section = 'examples';
+          priority = 4; // Lower priority (examples, not main code)
+        }
+      }
+
+      // Boost priority for longer, more complete algorithms
+      if (code.length >= this.minSignificantLength) {
+        priority = Math.max(1, priority - 1);
+      }
+
+      // Check for algorithm indicators (functions, classes, complexity)
+      if (this.isAlgorithmCode(code)) {
+        priority = Math.max(1, priority - 1);
+      }
+
+      codeBlocks.push({
+        code,
+        section,
+        priority,
+        length: code.length,
+        position
+      });
     }
+
+    // Sort by priority (lower number = higher priority)
+    return codeBlocks.sort((a, b) => a.priority - b.priority || b.length - a.length);
+  }
+
+  /**
+   * Check if code looks like a main algorithm (not just examples)
+   */
+  isAlgorithmCode(code) {
+    // Look for function definitions
+    if (/def\s+\w+\s*\(/m.test(code)) return true;
+
+    // Look for class definitions
+    if (/class\s+\w+/m.test(code)) return true;
+
+    // Look for common algorithm patterns
+    if (/(?:for|while).*:[\s\S]*(?:return|yield)/m.test(code)) return true;
+
+    // Look for data structures
+    if (/(?:list|dict|set|heap|queue|stack|tree|graph)/i.test(code)) return true;
+
+    // Look for algorithm keywords
+    if (/(?:sort|search|traverse|visit|dp|memo|cache|optimize)/i.test(code)) return true;
+
+    return false;
+  }
+
+  /**
+   * Format for code-only mode - show prioritized Python algorithms
+   */
+  formatCodeOnly(codeBlocks) {
+    if (codeBlocks.length === 0) {
+      return {
+        text: '## No Python Algorithms Found\n\nThe response does not contain any substantial Python code blocks.',
+        html: '<div class="no-code">No Python algorithms found in the response.</div>',
+        hasCode: false
+      };
+    }
+
+    const plain = [];
+    const html = [];
+
+    // Show top priority code blocks (usually 1-2 main algorithms)
+    const topBlocks = codeBlocks.slice(0, 2); // Show at most 2 blocks
+
+    topBlocks.forEach((block, index) => {
+      const sectionLabel = this.getSectionLabel(block.section);
+      const title = `## ${sectionLabel}${topBlocks.length > 1 ? ` (${index + 1})` : ''}`;
+
+      plain.push(`${title}\n\`\`\`python\n${block.code}\n\`\`\`\n`);
+
+      html.push(`
+        <div class="code-section">
+          <div class="code-language">${sectionLabel}</div>
+          <pre class="code-block"><code class="python">${this.highlightPython(this.escapeHtml(block.code))}</code></pre>
+        </div>
+      `);
+    });
 
     return {
-      text: plain
-        .join('\n\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim(),
+      text: plain.join('\n').trim(),
       html: `<div class="formatted-response">\n${html.join('\n')}\n</div>`,
-      hasCode,
+      hasCode: true
     };
   }
 
-  // --- helpers ---
-  escapeHtml(s) {
-    return s
+  /**
+   * Get human-readable section labels
+   */
+  getSectionLabel(section) {
+    const labels = {
+      optimized: 'Optimized Solution',
+      bruteForce: 'Brute-force Solution',
+      examples: 'Example Code',
+      unknown: 'Python Algorithm'
+    };
+    return labels[section] || 'Python Code';
+  }
+
+  /**
+   * Format full response (when codeOnly = false)
+   */
+  formatFullResponse(raw, codeBlocks) {
+    // Process LaTeX formulas
+    let processed = this.processMathFormulas(raw);
+
+    // Basic markdown formatting (focused on structure, not inline code)
+    processed = processed
+      .replace(/```python\n[\s\S]*?```/g, '[PYTHON_CODE_BLOCK]') // Placeholder for code blocks
+      .replace(/```\w*\n[\s\S]*?```/g, '<pre><code>$&</code></pre>') // Other code blocks
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.*)$/gm, '<h1>$1</h1>');
+
+    // Replace Python code block placeholders
+    let codeIndex = 0;
+    processed = processed.replace(/\[PYTHON_CODE_BLOCK\]/g, () => {
+      if (codeIndex < codeBlocks.length) {
+        const block = codeBlocks[codeIndex++];
+        return `<div class="code-section">
+          <div class="code-language">${this.getSectionLabel(block.section)}</div>
+          <pre class="code-block"><code class="python">${this.highlightPython(this.escapeHtml(block.code))}</code></pre>
+        </div>`;
+      }
+      return '';
+    });
+
+    return {
+      text: raw,
+      html: `<div class="formatted-response">${processed}</div>`,
+      hasCode: codeBlocks.length > 0
+    };
+  }
+
+  /**
+   * Process LaTeX math formulas (preserve for browser rendering)
+   */
+  processMathFormulas(text) {
+    // LaTeX formulas are preserved as-is for browser-side KaTeX rendering
+    return text;
+  }
+
+  /**
+   * Simple Python syntax highlighting
+   */
+  highlightPython(code) {
+    return code
+      // Comments
+      .replace(/(#.*?$)/gm, '<span class="comment">$1</span>')
+      // Strings (after comments to avoid conflicts)
+      .replace(/(?<!<span class="comment">.*?)(".*?"|'.*?')/g, '<span class="string">$1</span>')
+      // Keywords
+      .replace(/\b(def|class|if|else|elif|for|while|try|except|finally|with|return|import|from|as|lambda|True|False|None|and|or|not|in|is)\b/g, '<span class="keyword">$1</span>')
+      // Numbers
+      .replace(/\b(\d+\.?\d*|\.\d+)\b/g, '<span class="number">$1</span>');
+  }
+
+  /**
+   * Escape HTML characters
+   */
+  escapeHtml(text) {
+    return text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
-
-  /**
-   * Process LaTeX math formulas and convert them to rendered HTML
-   * @param {string} text - Text containing math formulas
-   * @returns {string} Text with math formulas converted to HTML
-   */
-  processMathFormulas(text) {
-    // Store original formulas to preserve them
-    const mathReplacements = [];
-    let replacementIndex = 0;
-
-    // Handle block math ($$...$$ - display mode)
-    text = text.replace(this.blockMathRegex, (match, formula) => {
-      const placeholder = `__MATH_BLOCK_${replacementIndex}__`;
-      mathReplacements[replacementIndex] = {
-        type: 'block',
-        formula: formula.trim(),
-        placeholder,
-      };
-      replacementIndex++;
-      return placeholder;
-    });
-
-    // Handle inline math ($...$ - inline mode)
-    text = text.replace(this.inlineMathRegex, (match, formula) => {
-      const placeholder = `__MATH_INLINE_${replacementIndex}__`;
-      mathReplacements[replacementIndex] = {
-        type: 'inline',
-        formula: formula.trim(),
-        placeholder,
-      };
-      replacementIndex++;
-      return placeholder;
-    });
-
-    // Replace placeholders with rendered math HTML
-    mathReplacements.forEach((math) => {
-      const renderedMath = this.renderMathFormula(math.formula, math.type === 'block');
-      text = text.replace(math.placeholder, renderedMath);
-    });
-
-    return text;
-  }
-
-  /**
-   * Render a LaTeX math formula to HTML (placeholder for browser-side rendering)
-   * @param {string} formula - LaTeX formula
-   * @param {boolean} displayMode - True for block display, false for inline
-   * @returns {string} HTML with LaTeX preserved for browser-side KaTeX rendering
-   */
-  renderMathFormula(formula, displayMode = false) {
-    // Return LaTeX formulas as-is for browser-side KaTeX rendering
-    const className = displayMode ? 'math-block' : 'math-inline';
-    const mathDelimiter = displayMode ? '$$' : '$';
-    return `<span class="${className}">${mathDelimiter}${this.escapeHtml(formula.trim())}${mathDelimiter}</span>`;
-  }
-
-  highlightCode(code, lang) {
-    if (['python', 'py'].includes(lang)) {
-      // Highlight comments first
-      code = code.replace(/(#.*?$)/gm, '<span class="comment">$1</span>');
-      // Now, only highlight outside of comments
-      code = code.replace(
-        /(<span class="comment">.*?<\/span>)|(".*?"|'.*?')|(\b\d+\.?\d*|\.\d+\b)|\b(def|class|if|else|elif|for|while|try|except|finally|with|return|import|from|as|lambda|True|False|None)\b/gs,
-        (match, comment, string, number, keyword) => {
-          if (comment) return comment; // Don't touch inside comments
-          if (string) return `<span class="string">${string}</span>`;
-          if (number) return `<span class="number">${number}</span>`;
-          if (keyword) return `<span class="keyword">${keyword}</span>`;
-          return match;
-        }
-      );
-      return code;
-    }
-    if (['javascript', 'js'].includes(lang)) {
-      code = code.replace(/(\/\/.*?$)/gm, '<span class="comment">$1</span>');
-      code = code.replace(
-        /(<span class="comment">.*?<\/span>)|(".*?"|'.*?'|`.*?`)|(\b\d+\.?\d*|\.\d+\b)|\b(const|let|var|function|if|else|for|while|return|class|extends|import|export|async|await|true|false|null|undefined)\b/gs,
-        (match, comment, string, number, keyword) => {
-          if (comment) return comment;
-          if (string) return `<span class="string">${string}</span>`;
-          if (number) return `<span class="number">${number}</span>`;
-          if (keyword) return `<span class="keyword">${keyword}</span>`;
-          return match;
-        }
-      );
-      return code;
-    }
-    return code;
-  }
 }
 
-module.exports = DeepSeekFormatter;
+// Export with original name for backward compatibility
+module.exports = InterviewCodeFormatter;
