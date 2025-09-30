@@ -132,19 +132,19 @@ class StreamlinedTextInterface {
       return EditorView.theme({
         '&': {
           ...baseStyle,
-          backgroundColor: 'rgba(13, 17, 23, 0.27)',
+          backgroundColor: 'rgba(13, 17, 23, 0.3)',
           color: '#f0f6fc',
         },
         '.cm-content': {
           ...contentStyle,
-          backgroundColor: 'rgba(13, 17, 23, 0.27)',
+          backgroundColor: 'rgba(13, 17, 23, 0.3)',
           color: '#f0f6fc',
         },
         '.cm-focused': { outline: 'none' },
-        '.cm-editor': { height: '100%', backgroundColor: 'rgba(13, 17, 23, 0.27)' },
+        '.cm-editor': { height: '100%', backgroundColor: 'rgba(13, 17, 23, 0.3)' },
         '.cm-scroller': {
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          backgroundColor: 'rgba(13, 17, 23, 0.27)',
+          backgroundColor: 'rgba(13, 17, 23, 0.3)',
           overflow: 'auto',
         },
       });
@@ -152,19 +152,19 @@ class StreamlinedTextInterface {
       return EditorView.theme({
         '&': {
           ...baseStyle,
-          backgroundColor: 'rgba(255, 255, 255, 0.18)',
+          backgroundColor: 'rgba(255, 255, 255, 0.21)',
           color: '#24292f',
         },
         '.cm-content': {
           ...contentStyle,
-          backgroundColor: 'rgba(255, 255, 255, 0.18)',
+          backgroundColor: 'rgba(255, 255, 255, 0.21)',
           color: '#24292f',
         },
         '.cm-focused': { outline: 'none' },
-        '.cm-editor': { height: '100%', backgroundColor: 'rgba(255, 255, 255, 0.18)' },
+        '.cm-editor': { height: '100%', backgroundColor: 'rgba(255, 255, 255, 0.21)' },
         '.cm-scroller': {
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          backgroundColor: 'rgba(255, 255, 255, 0.18)',
+          backgroundColor: 'rgba(255, 255, 255, 0.21)',
           overflow: 'auto',
         },
       });
@@ -243,7 +243,7 @@ class StreamlinedTextInterface {
 
     // Generic status message handler
     addListener('show-status-message', (event, message, timeout) =>
-      this.showMessage(message, timeout || 3000)
+      this.showMessage(message, timeout || 2000)
     );
 
     // Scrolling

@@ -16,6 +16,7 @@ class ShortcutManager {
     // Throttling for status messages
     this.lastMessageTime = 0;
     this.messageThrottleMs = 500; // Only show messages every 500ms
+    this.positionIndex = 0;
   }
 
   /** Register all shortcuts - toggle + global shortcuts */
@@ -51,8 +52,6 @@ class ShortcutManager {
       this.windowManager.send('trigger-screenshot-region');
     });
 
-    // Note: Speech recording is now handled via WebSocket in browser
-
     // Window Movement (Arrow Keys = natural directional mapping)
     ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
       globalShortcut.register(`${primary}+${dir}`, () => {
@@ -64,7 +63,11 @@ class ShortcutManager {
         // Throttle status messages to prevent flooding
         const now = Date.now();
         if (now - this.lastMessageTime >= this.messageThrottleMs) {
-          this.windowManager.send('show-status-message', `↔️ Moved ${dir} (step: ${this.moveStep}px)`, 2000);
+          this.windowManager.send(
+            'show-status-message',
+            `↔️ Moved ${dir} (step: ${this.moveStep}px)`,
+            2000
+          );
           this.lastMessageTime = now;
         }
       });
@@ -143,18 +146,8 @@ class ShortcutManager {
       this.windowManager.send('toggle-theme');
     });
 
-    globalShortcut.register(`${secondary}+V`, () => {
-      this.appController.conversationHistoryService.openInBrowser().catch((error) => {
-        console.error('Failed to open conversation history:', error);
-        this.windowManager.send('show-notification', {
-          type: 'error',
-          message: 'Failed to open conversation history',
-        });
-      });
-    });
-
-    globalShortcut.register(`${secondary}+C`, () => {
-      this.centerWindow();
+    globalShortcut.register(`${primary}+S`, () => {
+      this.moveWindow();
     });
 
     // Developer Tools
@@ -197,7 +190,7 @@ class ShortcutManager {
       if (this.moveStep < 400) {
         this.moveStep *= 2;
         // Always show step adjustment (not throttled)
-        this.windowManager.send('show-status-message', `⚡ Move step: ${this.moveStep}px`, 2500);
+        this.windowManager.send('show-status-message', `⚡ Move step: ${this.moveStep}px`, 2000);
         this.lastMessageTime = Date.now();
       }
     });
@@ -206,7 +199,7 @@ class ShortcutManager {
       if (this.moveStep > 20) {
         this.moveStep /= 2;
         // Always show step adjustment (not throttled)
-        this.windowManager.send('show-status-message', `⚡ Move step: ${this.moveStep}px`, 2500);
+        this.windowManager.send('show-status-message', `⚡ Move step: ${this.moveStep}px`, 2000);
         this.lastMessageTime = Date.now();
       }
     });
@@ -255,11 +248,7 @@ class ShortcutManager {
           'model-warmup-started',
           `Warming up ${info.model}... This may take 10-30 seconds.`
         );
-        this.windowManager.send(
-          'show-status-message',
-          `🔥 Warming up ${info.model}...`,
-          4000
-        );
+        this.windowManager.send('show-status-message', `🔥 Warming up ${info.model}...`, 4000);
       } else {
         this.windowManager.send('show-status-message', '⚠️ Warmup only available for Ollama', 3000);
       }
@@ -279,6 +268,7 @@ class ShortcutManager {
 
     // Unregister all global shortcuts specifically (not cmd+B)
     globalShortcut.unregister(`${primary}+A`);
+    globalShortcut.unregister(`${primary}+S`);
 
     // Arrow keys
     ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
@@ -300,8 +290,6 @@ class ShortcutManager {
     globalShortcut.unregister(`${secondary}+F`);
     globalShortcut.unregister(`${secondary}+O`);
     globalShortcut.unregister(`${secondary}+D`);
-    globalShortcut.unregister(`${secondary}+V`);
-    globalShortcut.unregister(`${secondary}+C`);
     globalShortcut.unregister(`${secondary}+I`);
 
     // Window height resizing
@@ -482,19 +470,36 @@ class ShortcutManager {
   /**
    * Center the window on the primary display
    */
-  centerWindow() {
+  moveWindow() {
     const { mainWindow } = this.windowManager;
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
     const [windowWidth, windowHeight] = mainWindow.getSize();
 
-    const x = Math.round((screenWidth - windowWidth) / 2);
-    const y = Math.round((screenHeight - windowHeight) / 2);
+    // Define positions
+    const positions = [
+      { name: 'top-left', x: 0, y: 0 },
+      { name: 'top-right', x: screenWidth - windowWidth, y: 0 },
+      {
+        name: 'center',
+        x: Math.round((screenWidth - windowWidth) / 2),
+        y: Math.round((screenHeight - windowHeight) / 2),
+      },
+      { name: 'bottom-left', x: 0, y: screenHeight - windowHeight },
+      { name: 'bottom-right', x: screenWidth - windowWidth, y: screenHeight - windowHeight },
+    ];
 
-    mainWindow.setPosition(x, y);
-    console.log(`Window centered at (${x}, ${y})`);
+    // Pick the next position in cycle
+    const pos = positions[this.positionIndex % positions.length];
+    this.positionIndex++;
+
+    mainWindow.setPosition(pos.x, pos.y);
+    this.windowManager.send(
+      'show-status-message',
+      `Window moved to ${pos.name} at (${pos.x}, ${pos.y})`,
+      1000
+    );
   }
-
   /**
    * Adjust movement step based on direction
    * @param {string} direction - 'increase' or 'decrease'
@@ -540,39 +545,131 @@ class ShortcutManager {
   }
 
   /**
-   * Position window at mouse cursor location
+   * Position window at mouse cursor location using the cursor as the TOP-LEFT corner.
+   * If the window is too large to fit, shrink it so it stays fully visible.
+   * Tries to handle common blockers (maximized/fullscreen, non-resizable, min-size).
    */
   positionWindowAtCursor() {
     const { mainWindow } = this.windowManager;
 
     try {
-      // Get cursor position
-      const cursorPoint = screen.getCursorScreenPoint();
-      const [windowWidth, windowHeight] = mainWindow.getSize();
+      const cursor = screen.getCursorScreenPoint();
+      const display = screen.getDisplayNearestPoint(cursor);
+      const work = display.workArea; // respects taskbars/docks
+      const workLeft = work.x;
+      const workTop = work.y;
+      const workRight = work.x + work.width;
+      const workBottom = work.y + work.height;
 
-      // Calculate window position to center it around cursor
-      const x = cursorPoint.x - Math.floor(windowWidth / 2);
-      const y = cursorPoint.y - Math.floor(windowHeight / 2);
+      // If maximized or fullscreen, restore so we can resize
+      if (typeof mainWindow.isFullScreen === 'function' && mainWindow.isFullScreen()) {
+        mainWindow.setFullScreen(false);
+      }
+      if (typeof mainWindow.isMaximized === 'function' && mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      }
 
-      // Get display bounds to ensure window stays on screen
-      const display = screen.getDisplayNearestPoint(cursorPoint);
-      const {
-        x: displayX,
-        y: displayY,
-        width: displayWidth,
-        height: displayHeight,
-      } = display.bounds;
+      // Remember and temporarily relax constraints so setSize can shrink the window
+      const canGetMin = typeof mainWindow.getMinimumSize === 'function';
+      const canSetMin = typeof mainWindow.setMinimumSize === 'function';
+      const canCheckResizable = typeof mainWindow.isResizable === 'function';
+      const canSetResizable = typeof mainWindow.setResizable === 'function';
 
-      // Clamp position to display bounds
-      const clampedX = Math.max(displayX, Math.min(x, displayX + displayWidth - windowWidth));
-      const clampedY = Math.max(displayY, Math.min(y, displayY + displayHeight - windowHeight));
+      let prevMin = null;
+      if (canGetMin) {
+        try {
+          prevMin = mainWindow.getMinimumSize();
+        } catch (e) {
+          prevMin = null;
+        }
+      }
+      if (canSetMin) {
+        try {
+          mainWindow.setMinimumSize(1, 1);
+        } catch (e) {
+          /* ignore */
+        }
+      }
 
-      mainWindow.setPosition(clampedX, clampedY);
-      console.log(`Window positioned at cursor: (${clampedX}, ${clampedY})`);
+      let prevResizable = null;
+      if (canCheckResizable && canSetResizable) {
+        try {
+          prevResizable = mainWindow.isResizable();
+          if (!prevResizable) mainWindow.setResizable(true);
+        } catch (e) {
+          prevResizable = null;
+        }
+      }
+
+      // Current size
+      let [curW, curH] = mainWindow.getSize();
+
+      // Constrain to display full workArea as a hard upper bound
+      const maxW = work.width;
+      const maxH = work.height;
+      let newW = Math.min(curW, maxW);
+      let newH = Math.min(curH, maxH);
+
+      // Available space to the right/down from the cursor (since cursor = top-left anchor)
+      const availableRight = workRight - cursor.x;
+      const availableDown = workBottom - cursor.y;
+
+      // If there's less space to the right/down than newW/newH, shrink to available space.
+      // If availableRight/Down are negative (cursor outside), fallback to full work width/height.
+      if (availableRight < newW) {
+        if (availableRight > 50)
+          newW = availableRight; // shrink to fit to the right
+        else newW = Math.min(newW, maxW); // fallback (will be clamped below)
+      }
+      if (availableDown < newH) {
+        if (availableDown > 50) newH = availableDown;
+        else newH = Math.min(newH, maxH);
+      }
+
+      // Ensure reasonable minimums so we don't set absurdly small sizes
+      const MIN_W = 100;
+      const MIN_H = 50;
+      newW = Math.max(MIN_W, Math.min(newW, maxW));
+      newH = Math.max(MIN_H, Math.min(newH, maxH));
+
+      // Apply size first (use setSize as requested)
+      mainWindow.setSize(Math.round(newW), Math.round(newH));
+
+      // Compute clamped position so the window fully fits inside the work area.
+      let x = cursor.x;
+      let y = cursor.y;
+      if (x < workLeft) x = workLeft;
+      if (x + newW > workRight) x = workRight - newW;
+      if (y < workTop) y = workTop;
+      if (y + newH > workBottom) y = workBottom - newH;
+
+      // Final position
+      mainWindow.setPosition(Math.round(x), Math.round(y));
+
+      // Restore previous constraints if we changed them
+      if (canSetResizable && prevResizable === false) {
+        try {
+          mainWindow.setResizable(false);
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      if (canSetMin && Array.isArray(prevMin)) {
+        try {
+          mainWindow.setMinimumSize(prevMin[0], prevMin[1]);
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      this.windowManager.send(
+        'show-status-message',
+        `Window positioned at cursor (top-left)`,
+        1000
+      );
     } catch (error) {
       console.error('Failed to position window at cursor:', error);
-      // Fallback to center of primary display
-      this.centerWindow();
+      this.moveWindow();
     }
   }
 
@@ -581,6 +678,7 @@ class ShortcutManager {
    */
   cycleAiFlow() {
     console.log('[ShortcutManager] Cmd+Shift+P pressed - cycling AI flow');
+    this.windowManager.send('show-status-message', `cycling AI flow`, 1000);
     this.windowManager.send('cycle-ai-flow');
   }
 
