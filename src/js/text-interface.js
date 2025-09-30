@@ -228,7 +228,7 @@ class StreamlinedTextInterface {
 
     // Feature toggles with status messages
     addListener('ocr-filtering-changed', (event, enabled) =>
-      this.showMessage(`🔍 OCR Filtering: ${enabled ? 'Enabled' : 'Disabled'}', 3000)
+      this.showMessage(`🔍 OCR Filtering: ${enabled ? 'Enabled' : 'Disabled'}`, 3000)
     );
     addListener('model-switched', (event, data) =>
       this.showMessage(`🔄 Model: ${data.model} (${data.exchanges} exchanges)`, 3500)
@@ -324,7 +324,10 @@ class StreamlinedTextInterface {
     const docLength = this.editor.state.doc.length;
     this.editor.dispatch({
       changes: { from: docLength, to: docLength, insert: chunk },
-      effects: docLength % 200 === 0 ? EditorView.scrollIntoView(docLength + chunk.length, { y: 'end' }) : [],
+      effects:
+        docLength % 200 === 0
+          ? EditorView.scrollIntoView(docLength + chunk.length, { y: 'end' })
+          : [],
     });
   }
 

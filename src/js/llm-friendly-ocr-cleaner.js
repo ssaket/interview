@@ -1,170 +1,121 @@
 class LLMFriendlyOCRCleaner {
   constructor() {
-    // Only remove the most obvious UI junk
+    // Minimal cleanup for region screenshots - remove only obvious OCR noise
     this.junkPatterns = [
-      // Single characters or meaningless punctuation lines
-      /^[a-z]$/i,
-      /^[0-9]$/,
-      /^[|\\\/\-=_+\[\]{}()<>,.;:'"!@#$%^&*`~]+$/,
-
-      // Time stamps and system indicators
-      /^\s*\d{1,2}:\d{2}\s*(am|pm)$/i,
-      /^\s*\d{1,3}%$/i,
-
-      // Very obvious system UI elements
-      /^\s*Wi-?Fi$/i,
-      /^\s*Bluetooth$/i,
-
-      // Only the most common menu items that never contain useful content
-      /^\s*(file|edit|view|window|help)$/i,
-      /^\s*(copy|paste|cut|undo|redo)$/i,
+      /^[a-z]$/i, // Single letters
+      /^[0-9]$/, // Single digits
+      /^[|\\\\/\-=_+\\[\]{}()<>,.;:'"!@#$%^&*`~]+$/, // Pure punctuation lines
     ];
+
+    // AI enhancement prompt for restructuring OCR text into clean interview questions
+    this.enhancementPrompt = `You are given raw OCR text from an interview question.
+- The text may be messy, have inconsistent formatting, or contain broken tables.
+- If the OCR text contains sample input and output, identify them and format them clearly.
+- Frame the content into a clean, well-structured coding interview question with these sections (if applicable):
+
+1. Problem Statement - concise and clear description of the task.
+2. Input Format - structured and properly formatted.
+3. Output Format - structured and properly formatted.
+4. Constraints - if present.
+5. Example(s) - cleanly formatted input/output pairs.
+
+If some details are missing or unclear in the OCR, make reasonable assumptions and fill them in. Do not change the intent of the question.`;
   }
 
   /**
-   * Simple cleaning function - only removes obvious junk, preserves everything else
+   * Clean OCR text and optionally enhance with AI
    * @param {string} rawText - Raw OCR text
-   * @param {Object} options - Cleaning options (simplified)
-   * @returns {string} - Cleaned text
+   * @param {Object} options - Cleaning options
+   * @param {boolean} options.enhanceWithAI - Use AI to restructure text (default: false)
+   * @returns {Promise<string>|string} - Cleaned text (async if enhanceWithAI is true)
    */
   cleanText(rawText, options = {}) {
-    const {
-      minLineLength = 1, // Very permissive - only remove empty lines
-      removeEmptyLines = true,
-      logResults = false,
-    } = options;
+    const { enhanceWithAI = false } = options;
 
     if (!rawText || typeof rawText !== 'string') {
-      return '';
+      return enhanceWithAI ? Promise.resolve('') : '';
     }
 
-    // Split into lines and basic cleanup
-    let lines = rawText
+    // Basic cleanup: trim lines, remove empty lines and junk patterns
+    const cleanedLines = rawText
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => {
-        // Only remove if completely empty or below minimum length
-        if (removeEmptyLines && line.length === 0) return false;
-        if (line.length < minLineLength) return false;
-        return true;
+        if (line.length === 0) return false; // Remove empty lines
+        return !this.junkPatterns.some((pattern) => pattern.test(line)); // Remove junk
       });
-
-    // Remove only the most obvious junk patterns
-    const cleanedLines = lines.filter((line) => {
-      // Check if line matches any obvious junk pattern
-      const isJunk = this.junkPatterns.some((pattern) => pattern.test(line));
-      return !isJunk;
-    });
 
     const cleanedText = cleanedLines.join('\n');
 
-    if (logResults) {
-      this.logResults(rawText, cleanedText);
+    // AI enhancement handles all context extraction and restructuring
+    return enhanceWithAI ? this.enhanceWithAI(cleanedText) : cleanedText;
+  }
+
+  /**
+   * Enhance cleaned OCR text using AI to restructure into clean interview question
+   * @param {string} cleanedText - Basic cleaned text
+   * @returns {Promise<string>} - AI-enhanced structured interview question
+   */
+  async enhanceWithAI(cleanedText) {
+    if (!cleanedText || cleanedText.trim().length === 0) {
+      return cleanedText;
     }
 
-    return cleanedText;
-  }
+    try {
+      const simpleAI = require('./ai/simple-ai');
+      const aiConfig = require('./ai/ai-config');
 
-  /**
-   * Get quality metrics for the cleaned text
-   */
-  getQualityMetrics(originalText, cleanedText) {
-    const originalLines = originalText.split('\n').filter((l) => l.trim().length > 0);
-    const cleanedLines = cleanedText.split('\n').filter((l) => l.trim().length > 0);
+      console.log('[OCRCleaner] Enhancing OCR text with AI...');
 
-    return {
-      originalLineCount: originalLines.length,
-      cleanedLineCount: cleanedLines.length,
-      reductionPercentage: Math.round((1 - cleanedLines.length / originalLines.length) * 100),
-      originalLength: originalText.length,
-      cleanedLength: cleanedText.length,
-      lengthReduction: Math.round((1 - cleanedText.length / originalText.length) * 100),
-    };
-  }
+      // Use primary Ollama model (default: gpt-oss)
+      const model = aiConfig.getPrimaryModel('ollama');
+      console.log(`[OCRCleaner] Using model: ${model}`);
 
-  /**
-   * Log simple results for analysis
-   */
-  logResults(originalText, cleanedText) {
-    console.log('\n🚀 SIMPLE OCR CLEANING RESULTS');
-    console.log('==============================');
-
-    const metrics = this.getQualityMetrics(originalText, cleanedText);
-
-    console.log(`📊 Processing Summary:`);
-    console.log(
-      `   Lines: ${metrics.originalLineCount} → ${metrics.cleanedLineCount} (${metrics.reductionPercentage}% reduction)`
-    );
-    console.log(
-      `   Length: ${metrics.originalLength} → ${metrics.cleanedLength} (${metrics.lengthReduction}% reduction)`
-    );
-
-    console.log(`\n✨ CLEANED TEXT:`);
-    const lines = cleanedText.split('\n');
-    lines.forEach((line, i) => {
-      console.log(`   ${i + 1}. "${line}"`);
-    });
-
-    console.log('==============================\n');
-  }
-
-  /**
-   * Quick check if text has any content worth processing
-   */
-  isLLMWorthy(text) {
-    if (!text || text.length < 3) return false;
-
-    const lines = text.split('\n').filter((l) => l.trim().length > 0);
-    return lines.length > 0;
-  }
-
-  /**
-   * Extract key information for LLM context (simple version)
-   */
-  extractLLMContext(text) {
-    const context = {
-      questions: [],
-      codeBlocks: [],
-      technicalConcepts: [],
-      examples: [],
-    };
-
-    const lines = text.split('\n');
-
-    lines.forEach((line) => {
-      // Simple question detection
-      if (line.includes('?') || /^(what|how|why|explain|describe|implement)/i.test(line)) {
-        context.questions.push(line.trim());
-      }
-
-      // Simple code detection
-      if (/def |function |class |=|{|}|\(/i.test(line) || /^\s+/.test(line)) {
-        context.codeBlocks.push(line.trim());
-      }
-
-      // Simple example detection
-      if (/example|input:|output:|step/i.test(line) || /^\d+[\.\)]\s+/.test(line)) {
-        context.examples.push(line.trim());
-      }
-
-      // Basic technical terms
-      const technicalWords = [
-        'algorithm',
-        'array',
-        'string',
-        'function',
-        'complexity',
-        'sort',
-        'search',
-      ];
-      technicalWords.forEach((term) => {
-        if (line.toLowerCase().includes(term) && !context.technicalConcepts.includes(term)) {
-          context.technicalConcepts.push(term);
-        }
+      const response = await simpleAI.chatCompletion({
+        provider: 'ollama',
+        messages: [
+          {
+            role: 'system',
+            content: this.enhancementPrompt,
+          },
+          {
+            role: 'user',
+            content: cleanedText,
+          },
+        ],
+        parameters: {
+          model: model,
+          temperature: 0.1, // Low temperature for accuracy
+          num_predict: 1000, // Allow longer structured output
+          keep_alive: '30s', // Keep model loaded for 30 seconds
+        },
       });
-    });
 
-    return context;
+      // Extract enhanced text
+      let enhancedText = '';
+      if (response.choices && response.choices[0]?.message?.content) {
+        enhancedText = response.choices[0].message.content;
+      } else if (typeof response === 'string') {
+        enhancedText = response;
+      } else if (response.content) {
+        enhancedText = response.content;
+      }
+
+      if (!enhancedText) {
+        console.warn('[OCRCleaner] AI enhancement returned empty, using cleaned text');
+        return cleanedText;
+      }
+
+      console.log('[OCRCleaner] ✅ AI enhancement completed');
+      console.log(`[OCRCleaner] Original length: ${cleanedText.length} chars`);
+      console.log(`[OCRCleaner] Enhanced length: ${enhancedText.length} chars`);
+
+      return enhancedText.trim();
+    } catch (error) {
+      console.error('[OCRCleaner] ❌ AI enhancement failed:', error.message);
+      console.log('[OCRCleaner] Falling back to basic cleaned text');
+      return cleanedText;
+    }
   }
 }
 

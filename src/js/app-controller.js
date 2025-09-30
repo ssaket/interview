@@ -158,23 +158,15 @@ class AppController {
 
         let finalText = text;
 
-        // Apply OCR cleaning if enabled
+        // Apply OCR cleaning with AI enhancement
         if (this.ocrFilteringEnabled) {
           const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
           const cleaner = new LLMFriendlyOCRCleaner();
 
-          const cleaningOptions = {
-            maxLines: 30,
-            preserveQuestions: true,
-            preserveCode: true,
-            removeJunk: true,
-            logResults: false,
-            applyOCRFixes: true,
-          };
-
-          finalText = cleaner.cleanText(text, cleaningOptions);
-          console.log('[AppController] Cleaned text length:', finalText.length);
-          console.log('[AppController] Cleaned text preview:', finalText.substring(0, 200));
+          console.log('[AppController] Starting AI-enhanced OCR cleaning...');
+          finalText = await cleaner.cleanText(text, { enhanceWithAI: true });
+          console.log('[AppController] AI-enhanced text length:', finalText.length);
+          console.log('[AppController] AI-enhanced text: \n', finalText);
         }
 
         const duration = Date.now() - startTime;
@@ -606,15 +598,6 @@ class AppController {
     const startTime = Date.now();
     const Tesseract = require('tesseract.js');
 
-    const cleaningOptions = {
-      maxLines: 30,
-      preserveQuestions: true,
-      preserveCode: true,
-      removeJunk: true,
-      logResults: false,
-      applyOCRFixes: true,
-    };
-
     let combinedText = '';
     const ocrResults = [];
 
@@ -634,7 +617,8 @@ class AppController {
         if (this.ocrFilteringEnabled) {
           const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
           const cleaner = new LLMFriendlyOCRCleaner();
-          finalText = cleaner.cleanText(text, cleaningOptions);
+          console.log(`[Stack] Applying basic cleaning to screenshot ${i + 1}...`);
+          finalText = cleaner.cleanText(text, { enhanceWithAI: false }); // Basic cleaning only
         }
 
         ocrResults.push({
@@ -651,6 +635,15 @@ class AppController {
         console.error(`[Stack] OCR failed for screenshot ${i + 1}:`, error);
         combinedText += `--- Screenshot ${i + 1} (${screenshot.type}) - OCR FAILED ---\nError: ${error.message}\n\n`;
       }
+    }
+
+    // Apply AI enhancement to the complete merged text
+    if (this.ocrFilteringEnabled && combinedText.trim().length > 0) {
+      const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
+      const cleaner = new LLMFriendlyOCRCleaner();
+      console.log('[Stack] Applying AI enhancement to complete merged text...');
+      combinedText = await cleaner.cleanText(combinedText, { enhanceWithAI: true });
+      console.log('[Stack] AI-enhanced merged text length:', combinedText.length);
     }
 
     // Mark this as OCR context for the next AI query
