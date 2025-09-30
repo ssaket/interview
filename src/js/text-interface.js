@@ -49,6 +49,11 @@ class StreamlinedTextInterface {
     // Simple throttling for updates (single throttle instead of multiple debounce)
     this.updateTimer = null;
 
+    // Status bar management
+    this.statusBar = null;
+    this.statusBarTimer = null;
+    this.lastMessageText = '';
+
     this.initialize();
   }
 
@@ -61,6 +66,9 @@ class StreamlinedTextInterface {
 
       // Create basic CodeMirror editor
       this.createEditor();
+
+      // Setup status bar
+      this.statusBar = document.getElementById('status-bar');
 
       // Setup event handlers
       this.setupEventHandlers();
@@ -218,9 +226,28 @@ class StreamlinedTextInterface {
     addListener('toggle-syntax-highlighting', () => this.toggleSyntaxMode());
     addListener('cycle-ai-flow', () => this.cycleAIFlow());
 
+    // Feature toggles with status messages
+    addListener('ocr-filtering-changed', (event, enabled) =>
+      this.showMessage(`🔍 OCR Filtering: ${enabled ? 'Enabled' : 'Disabled'}`, 3000)
+    );
+    addListener('vision-mode-changed', (event, data) =>
+      this.showMessage(`👁️ Vision Mode: ${data.visionModeEnabled ? 'Enabled' : 'Disabled'}`, 3000)
+    );
+    addListener('model-switched', (event, data) =>
+      this.showMessage(`🔄 Model: ${data.model} (${data.exchanges} exchanges)`, 3500)
+    );
+    addListener('system-prompts-toggled', (event, data) =>
+      this.showMessage(`⚙️ ${data.message}`, 3000)
+    );
+
     // Code-only mode toggle
     addListener('syntax-mode-toggled', (event, data) => this.handleSyntaxModeToggled(data));
     addListener('toggle-help', () => this.toggleHelp());
+
+    // Generic status message handler
+    addListener('show-status-message', (event, message, timeout) =>
+      this.showMessage(message, timeout || 3000)
+    );
 
     // Scrolling
     addListener('scroll-page', (event, direction) => this.scrollPage(direction));
@@ -237,13 +264,13 @@ class StreamlinedTextInterface {
 
   async handleScreenshot() {
     this.updateOCRStatus('capturing');
-    this.showMessage('📸 Capturing region...', 2000);
+    this.showMessage('📸 Capturing region...', 3000);
 
     try {
       const image = await ipcRenderer.invoke('capture-screen-region');
 
       this.updateOCRStatus('processing');
-      this.showMessage('🔍 Running OCR...', 3000);
+      this.showMessage('🔍 Running OCR...', 4000);
 
       const ocrText = await ipcRenderer.invoke('perform-ocr', image);
 
@@ -274,7 +301,7 @@ class StreamlinedTextInterface {
     const formattedText = `${separator}${data.text.trim()}`;
 
     this.appendContent(formattedText, false);
-    this.showMessage(`📝 Voice text added: "${data.text.trim()}"`, 2500);
+    this.showMessage(`📝 Voice text added: "${data.text.trim()}"`, 3000);
 
     this.updateSpeechStatus('completed');
     setTimeout(() => this.updateSpeechStatus('ready'), 2000);
@@ -400,7 +427,7 @@ class StreamlinedTextInterface {
       effects: this.themeCompartment.reconfigure(this.getTheme()),
     });
 
-    this.showMessage(`Theme: ${this.isDark ? 'dark' : 'light'}`, 1500);
+    this.showMessage(`🎨 Theme: ${this.isDark ? 'Dark' : 'Light'}`, 3000);
   }
 
   toggleSyntaxMode() {
@@ -420,7 +447,7 @@ class StreamlinedTextInterface {
 
     this.status.ai = this.aiFlow;
     this.throttledUpdateStatus();
-    this.showMessage(`AI Flow: ${this.aiFlow}`, 2000);
+    this.showMessage(`🔄 AI Flow: ${this.aiFlow}`, 3000);
   }
 
   resetSession() {
@@ -445,6 +472,7 @@ class StreamlinedTextInterface {
 
   getHelpContent() {
     const timestamp = new Date().toLocaleTimeString();
+    const mod = process.platform === 'darwin' ? '⌘' : 'Ctrl';
     return `# DeepSeek Overlay Helper - Text Interface
 Initialized at ${timestamp}
 
@@ -452,27 +480,47 @@ Initialized at ${timestamp}
 ${this.getStatusLine()}
 
 ## Quick Start Guide
-This text interface provides AI-powered coding interview assistance.
+This text interface provides AI-powered coding interview assistance with comprehensive status message feedback.
 
 ### Core Functions
-⌘+A - Region screenshot → OCR → AI analysis
-⌘+R - Start voice recording
-⌘+T - Stop recording and transcribe
+${mod}+A - Region screenshot → OCR → AI analysis
+${mod}+B - Hide/show application
+${mod}+Arrow Keys - Move window (shows step size)
+
+### Screenshot Stack Workflow
+${mod}+1 - Add region screenshot to stack
+${mod}+2 - Process screenshot stack
+${mod}+3 - Clear screenshot stack
 
 ### AI Controls
-⌘+Shift+F - Cycle AI flows (LOCAL → CLOUD → HYBRID)
-⌘+Shift+R - Reset AI session
+${mod}+Shift+F - Cycle AI flows (LOCAL → CLOUD → HYBRID)
+${mod}+Shift+R - Reset AI session
+${mod}+Shift+O - Toggle OCR filtering
+${mod}+Shift+U - Toggle Vision mode
 
 ### Interface Controls
-⌘+B - Hide/show application
-⌘+Shift+D - Toggle dark/light theme
-⌘+Shift+L - Toggle code-only view (Python code extraction)
+${mod}+Shift+D - Toggle dark/light theme
+${mod}+Shift+L - Toggle code-only view (extract Python code)
+${mod}+Shift+V - View conversation history in browser
+${mod}+Shift+C - Center window
 F1 - Toggle this help guide
+
+### Window Adjustments
+${mod}+Shift+Up/Down - Resize height (shows dimensions)
+${mod}+Shift+[ ] - Resize width (shows dimensions)
+${mod}+Shift++/- - Adjust movement step size
+
+### Model Management
+${mod}+Shift+M - Switch Ollama model
+${mod}+Shift+Y - Toggle system prompts
+${mod}+Shift+W - Warmup Ollama model
 
 ### Math Formula Support
 - LaTeX formulas supported: $O(n)$, $O(log n)$, $$T(n) = 2T(n/2) + O(n)$$
-- Use browser view (⌘+Shift+V) for rendered math formulas
+- Use browser view (${mod}+Shift+V) for rendered math formulas
 - Examples: Time complexity $O(n^2)$, Space complexity $O(1)$
+
+**Status Messages:** All operations now show visual feedback (3-4 seconds, queued)
 
 Ready for your coding interview assistance!
 
@@ -500,12 +548,12 @@ Activity log:
 
   // Screenshot stack operations
   async addScreenshotToStack(type) {
-    this.showMessage(`📸 Adding ${type} screenshot...`, 1500);
+    this.showMessage(`📸 Adding ${type} screenshot...`, 2500);
 
     try {
       const result = await ipcRenderer.invoke('add-screenshot-to-stack', type);
       if (result.success) {
-        this.showMessage(`✅ Added to stack (${result.count} total)`, 2000);
+        this.showMessage(`✅ Added to stack (${result.count} total)`, 3000);
       } else {
         this.showMessage(`❌ Failed: ${result.error}`, 3000);
       }
@@ -515,7 +563,7 @@ Activity log:
   }
 
   async processScreenshotStack() {
-    this.showMessage('📸 Processing screenshot stack...', 2000);
+    this.showMessage('📸 Processing screenshot stack...', 3000);
 
     try {
       const result = await ipcRenderer.invoke('process-screenshot-stack');
@@ -535,7 +583,7 @@ Activity log:
     try {
       const result = await ipcRenderer.invoke('clear-screenshot-stack');
       if (result.success) {
-        this.showMessage('📸 Stack cleared', 1500);
+        this.showMessage('✅ Stack cleared', 3000);
       }
     } catch (error) {
       this.showMessage(`❌ Clear error: ${error.message}`, 3000);
@@ -559,17 +607,24 @@ Activity log:
     return this.editor ? this.editor.state.doc.toString() : '';
   }
 
-  appendContent(content, addSeparator = true) {
+  appendContent(content, addSeparator = true, autoScroll = true) {
     if (!this.editor || !content) return;
 
     const separator = addSeparator ? '\n\n' : '';
     const insertText = separator + content;
     const docLength = this.editor.state.doc.length;
 
-    this.editor.dispatch({
-      changes: { from: docLength, to: docLength, insert: insertText },
-      effects: EditorView.scrollIntoView(docLength + insertText.length, { y: 'end' }),
-    });
+    const changes = { from: docLength, to: docLength, insert: insertText };
+
+    // Only auto-scroll for AI streaming, not for status messages
+    if (autoScroll) {
+      this.editor.dispatch({
+        changes,
+        effects: EditorView.scrollIntoView(docLength + insertText.length, { y: 'end' }),
+      });
+    } else {
+      this.editor.dispatch({ changes });
+    }
   }
 
   // Math formula detection and notification
@@ -625,7 +680,7 @@ Activity log:
     const currentContent = this.getContent();
 
     if (!currentContent || !currentContent.trim()) {
-      this.showMessage('⚠️ No content to filter', 2000);
+      this.showMessage('⚠️ No content to filter', 3000);
       return;
     }
 
@@ -638,7 +693,7 @@ Activity log:
       const codeResult = this.formatter.formatResponse(currentContent, true, true);
 
       if (!codeResult.hasCode || !codeResult.text || !codeResult.text.trim()) {
-        this.showMessage('⚠️ No Python code blocks found', 2000);
+        this.showMessage('⚠️ No Python code blocks found', 3000);
         // Restore state
         this.isCodeOnlyMode = false;
         this.originalContent = null;
@@ -647,10 +702,10 @@ Activity log:
 
       // Update content to show only code
       this.setContent(codeResult.text);
-      this.showMessage('🔍 Code-only view enabled', 2000);
+      this.showMessage('🔍 Code-only view enabled', 3000);
     } catch (error) {
       console.error('Failed to extract code:', error);
-      this.showMessage('❌ Failed to process content', 2000);
+      this.showMessage('❌ Failed to process content', 3000);
       // Restore state
       this.isCodeOnlyMode = false;
       this.originalContent = null;
@@ -659,7 +714,7 @@ Activity log:
 
   restoreOriginalContent() {
     if (!this.originalContent) {
-      this.showMessage('⚠️ No original content to restore', 2000);
+      this.showMessage('⚠️ No original content to restore', 3000);
       return;
     }
 
@@ -667,23 +722,49 @@ Activity log:
     this.isCodeOnlyMode = false;
     this.originalContent = null;
 
-    this.showMessage('📄 Full content restored', 2000);
+    this.showMessage('📄 Full content restored', 3000);
   }
 
   // Utility methods
 
-  showMessage(message, timeout = 2000) {
-    const timestamp = new Date().toLocaleTimeString();
-    const formattedMessage = `[${timestamp}] ${message}`;
+  showMessage(message, timeout = 3000) {
+    if (!this.statusBar) return;
 
-    // Simple temporary message - just append and remove after timeout
-    this.appendContent(formattedMessage, false);
+    // If same message, just restart the timer
+    if (this.lastMessageText === message) {
+      if (this.statusBarTimer) {
+        clearTimeout(this.statusBarTimer);
+      }
+      this.statusBarTimer = setTimeout(() => this.hideStatusBar(), timeout);
+      return;
+    }
 
+    // Update status bar with new message
+    this.lastMessageText = message;
+    this.statusBar.textContent = message;
+    this.statusBar.classList.add('visible');
+
+    // Clear existing timer
+    if (this.statusBarTimer) {
+      clearTimeout(this.statusBarTimer);
+    }
+
+    // Auto-hide after timeout
+    this.statusBarTimer = setTimeout(() => this.hideStatusBar(), timeout);
+  }
+
+  hideStatusBar() {
+    if (!this.statusBar) return;
+
+    this.statusBar.classList.remove('visible');
+    this.lastMessageText = '';
+
+    // Clear content after fade animation completes
     setTimeout(() => {
-      const currentContent = this.getContent();
-      const updatedContent = currentContent.replace(formattedMessage, '').replace(/\n\n\n/g, '\n\n');
-      this.setContent(updatedContent);
-    }, timeout);
+      if (!this.statusBar.classList.contains('visible')) {
+        this.statusBar.textContent = '';
+      }
+    }, 300);
   }
 
   hideLoadingScreen() {
@@ -713,6 +794,15 @@ Activity log:
     // Clear timers
     if (this.updateTimer) {
       clearTimeout(this.updateTimer);
+    }
+    if (this.statusBarTimer) {
+      clearTimeout(this.statusBarTimer);
+    }
+
+    // Clear status bar
+    if (this.statusBar) {
+      this.statusBar.classList.remove('visible');
+      this.statusBar.textContent = '';
     }
 
     // Destroy editor

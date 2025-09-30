@@ -27,8 +27,8 @@ class AIConfig {
             local: ['deepseek-coder-v2', 'qwen3:4b-instruct-2507-fp16', 'gpt-oss', 'magistral'],
             primary: 'gpt-oss',
             hybrid: 'qwen3:4b-instruct-2507-fp16', // Default model for hybrid AI flow
-            vision: ['gemma3:8b', 'gemma3:4b', 'llava', 'bakllava', 'moondream'],
-            visionPrimary: 'gemma3:8b',
+            vision: ['gemma3:27b'],
+            visionPrimary: 'gemma3:27b',
           },
           parameters: {
             temperature: 0.3,

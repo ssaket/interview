@@ -335,7 +335,7 @@ class SimpleAIManager {
       const visionModel = aiConfig.getVisionModel(this.currentProvider);
       if (!visionModel || visionModel === this.currentModel) {
         throw new Error(
-          `No vision model configured for ${this.currentProvider}. Please install a vision model: ollama pull ${visionModel || 'gemma3:8b'}`
+          `No vision model configured for ${this.currentProvider}. Please install a vision model: ollama pull ${visionModel || 'gemma3:27b'}`
         );
       }
 

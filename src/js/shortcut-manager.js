@@ -12,6 +12,10 @@ class ShortcutManager {
     this.appController = appController;
     this.isSmallWindowMode = false; // Track window size state
     this.moveStep = 20; // Move this to instance variable for external access
+
+    // Throttling for status messages
+    this.lastMessageTime = 0;
+    this.messageThrottleMs = 500; // Only show messages every 500ms
   }
 
   /** Register all shortcuts - toggle + global shortcuts */
@@ -56,6 +60,13 @@ class ShortcutManager {
         const dx = dir === 'Left' ? -this.moveStep : dir === 'Right' ? this.moveStep : 0;
         const dy = dir === 'Up' ? -this.moveStep : dir === 'Down' ? this.moveStep : 0;
         mainWindow.setPosition(x + dx, y + dy);
+
+        // Throttle status messages to prevent flooding
+        const now = Date.now();
+        if (now - this.lastMessageTime >= this.messageThrottleMs) {
+          this.windowManager.send('show-status-message', `↔️ Moved ${dir} (step: ${this.moveStep}px)`, 2000);
+          this.lastMessageTime = now;
+        }
       });
     });
 
@@ -165,47 +176,77 @@ class ShortcutManager {
 
     /* ═══ TIER 5: FINE CONTROL (Secondary Modifier + Arrows/Symbols) ═══ */
 
-    // Window Resizing (Secondary + Arrows for precise control)
-    globalShortcut.register(`${secondary}+Right`, () => {
-      const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(width + resizeStep, height);
-    });
-
-    globalShortcut.register(`${secondary}+Left`, () => {
-      const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
-    });
-
+    // Window Height Resizing (Secondary + Up/Down Arrows)
     globalShortcut.register(`${secondary}+Down`, () => {
       const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(width, height + resizeStep);
+      const newHeight = height + resizeStep;
+      mainWindow.setSize(width, newHeight);
+
+      // Throttle resize messages
+      const now = Date.now();
+      if (now - this.lastMessageTime >= this.messageThrottleMs) {
+        this.windowManager.send('show-status-message', `📏 Height: ${newHeight}px`, 2000);
+        this.lastMessageTime = now;
+      }
     });
 
     globalShortcut.register(`${secondary}+Up`, () => {
       const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(width, Math.max(minSize, height - resizeStep));
+      const newHeight = Math.max(minSize, height - resizeStep);
+      mainWindow.setSize(width, newHeight);
+
+      // Throttle resize messages
+      const now = Date.now();
+      if (now - this.lastMessageTime >= this.messageThrottleMs) {
+        this.windowManager.send('show-status-message', `📏 Height: ${newHeight}px`, 2000);
+        this.lastMessageTime = now;
+      }
     });
 
     // Movement Step Adjustment
     globalShortcut.register(`${secondary}+Plus`, () => {
-      if (this.moveStep < 400) this.moveStep *= 2;
+      if (this.moveStep < 400) {
+        this.moveStep *= 2;
+        // Always show step adjustment (not throttled)
+        this.windowManager.send('show-status-message', `⚡ Move step: ${this.moveStep}px`, 2500);
+        this.lastMessageTime = Date.now();
+      }
     });
 
     globalShortcut.register(`${secondary}+-`, () => {
-      if (this.moveStep > 20) this.moveStep /= 2;
+      if (this.moveStep > 20) {
+        this.moveStep /= 2;
+        // Always show step adjustment (not throttled)
+        this.windowManager.send('show-status-message', `⚡ Move step: ${this.moveStep}px`, 2500);
+        this.lastMessageTime = Date.now();
+      }
     });
 
-    /* ═══ WINDOW WIDTH ADJUSTMENT (Preserving Original Brackets) ═══ */
-
-    // Window Width Controls (preserving original [ ] keys)
+    // Window Width Controls (Brackets for intuitive left/right adjustment)
     globalShortcut.register(`${secondary}+]`, () => {
       const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(width + resizeStep, height);
+      const newWidth = width + resizeStep;
+      mainWindow.setSize(newWidth, height);
+
+      // Throttle resize messages
+      const now = Date.now();
+      if (now - this.lastMessageTime >= this.messageThrottleMs) {
+        this.windowManager.send('show-status-message', `📐 Width: ${newWidth}px`, 2000);
+        this.lastMessageTime = now;
+      }
     });
 
     globalShortcut.register(`${secondary}+[`, () => {
       const [width, height] = mainWindow.getSize();
-      mainWindow.setSize(Math.max(minSize, width - resizeStep), height);
+      const newWidth = Math.max(minSize, width - resizeStep);
+      mainWindow.setSize(newWidth, height);
+
+      // Throttle resize messages
+      const now = Date.now();
+      if (now - this.lastMessageTime >= this.messageThrottleMs) {
+        this.windowManager.send('show-status-message', `📐 Width: ${newWidth}px`, 2000);
+        this.lastMessageTime = now;
+      }
     });
 
     /* ═══ LEGACY/ADDITIONAL FEATURES ═══ */
@@ -225,6 +266,13 @@ class ShortcutManager {
           'model-warmup-started',
           `Warming up ${info.model}... This may take 10-30 seconds.`
         );
+        this.windowManager.send(
+          'show-status-message',
+          `🔥 Warming up ${info.model}...`,
+          4000
+        );
+      } else {
+        this.windowManager.send('show-status-message', '⚠️ Warmup only available for Ollama', 3000);
       }
     });
 
@@ -242,8 +290,6 @@ class ShortcutManager {
 
     // Unregister all global shortcuts specifically (not cmd+B)
     globalShortcut.unregister(`${primary}+A`);
-    globalShortcut.unregister(`${primary}+R`);
-    globalShortcut.unregister(`${primary}+T`);
 
     // Arrow keys
     ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
@@ -269,9 +315,7 @@ class ShortcutManager {
     globalShortcut.unregister(`${secondary}+C`);
     globalShortcut.unregister(`${secondary}+I`);
 
-    // Window resizing
-    globalShortcut.unregister(`${secondary}+Right`);
-    globalShortcut.unregister(`${secondary}+Left`);
+    // Window height resizing
     globalShortcut.unregister(`${secondary}+Down`);
     globalShortcut.unregister(`${secondary}+Up`);
 
@@ -308,8 +352,6 @@ class ShortcutManager {
     console.log('\n=== PSYCHOLOGY-OPTIMIZED SHORTCUTS ===');
     console.log(`TIER 1 - CORE FUNCTIONS (${mod} + Key):`);
     console.log(`  ${mod}+A                 - Area screenshot (region)`);
-    console.log(`  ${mod}+R                 - Record speech`);
-    console.log(`  ${mod}+T                 - sTop recording`);
     console.log(`  ${mod}+B                 - Show/hide window`);
     console.log(`  ${mod}+Arrow Keys        - Move window`);
     console.log('\nTIER 2 - WORKFLOWS (Numbers):');
@@ -324,16 +366,21 @@ class ShortcutManager {
     console.log(`  ${mod}+Shift+R           - Reset AI session`);
     console.log(`  ${mod}+Shift+F           - Toggle AI flow`);
     console.log(`  ${mod}+Shift+O           - Toggle OCR filtering`);
+    console.log(`  ${mod}+Shift+U           - Toggle Vision mode`);
     console.log(`  ${mod}+Shift+D           - Toggle theme`);
     console.log(`  ${mod}+Shift+V           - Conversation history`);
     console.log(`  ${mod}+Shift+C           - Center window`);
     console.log(`\nTIER 5 - FINE CONTROL (${mod}+Shift + Symbols/Arrows):`);
-    console.log(`  ${mod}+Shift+Arrows      - Resize window height`);
+    console.log(`  ${mod}+Shift+Up/Down     - Resize window height`);
     console.log(`  ${mod}+Shift+[ ]         - Resize window width`);
     console.log(`  ${mod}+Shift+Plus/-      - Adjust movement step`);
     console.log('\nOTHER:');
     console.log('  Alt/Opt+Z/X            - Scroll page up/down');
-    console.log(`  ${mod}+Shift+M/Y/W/L/I   - Model/System/Warmup/Syntax/DevTools`);
+    console.log(`  ${mod}+Shift+M           - Switch Ollama model`);
+    console.log(`  ${mod}+Shift+Y           - Toggle system prompts`);
+    console.log(`  ${mod}+Shift+W           - Warmup Ollama model`);
+    console.log(`  ${mod}+Shift+L           - Toggle code-only view`);
+    console.log(`  ${mod}+Shift+I           - Developer tools`);
     console.log('=====================================\n');
   }
 

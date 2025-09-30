@@ -9,6 +9,38 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { height: 100%; background: transparent; overflow: hidden; }
       #codemirror-container { width: 100%; height: 100vh; overflow: hidden; }
+
+      /* Status bar styling */
+      #status-bar {
+        position: fixed;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.408);
+        color: #fff;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-family: Monaco, Menlo, 'Ubuntu Mono', monospace;
+        font-size: 13px;
+        z-index: 10000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        max-width: 80%;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.143);
+      }
+
+      #status-bar.visible {
+        opacity: 1;
+      }
+
+      /* Light theme variant */
+      [data-theme='light'] #status-bar {
+        background: rgba(255, 255, 255, 0.489);
+        color: #24292f;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
     </style>
   </head>
   <body>
@@ -21,6 +53,9 @@
         <div class="loading-subtext">Setting up AI-powered coding assistant...</div>
       </div>
     </div>
+
+    <!-- Status bar for temporary messages -->
+    <div id="status-bar"></div>
 
 
 

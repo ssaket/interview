@@ -125,10 +125,8 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 ### **TIER 1: Core Functions** *(Single Modifier - Most Used)*
 **Easy-to-reach keys with strong mnemonics:**
 - `Cmd/Ctrl+A` - **A**rea screenshot (region selection)
-- `Cmd/Ctrl+R` - **R**ecord speech
-- `Cmd/Ctrl+T` - s**T**op recording
 - `Cmd/Ctrl+B` - Show/hide window (preserving original)
-- `Cmd/Ctrl+Arrow Keys` - Move window (natural directional mapping)
+- `Cmd/Ctrl+Arrow Keys` - Move window (natural directional mapping with visual feedback)
 
 ### **TIER 2: Workflows** *(Numbers - Sequential Operations)*
 **1→2→3 natural sequence for screenshot stack workflow:**
@@ -145,31 +143,41 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - `Cmd/Ctrl+Shift+0` - Toggle window size (original shortcut)
 - `Cmd/Ctrl+Shift+R` - **R**eset AI session
 - `Cmd/Ctrl+Shift+F` - AI **F**low toggle (LOCAL→CLOUD→HYBRID)
-- `Cmd/Ctrl+Shift+O` - **O**CR filter toggle
+- `Cmd/Ctrl+Shift+O` - **O**CR filter toggle (shows status message)
+- `Cmd/Ctrl+Shift+U` - Vision mode toggle (**U**nderstand via vision)
 - `Cmd/Ctrl+Shift+D` - **D**ark/light theme toggle
 - `Cmd/Ctrl+Shift+V` - **V**iew conversation history in browser
 - `Cmd/Ctrl+Shift+C` - **C**enter window
 
 ### **TIER 5: Fine Control** *(Double Modifier + Arrows/Symbols)*
 **Precise adjustments for power users:**
-- `Cmd/Ctrl+Shift+Arrow Keys` - Resize window height
-- `Cmd/Ctrl+Shift+[ ]` - Resize window width (brackets)
-- `Cmd/Ctrl+Shift+Plus/Minus` - Adjust movement step size
-- `Cmd+Option+M` / `Ctrl+Alt+M` - Mouse tracking toggle (window follows cursor)
+- `Cmd/Ctrl+Shift+Up/Down` - Resize window height (shows dimensions)
+- `Cmd/Ctrl+Shift+[ ]` - Resize window width (shows dimensions)
+- `Cmd/Ctrl+Shift+Plus/Minus` - Adjust movement step size (shows current step)
 
 ### **Additional Features**
-- `Shift+X/Z` - Scroll page up/down
-- `Cmd/Ctrl+Shift+M` - Switch Ollama **M**odel
-- `Cmd/Ctrl+Shift+W` - Model **W**armup (Ollama)
-- `Cmd/Ctrl+Shift+L` - Toggle syntax: ALL ↔ PYTHON_ONLY (**L**anguage)
+- `Alt/Opt+Z/X` - Scroll page up/down
+- `Cmd/Ctrl+Shift+M` - Switch Ollama **M**odel (shows model info)
+- `Cmd/Ctrl+Shift+Y` - Toggle s**Y**stem prompts
+- `Cmd/Ctrl+Shift+W` - Model **W**armup (Ollama, shows warmup status)
+- `Cmd/Ctrl+Shift+L` - Toggle code-only view (**L**anguage mode)
 - `Cmd/Ctrl+Shift+I` - Developer tools (**I**nspect)
 
+**Note:** Speech recording is now handled via WebSocket in browser interface.
+
 ### **Psychology Benefits**
-- **Reduced Cognitive Load**: 18 core shortcuts vs. previous 25+
-- **Better Mnemonics**: S=Screenshot, A=Area, R=Record, T=sTop, H=Hide
-- **Muscle Memory**: Left-hand keys (S,A,R,T,H) easy to reach with Cmd/Ctrl
+- **Visual Feedback**: All operations now show status messages (improved UX)
+- **Better Mnemonics**: A=Area, O=OCR, U=Understand, D=Dark, V=View
+- **Muscle Memory**: Consistent modifier patterns across tiers
 - **Logical Grouping**: Functions organized by frequency and relatedness
 - **Cross-Platform**: Same logical keys work on macOS (Cmd) and Windows (Ctrl)
+
+### **Status Message System**
+- All shortcut operations provide visual feedback with status messages
+- Messages display for 3-4 seconds with message queuing
+- Clear emoji indicators for operation types
+- Window operations show dimensions and step sizes
+- Model operations show current model and session info
 
 ## Testing Approach
 
