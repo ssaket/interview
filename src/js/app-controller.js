@@ -11,7 +11,6 @@ class AppController {
     this.conversationWebSocketServer = new ConversationWebSocketServer(this.aiManager, this.windowManager);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
     this.ocrFilteringEnabled = true;
-    this.visionModeEnabled = false; // Toggle between OCR and vision processing
 
     // Track OCR context for initial query detection
     this.lastOcrText = null;
@@ -76,16 +75,6 @@ class AppController {
   /* ---------- IPC handlers ---------- */
   registerIpc() {
     ipcMain.handle('get-ocr-filtering-state', async () => this.ocrFilteringEnabled);
-    ipcMain.handle('get-vision-mode-state', async () => this.visionModeEnabled);
-
-    ipcMain.handle('toggle-vision-mode', async () => {
-      this.visionModeEnabled = !this.visionModeEnabled;
-      console.log(`[AppController] Vision mode ${this.visionModeEnabled ? 'enabled' : 'disabled'}`);
-      return {
-        visionModeEnabled: this.visionModeEnabled,
-        mode: this.visionModeEnabled ? 'VISION' : 'OCR',
-      };
-    });
 
     ipcMain.handle('get-provider-status', async () => {
       const info = this.aiManager.getProviderInfo();
@@ -152,12 +141,13 @@ class AppController {
     /* ------------ OCR (Tesseract) ------------ */
     ipcMain.handle('perform-ocr', async (_event, imageDataUrl, options = {}) => {
       const startTime = Date.now();
-      const Tesseract = require('tesseract.js');
 
       console.log('[AppController] Starting OCR on image...');
       console.log('[AppController] Image data URL length:', imageDataUrl.length);
 
       try {
+        const Tesseract = require('tesseract.js');
+
         const {
           data: { text, confidence },
         } = await Tesseract.recognize(imageDataUrl, 'eng');
@@ -167,23 +157,28 @@ class AppController {
         console.log('[AppController] Raw OCR text preview:', text.substring(0, 200));
 
         let finalText = text;
-        const cleaningOptions = {
-          maxLines: 30,
-          preserveQuestions: true,
-          preserveCode: true,
-          removeJunk: true,
-          logResults: false,
-          applyOCRFixes: true,
-        };
 
+        // Apply OCR cleaning if enabled
         if (this.ocrFilteringEnabled) {
           const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
           const cleaner = new LLMFriendlyOCRCleaner();
+
+          const cleaningOptions = {
+            maxLines: 30,
+            preserveQuestions: true,
+            preserveCode: true,
+            removeJunk: true,
+            logResults: false,
+            applyOCRFixes: true,
+          };
 
           finalText = cleaner.cleanText(text, cleaningOptions);
           console.log('[AppController] Cleaned text length:', finalText.length);
           console.log('[AppController] Cleaned text preview:', finalText.substring(0, 200));
         }
+
+        const duration = Date.now() - startTime;
+        console.log(`[AppController] Text extraction completed in ${duration}ms`);
 
         // Mark this as OCR context for the next query (simple flag for UI)
         this.lastOcrText = finalText;
@@ -191,7 +186,7 @@ class AppController {
 
         return finalText;
       } catch (error) {
-        console.error('[OCR] Processing failed:', error);
+        console.error('[OCR] Text extraction failed:', error);
         throw error;
       }
     });
@@ -215,23 +210,15 @@ class AppController {
           };
         }
 
-        // Check if this is the initial OCR query (question matches OCR text)
+        // Check if this is the initial OCR query (question matches extracted text from OCR/Vision)
         const isInitialOcrQuery = this.isOcrContext && question === this.lastOcrText;
 
         let response;
         if (isInitialOcrQuery) {
-          // Initial query after screenshot - choose processing mode
+          // Initial query after screenshot - extracted text sent as query
+          console.log('[AppController] Processing initial query from extracted text');
           this.clearOcrContext();
-
-          if (this.visionModeEnabled && this.lastScreenshotDataUrl) {
-            // Use vision processing
-            console.log('[AppController] Using vision mode for screenshot processing');
-            response = await this.handleVisionQuery(question, [this.lastScreenshotDataUrl], options);
-          } else {
-            // Use traditional OCR processing
-            console.log('[AppController] Using OCR mode for screenshot processing');
-            response = await this.handleOcrQuery(question, options);
-          }
+          response = await this.handleOcrQuery(question, options);
         } else {
           // Regular query - AI session handles all conversation context automatically
           response = await this.aiManager.ask(question, options);
@@ -694,32 +681,6 @@ class AppController {
       return response;
     } catch (error) {
       console.error('[OCR Query] Error during OCR processing:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Handle vision query using multimodal AI models
-   * @param {string} question - User query
-   * @param {Array} images - Array of image data URLs
-   * @param {Object} options - Query options
-   * @returns {Promise<string>} AI response
-   */
-  async handleVisionQuery(question, images, options = {}) {
-    console.log('[Vision Query] Processing vision query with', images.length, 'images...');
-
-    try {
-      const response = await this.aiManager.queryWithImage(question, images, options);
-      this.updateSessionLength();
-
-      // Broadcast history update via WebSocket
-      if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
-        await this.conversationWebSocketServer.broadcastHistoryUpdate();
-      }
-
-      return response.content;
-    } catch (error) {
-      console.error('[Vision Query] Error during vision processing:', error);
       throw error;
     }
   }

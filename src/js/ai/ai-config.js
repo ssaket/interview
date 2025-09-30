@@ -27,8 +27,6 @@ class AIConfig {
             local: ['deepseek-coder-v2', 'qwen3:4b-instruct-2507-fp16', 'gpt-oss', 'magistral'],
             primary: 'gpt-oss',
             hybrid: 'qwen3:4b-instruct-2507-fp16', // Default model for hybrid AI flow
-            vision: ['gemma3:27b'],
-            visionPrimary: 'gemma3:27b',
           },
           parameters: {
             temperature: 0.3,
@@ -117,7 +115,6 @@ class AIConfig {
           models: {
             ...defaults.providers.ollama.models,
             hybrid: process.env.OLLAMA_HYBRID_MODEL || defaults.providers.ollama.models.hybrid,
-            visionPrimary: process.env.OLLAMA_VISION_MODEL || defaults.providers.ollama.models.visionPrimary,
           },
         },
         openai: {
@@ -267,26 +264,6 @@ class AIConfig {
   getHybridModel(providerName) {
     const config = this.getProviderConfig(providerName);
     return config.models?.hybrid || config.models?.primary || config.model;
-  }
-
-  /**
-   * Get vision model for a provider (used for multimodal vision queries)
-   * @param {string} providerName - Provider name
-   * @returns {string} Vision model name
-   */
-  getVisionModel(providerName) {
-    const config = this.getProviderConfig(providerName);
-    return config.models?.visionPrimary || config.models?.vision?.[0] || config.models?.primary || config.model;
-  }
-
-  /**
-   * Check if a provider supports vision models
-   * @param {string} providerName - Provider name
-   * @returns {boolean} True if vision models are available
-   */
-  hasVisionSupport(providerName) {
-    const config = this.getProviderConfig(providerName);
-    return !!(config.models?.vision && config.models.vision.length > 0);
   }
 
   /**

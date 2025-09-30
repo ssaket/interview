@@ -228,10 +228,7 @@ class StreamlinedTextInterface {
 
     // Feature toggles with status messages
     addListener('ocr-filtering-changed', (event, enabled) =>
-      this.showMessage(`🔍 OCR Filtering: ${enabled ? 'Enabled' : 'Disabled'}`, 3000)
-    );
-    addListener('vision-mode-changed', (event, data) =>
-      this.showMessage(`👁️ Vision Mode: ${data.visionModeEnabled ? 'Enabled' : 'Disabled'}`, 3000)
+      this.showMessage(`🔍 OCR Filtering: ${enabled ? 'Enabled' : 'Disabled'}', 3000)
     );
     addListener('model-switched', (event, data) =>
       this.showMessage(`🔄 Model: ${data.model} (${data.exchanges} exchanges)`, 3500)
@@ -269,12 +266,13 @@ class StreamlinedTextInterface {
     try {
       const image = await ipcRenderer.invoke('capture-screen-region');
 
+      // Process screenshot with Tesseract OCR
       this.updateOCRStatus('processing');
       this.showMessage('🔍 Running OCR...', 4000);
 
-      const ocrText = await ipcRenderer.invoke('perform-ocr', image);
+      const extractedText = await ipcRenderer.invoke('perform-ocr', image);
 
-      if (!ocrText || !ocrText.trim()) {
+      if (!extractedText || !extractedText.trim()) {
         this.updateOCRStatus('error');
         this.showMessage('❌ No text found in screenshot', 5000);
         setTimeout(() => this.updateOCRStatus('ready'), 3000);
@@ -283,7 +281,7 @@ class StreamlinedTextInterface {
 
       this.updateOCRStatus('completed');
       this.startAIResponse();
-      await this.queryAI(ocrText);
+      await this.queryAI(extractedText);
 
       setTimeout(() => this.updateOCRStatus('ready'), 2000);
     } catch (error) {
@@ -406,9 +404,9 @@ class StreamlinedTextInterface {
     const currentDoc = this.getContent();
     const lines = currentDoc.split('\n');
 
-    // Find and replace status line
+    // Find and replace status line (works for both OCR and Vision modes)
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('🔍 OCR:')) {
+      if (lines[i].startsWith('🔍 OCR:') || lines[i].startsWith('👁️ Vision:')) {
         lines[i] = statusLine;
         this.setContent(lines.join('\n'));
         break;
@@ -496,7 +494,6 @@ ${mod}+3 - Clear screenshot stack
 ${mod}+Shift+F - Cycle AI flows (LOCAL → CLOUD → HYBRID)
 ${mod}+Shift+R - Reset AI session
 ${mod}+Shift+O - Toggle OCR filtering
-${mod}+Shift+U - Toggle Vision mode
 
 ### Interface Controls
 ${mod}+Shift+D - Toggle dark/light theme
@@ -520,7 +517,7 @@ ${mod}+Shift+W - Warmup Ollama model
 - Use browser view (${mod}+Shift+V) for rendered math formulas
 - Examples: Time complexity $O(n^2)$, Space complexity $O(1)$
 
-**Status Messages:** All operations now show visual feedback (3-4 seconds, queued)
+**Status Messages:** All operations now show visual feedback (3 seconds, queued)
 
 Ready for your coding interview assistance!
 

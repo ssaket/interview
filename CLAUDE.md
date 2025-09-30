@@ -144,7 +144,6 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - `Cmd/Ctrl+Shift+R` - **R**eset AI session
 - `Cmd/Ctrl+Shift+F` - AI **F**low toggle (LOCAL→CLOUD→HYBRID)
 - `Cmd/Ctrl+Shift+O` - **O**CR filter toggle (shows status message)
-- `Cmd/Ctrl+Shift+U` - Vision mode toggle (**U**nderstand via vision)
 - `Cmd/Ctrl+Shift+D` - **D**ark/light theme toggle
 - `Cmd/Ctrl+Shift+V` - **V**iew conversation history in browser
 - `Cmd/Ctrl+Shift+C` - **C**enter window

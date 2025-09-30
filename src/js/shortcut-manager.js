@@ -138,17 +138,6 @@ class ShortcutManager {
       this.windowManager.send('ocr-filtering-changed', this.appController.ocrFilteringEnabled);
     });
 
-    // Vision Mode Toggle (U = Understand via vision)
-    globalShortcut.register(`${secondary}+U`, () => {
-      this.appController.visionModeEnabled = !this.appController.visionModeEnabled;
-      const mode = this.appController.visionModeEnabled ? 'VISION' : 'OCR';
-      console.log(`[ShortcutManager] Vision mode toggled: ${mode}`);
-      this.windowManager.send('vision-mode-changed', {
-        visionModeEnabled: this.appController.visionModeEnabled,
-        mode: mode,
-      });
-    });
-
     // UI Controls (preserving original key mappings)
     globalShortcut.register(`${secondary}+D`, () => {
       this.windowManager.send('toggle-theme');
