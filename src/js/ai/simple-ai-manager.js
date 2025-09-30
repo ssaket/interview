@@ -302,6 +302,100 @@ class SimpleAIManager {
   }
 
   /**
+   * Query AI with image inputs (vision models)
+   * @param {string} question - The question to ask about the image(s)
+   * @param {Array} images - Array of base64 image data or data URLs
+   * @param {Object} options - Additional options
+   * @returns {Promise<Object>} AI response
+   */
+  async queryWithImage(question, images, options = {}) {
+    if (!images || !Array.isArray(images) || images.length === 0) {
+      throw new Error('Images array is required for vision queries');
+    }
+
+    // Save current state
+    const originalProvider = this.currentProvider;
+    const originalModel = this.currentModel;
+
+    try {
+      // Switch to Ollama if not already using it (currently only Ollama supports vision)
+      if (this.currentProvider !== 'ollama') {
+        await this.switchProvider('ollama', true);
+      }
+
+      // Check if current provider supports vision
+      const aiConfig = require('./ai-config');
+      if (!aiConfig.hasVisionSupport(this.currentProvider)) {
+        throw new Error(
+          `Provider ${this.currentProvider} does not support vision models. Please switch to Ollama and ensure you have vision-capable models like gemma3, llava, or bakllava installed.`
+        );
+      }
+
+      // Get and validate vision model
+      const visionModel = aiConfig.getVisionModel(this.currentProvider);
+      if (!visionModel || visionModel === this.currentModel) {
+        throw new Error(
+          `No vision model configured for ${this.currentProvider}. Please install a vision model: ollama pull ${visionModel || 'gemma3:8b'}`
+        );
+      }
+
+      // Test if the vision model is available
+      const originalModelForProvider = this.currentModel;
+      try {
+        this.setModel(visionModel);
+
+        // Quick test to ensure model is available
+        const isAvailable = await simpleAI.testProvider(this.currentProvider);
+        if (!isAvailable) {
+          throw new Error(
+            `Vision model ${visionModel} is not available. Please pull it with: ollama pull ${visionModel}`
+          );
+        }
+      } catch (testError) {
+        // Restore original model on test failure
+        this.setModel(originalModelForProvider);
+        throw new Error(
+          `Failed to access vision model ${visionModel}: ${testError.message}. Try: ollama pull ${visionModel}`
+        );
+      }
+
+      console.log(
+        `[SimpleAIManager] Switched to vision model: ${visionModel} for multimodal query`
+      );
+
+      // Add images to parameters
+      const visionOptions = {
+        ...options,
+        parameters: {
+          ...options.parameters,
+          images: images,
+        },
+      };
+
+      // Execute the vision query
+      const response = await this.query(question, visionOptions);
+
+      // Restore original model for this provider but keep the provider switch
+      this.setModel(originalModelForProvider);
+
+      return response;
+    } catch (error) {
+      // Restore original state on error
+      if (originalProvider !== this.currentProvider) {
+        try {
+          await this.switchProvider(originalProvider, true);
+          this.setModel(originalModel);
+        } catch (restoreError) {
+          console.error('[SimpleAIManager] Failed to restore provider after vision error:', restoreError);
+        }
+      }
+
+      console.error(`[SimpleAIManager] Vision query failed:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Unified flow execution handler
    * @private
    */
@@ -706,6 +800,7 @@ Please include:
 
   _getModelType(modelName = '') {
     const name = modelName.toLowerCase();
+    if (name.includes('gemma3') || name.includes('gemma-3')) return 'gemma3';
     if (name.includes('mistral') || name.includes('magistral')) return 'mistral';
     if (name.includes('qwen')) return 'qwen';
     if (name.includes('codellama')) return 'codellama';

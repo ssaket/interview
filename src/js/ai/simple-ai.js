@@ -94,6 +94,22 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
     },
   };
 
+  // Add images support for multimodal models
+  if (parameters.images && Array.isArray(parameters.images) && parameters.images.length > 0) {
+    // Convert data URLs to base64 if needed
+    const processedImages = parameters.images.map(image => {
+      if (typeof image === 'string' && image.startsWith('data:image/')) {
+        // Extract base64 from data URL (remove data:image/jpeg;base64, prefix)
+        const base64Match = image.match(/^data:image\/[^;]+;base64,(.+)$/);
+        return base64Match ? base64Match[1] : image;
+      }
+      return image;
+    });
+
+    requestBody.images = processedImages;
+    console.log(`[Ollama] Adding ${processedImages.length} images to multimodal request`);
+  }
+
   try {
     if (stream && onChunk) {
       // Streaming response with connection pooling

@@ -11,10 +11,14 @@ class AppController {
     this.conversationWebSocketServer = new ConversationWebSocketServer(this.aiManager, this.windowManager);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
     this.ocrFilteringEnabled = true;
+    this.visionModeEnabled = false; // Toggle between OCR and vision processing
 
     // Track OCR context for initial query detection
     this.lastOcrText = null;
     this.isOcrContext = false;
+
+    // Track screenshot data for vision processing
+    this.lastScreenshotDataUrl = null;
 
     // Screenshot stack for batch processing
     this.screenshotStack = [];
@@ -72,6 +76,16 @@ class AppController {
   /* ---------- IPC handlers ---------- */
   registerIpc() {
     ipcMain.handle('get-ocr-filtering-state', async () => this.ocrFilteringEnabled);
+    ipcMain.handle('get-vision-mode-state', async () => this.visionModeEnabled);
+
+    ipcMain.handle('toggle-vision-mode', async () => {
+      this.visionModeEnabled = !this.visionModeEnabled;
+      console.log(`[AppController] Vision mode ${this.visionModeEnabled ? 'enabled' : 'disabled'}`);
+      return {
+        visionModeEnabled: this.visionModeEnabled,
+        mode: this.visionModeEnabled ? 'VISION' : 'OCR',
+      };
+    });
 
     ipcMain.handle('get-provider-status', async () => {
       const info = this.aiManager.getProviderInfo();
@@ -120,11 +134,18 @@ class AppController {
       try {
         const full = nativeImage.createFromDataURL(sources[0].thumbnail.toDataURL());
         const cropped = full.crop(region);
-        console.log(`[Screenshot] Cropped region: ${region.width}x${region.height} pixels`);
-        return cropped.toDataURL();
+        const croppedDataUrl = cropped.toDataURL();
+
+        // Store screenshot data for potential vision processing
+        this.lastScreenshotDataUrl = croppedDataUrl;
+        console.log(`[Screenshot] Cropped region: ${region.width}x${region.height} pixels, stored for vision processing`);
+
+        return croppedDataUrl;
       } catch (err) {
         console.error('Error cropping image:', err);
-        return sources[0].thumbnail.toDataURL();
+        const fallbackDataUrl = sources[0].thumbnail.toDataURL();
+        this.lastScreenshotDataUrl = fallbackDataUrl;
+        return fallbackDataUrl;
       }
     });
 
@@ -199,9 +220,18 @@ class AppController {
 
         let response;
         if (isInitialOcrQuery) {
-          // Initial OCR query - clear OCR flag since we're now in session history
+          // Initial query after screenshot - choose processing mode
           this.clearOcrContext();
-          response = await this.handleOcrQuery(question, options);
+
+          if (this.visionModeEnabled && this.lastScreenshotDataUrl) {
+            // Use vision processing
+            console.log('[AppController] Using vision mode for screenshot processing');
+            response = await this.handleVisionQuery(question, [this.lastScreenshotDataUrl], options);
+          } else {
+            // Use traditional OCR processing
+            console.log('[AppController] Using OCR mode for screenshot processing');
+            response = await this.handleOcrQuery(question, options);
+          }
         } else {
           // Regular query - AI session handles all conversation context automatically
           response = await this.aiManager.ask(question, options);
@@ -669,6 +699,32 @@ class AppController {
   }
 
   /**
+   * Handle vision query using multimodal AI models
+   * @param {string} question - User query
+   * @param {Array} images - Array of image data URLs
+   * @param {Object} options - Query options
+   * @returns {Promise<string>} AI response
+   */
+  async handleVisionQuery(question, images, options = {}) {
+    console.log('[Vision Query] Processing vision query with', images.length, 'images...');
+
+    try {
+      const response = await this.aiManager.queryWithImage(question, images, options);
+      this.updateSessionLength();
+
+      // Broadcast history update via WebSocket
+      if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
+        await this.conversationWebSocketServer.broadcastHistoryUpdate();
+      }
+
+      return response.content;
+    } catch (error) {
+      console.error('[Vision Query] Error during vision processing:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update session length in UI
    */
   updateSessionLength() {
@@ -762,6 +818,23 @@ class AppController {
     this.isOcrContext = false;
     this.lastOcrText = null;
     console.log('[AppController] OCR context flag cleared');
+  }
+
+  /**
+   * Clear vision context tracking
+   */
+  clearVisionContext() {
+    this.lastScreenshotDataUrl = null;
+    console.log('[AppController] Vision context cleared');
+  }
+
+  /**
+   * Clear all context tracking
+   */
+  clearAllContext() {
+    this.clearOcrContext();
+    this.clearVisionContext();
+    console.log('[AppController] All context cleared');
   }
 
   /**
