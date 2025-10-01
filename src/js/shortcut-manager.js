@@ -241,6 +241,7 @@ class ShortcutManager {
     // Additional Model Management
     globalShortcut.register(`${secondary}+M`, () => this.switchOllamaModel());
     globalShortcut.register(`${secondary}+Y`, () => this.toggleSystemPrompts());
+    globalShortcut.register(`${secondary}+T`, () => this.cycleInterviewType());
     globalShortcut.register(`${secondary}+W`, () => {
       const info = this.aiManager.getProviderInfo();
       if (info.isOllama) {
@@ -311,6 +312,7 @@ class ShortcutManager {
     // Additional features
     globalShortcut.unregister(`${secondary}+M`);
     globalShortcut.unregister(`${secondary}+Y`);
+    globalShortcut.unregister(`${secondary}+T`);
     globalShortcut.unregister(`${secondary}+W`);
     globalShortcut.unregister(`${secondary}+L`);
   }
@@ -692,6 +694,17 @@ class ShortcutManager {
       message: `System prompts ${enabled ? 'enabled' : 'disabled'}`,
     });
     console.log(`[Shortcut] System prompts ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Cycle through interview types (DSA -> System Design -> LLD)
+   */
+  cycleInterviewType() {
+    const newType = this.aiManager.cycleInterviewType();
+    const displayName = this.aiManager.getInterviewTypeDisplayName();
+
+    this.windowManager.send('show-status-message', `🎯 Interview Type: ${displayName}`, 4000);
+    console.log(`[Shortcut] Interview type changed to: ${displayName}`);
   }
 
   /**

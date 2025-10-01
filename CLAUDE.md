@@ -42,6 +42,28 @@ The AI system supports three distinct processing flows for different use cases:
   - HuggingFace - Inference API
   - DeepSeek V3.1 - With think mode support for enhanced reasoning
 
+### Interview Types System
+The application supports three types of FAANG technical interviews:
+
+- **DSA (Data Structures & Algorithms)** - Default mode
+  - Focus: Brute-force reasoning, optimization, complexity analysis
+  - Structure: Problem restatement → Step-by-step approach → Edge cases → Code implementation
+
+- **System Design**
+  - Focus: Scalability, high-level architecture, trade-offs
+  - Components: Load balancers, databases, caches, queues, CDN
+  - Topics: CAP theorem, sharding, replication, consistency models
+
+- **LLD (Low-Level Design / Machine Coding)**
+  - Focus: OOP principles (SOLID), design patterns, clean code
+  - Patterns: Factory, Strategy, Observer, Singleton, State
+  - Structure: Requirements → Design patterns → Class hierarchy → Implementation
+
+**Usage:**
+- Switch types with `Cmd/Ctrl+Shift+T` (cycles through DSA → System Design → LLD)
+- System prompts are automatically tailored for each interview type
+- Session is cleared when switching types to apply new prompts
+
 ### Application Structure
 - **AppController** (`src/js/app-controller.js`) - Main application controller
 - **WindowManager** (`src/js/window-manager.js`) - Electron window management
@@ -157,6 +179,7 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 ### **Additional Features**
 - `Alt/Opt+Z/X` - Scroll page up/down
 - `Cmd/Ctrl+Shift+M` - Switch Ollama **M**odel (shows model info)
+- `Cmd/Ctrl+Shift+T` - Cycle interview **T**ype (DSA → System Design → LLD)
 - `Cmd/Ctrl+Shift+Y` - Toggle s**Y**stem prompts
 - `Cmd/Ctrl+Shift+W` - Model **W**armup (Ollama, shows warmup status)
 - `Cmd/Ctrl+Shift+L` - Toggle code-only view (**L**anguage mode)

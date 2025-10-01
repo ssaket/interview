@@ -22,10 +22,12 @@ class SimpleAIManager {
     // State
     this.isInitialized = true;
     this.systemPromptsEnabled = true; // Toggle for system prompts
+    this.currentInterviewType = MODEL_PROMPTS.INTERVIEW_TYPES.DSA; // Default to DSA
 
     console.log(
       `[SimpleAIManager] Initialized with ${this.currentProvider} using model: ${this.currentModel}`
     );
+    console.log(`[SimpleAIManager] Interview type: ${this.currentInterviewType}`);
   }
 
   /**
@@ -658,6 +660,45 @@ Please include:
     return this.systemPromptsEnabled;
   }
 
+  /**
+   * Cycle through interview types (DSA -> System Design -> LLD -> DSA)
+   * @returns {string} New interview type
+   */
+  cycleInterviewType() {
+    const types = Object.values(MODEL_PROMPTS.INTERVIEW_TYPES);
+    const currentIndex = types.indexOf(this.currentInterviewType);
+    const nextIndex = (currentIndex + 1) % types.length;
+    this.currentInterviewType = types[nextIndex];
+
+    console.log(`[SimpleAIManager] Interview type changed to: ${this.currentInterviewType}`);
+
+    // Clear current session to apply new system prompt on next query
+    this.clearSession();
+
+    return this.currentInterviewType;
+  }
+
+  /**
+   * Get current interview type
+   * @returns {string} Current interview type
+   */
+  getCurrentInterviewType() {
+    return this.currentInterviewType;
+  }
+
+  /**
+   * Get interview type display name
+   * @returns {string} Human-readable interview type name
+   */
+  getInterviewTypeDisplayName() {
+    const displayNames = {
+      [MODEL_PROMPTS.INTERVIEW_TYPES.DSA]: 'DSA (Data Structures & Algorithms)',
+      [MODEL_PROMPTS.INTERVIEW_TYPES.SYSTEM_DESIGN]: 'System Design',
+      [MODEL_PROMPTS.INTERVIEW_TYPES.LLD]: 'LLD (Low-Level Design / Machine Coding)',
+    };
+    return displayNames[this.currentInterviewType] || this.currentInterviewType;
+  }
+
   // Private methods
 
   _getDefaultModelForProvider(providerName) {
@@ -693,8 +734,11 @@ Please include:
   _getSystemPrompt() {
     const modelType = this._getModelType(this.currentModel);
     console.log(`[SimpleAIManager] Model: ${this.currentModel} -> Type: ${modelType}`);
+    console.log(
+      `[SimpleAIManager] Interview Type: ${this.currentInterviewType} (${this.getInterviewTypeDisplayName()})`
+    );
 
-    const prompt = MODEL_PROMPTS.getModelPrompt(modelType);
+    const prompt = MODEL_PROMPTS.getModelPrompt(modelType, this.currentInterviewType);
 
     if (prompt && typeof prompt === 'string') {
       return prompt;
