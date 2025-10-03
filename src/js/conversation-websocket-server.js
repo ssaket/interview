@@ -193,6 +193,25 @@ class ConversationWebSocketServer {
   }
 
   /**
+   * Notify the window manager of WebSocket connection status changes
+   */
+  notifyConnectionStatusChange() {
+    if (!this.windowManager) {
+      return;
+    }
+
+    const clientCount = this.clients.size;
+    console.log(
+      `[ConversationWebSocketServer] Connection status changed: ${clientCount} client(s) connected`
+    );
+
+    this.windowManager.send('websocket-connection-status', {
+      clientCount: clientCount,
+      isConnected: clientCount > 0,
+    });
+  }
+
+  /**
    * Handle HTTP requests (serve the HTML page)
    * @private
    */
@@ -229,6 +248,9 @@ class ConversationWebSocketServer {
     // Add client to the set
     this.clients.add(ws);
 
+    // Notify about connection status change
+    this.notifyConnectionStatusChange();
+
     // Send current history immediately
     this.sendCurrentHistory(ws);
 
@@ -246,12 +268,16 @@ class ConversationWebSocketServer {
     ws.on('close', () => {
       console.log('[ConversationWebSocketServer] WebSocket connection closed');
       this.clients.delete(ws);
+      // Notify about connection status change
+      this.notifyConnectionStatusChange();
     });
 
     // Handle client error
     ws.on('error', (error) => {
       console.error('[ConversationWebSocketServer] WebSocket client error:', error);
       this.clients.delete(ws);
+      // Notify about connection status change
+      this.notifyConnectionStatusChange();
     });
   }
 

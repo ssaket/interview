@@ -22,7 +22,7 @@ class StreamlinedTextInterface {
     // Simple state tracking
     this.status = {
       ocr: 'Ready',
-      speech: 'Ready',
+      speech: 'Not Ready',
       ai: 'LOCAL',
     };
     this.sessionCount = 0;
@@ -208,6 +208,9 @@ class StreamlinedTextInterface {
     // Speech events
     addListener('speech-status-update', (event, status) => this.updateSpeechStatus(status));
     addListener('transcription-to-editor', (event, data) => this.handleTranscription(data));
+    addListener('websocket-connection-status', (event, data) =>
+      this.handleWebSocketConnectionStatus(data)
+    );
 
     // AI events
     addListener('ai-processing-started', () => this.startAIProcessing());
@@ -411,6 +414,24 @@ class StreamlinedTextInterface {
       idle: 'Ready',
     };
     this.status.speech = statusMap[status] || status;
+    this.throttledUpdateStatus();
+  }
+
+  handleWebSocketConnectionStatus(data) {
+    const { clientCount } = data;
+    // Update speech status based on WebSocket connection
+    if (clientCount === 0) {
+      this.status.speech = 'Not Ready';
+    } else {
+      // Only set to Ready if not already in an active state
+      if (
+        this.status.speech === 'Not Ready' ||
+        this.status.speech === 'Ready' ||
+        this.status.speech === 'Completed'
+      ) {
+        this.status.speech = 'Ready';
+      }
+    }
     this.throttledUpdateStatus();
   }
 
