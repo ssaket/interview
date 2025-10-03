@@ -321,14 +321,36 @@ class StreamlinedTextInterface {
   streamAIChunk(chunk) {
     if (!chunk) return;
 
+    // Preprocess chunk to handle escape sequences and HTML tags
+    const processedChunk = this.preprocessChunk(chunk);
+
     const docLength = this.editor.state.doc.length;
     this.editor.dispatch({
-      changes: { from: docLength, to: docLength, insert: chunk },
+      changes: { from: docLength, to: docLength, insert: processedChunk },
       effects:
         docLength % 200 === 0
-          ? EditorView.scrollIntoView(docLength + chunk.length, { y: 'end' })
+          ? EditorView.scrollIntoView(docLength + processedChunk.length, { y: 'end' })
           : [],
     });
+  }
+
+  preprocessChunk(chunk) {
+    // Convert literal \n to actual newlines
+    let processed = chunk.replace(/\\n/g, '\n');
+
+    // Convert <br> tags to newlines
+    processed = processed.replace(/<br\s*\/?>/gi, '\n');
+
+    // Convert common HTML entities
+    processed = processed
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+
+    return processed;
   }
 
   completeAIProcessing() {

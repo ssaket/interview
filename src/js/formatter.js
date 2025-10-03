@@ -15,6 +15,9 @@ class InterviewCodeFormatter {
     // Thinking blocks to remove
     this.thinkingRegex = /<think>[\s\S]*?<\/think>/gi;
 
+    // Markdown table detection (header + separator + at least one row)
+    this.markdownTableRegex = /(\|.+\|\n\|[\s:|-]+\|\n(?:\|.+\|\n?)+)/g;
+
     // Minimum code length to consider (filters out tiny snippets)
     this.minCodeLength = 50;
     this.minSignificantLength = 100; // For "main" algorithms
@@ -39,6 +42,9 @@ class InterviewCodeFormatter {
     // Remove thinking blocks first
     raw = raw.replace(this.thinkingRegex, '').trim();
 
+    // Wrap markdown tables in code blocks for better display
+    raw = this.wrapTablesInCodeBlocks(raw);
+
     // Extract interview sections
     const sections = this.extractInterviewSections(raw);
 
@@ -50,8 +56,9 @@ class InterviewCodeFormatter {
       return this.formatFullResponse(raw, codeBlocks);
     }
 
-    // Code-only mode: return prioritized Python algorithms
-    return this.formatCodeOnly(codeBlocks);
+    // Code-only mode: return prioritized Python algorithms and markdown tables
+    const markdownTables = this.extractMarkdownTables(raw);
+    return this.formatCodeOnly(codeBlocks, markdownTables);
   }
 
   /**
@@ -175,13 +182,13 @@ class InterviewCodeFormatter {
   }
 
   /**
-   * Format for code-only mode - show prioritized Python algorithms
+   * Format for code-only mode - show prioritized Python algorithms and markdown tables
    */
-  formatCodeOnly(codeBlocks) {
-    if (codeBlocks.length === 0) {
+  formatCodeOnly(codeBlocks, markdownTables = []) {
+    if (codeBlocks.length === 0 && markdownTables.length === 0) {
       return {
-        text: '## No Python Algorithms Found\n\nThe response does not contain any substantial Python code blocks.',
-        html: '<div class="no-code">No Python algorithms found in the response.</div>',
+        text: '## No Code or Tables Found\n\nThe response does not contain any substantial Python code blocks or markdown tables.',
+        html: '<div class="no-code">No Python algorithms or markdown tables found in the response.</div>',
         hasCode: false
       };
     }
@@ -202,6 +209,20 @@ class InterviewCodeFormatter {
         <div class="code-section">
           <div class="code-language">${sectionLabel}</div>
           <pre class="code-block"><code class="python">${this.highlightPython(this.escapeHtml(block.code))}</code></pre>
+        </div>
+      `);
+    });
+
+    // Show markdown tables
+    markdownTables.forEach((table, index) => {
+      const title = `## Table${markdownTables.length > 1 ? ` ${index + 1}` : ''}`;
+
+      plain.push(`${title}\n${table.content}\n`);
+
+      html.push(`
+        <div class="code-section">
+          <div class="code-language">Markdown Table</div>
+          <pre class="code-block"><code class="markdown">${this.escapeHtml(table.content)}</code></pre>
         </div>
       `);
     });
@@ -296,6 +317,53 @@ class InterviewCodeFormatter {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Detect markdown tables and wrap them in code blocks for better display
+   * @param {string} text - Text containing potential markdown tables
+   * @returns {string} Text with tables wrapped in code blocks
+   */
+  wrapTablesInCodeBlocks(text) {
+    let tableCounter = 0;
+
+    return text.replace(this.markdownTableRegex, (tableMatch) => {
+      tableCounter++;
+      // Wrap the table in a code block with a label
+      return `\n\`\`\`markdown\n${tableMatch.trim()}\n\`\`\`\n`;
+    });
+  }
+
+  /**
+   * Check if text contains markdown tables
+   * @param {string} text - Text to check
+   * @returns {boolean} True if tables are found
+   */
+  hasMarkdownTables(text) {
+    this.markdownTableRegex.lastIndex = 0;
+    return this.markdownTableRegex.test(text);
+  }
+
+  /**
+   * Extract all markdown tables from text
+   * @param {string} text - Text containing tables
+   * @returns {Array} Array of table objects with position and content
+   */
+  extractMarkdownTables(text) {
+    const tables = [];
+    let match;
+
+    this.markdownTableRegex.lastIndex = 0;
+
+    while ((match = this.markdownTableRegex.exec(text)) !== null) {
+      tables.push({
+        content: match[0].trim(),
+        position: match.index,
+        length: match[0].length
+      });
+    }
+
+    return tables;
   }
 }
 
