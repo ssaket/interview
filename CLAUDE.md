@@ -14,6 +14,10 @@ This is an Electron-based DeepSeek Overlay Helper application that captures scre
 - `npm run test:markdown` - Test markdown section processing
 - `npm run test:session` - Test session management
 
+### AI Response Analysis
+- `npm run analyze:responses` - Analyze AI response logs from last 7 days (default)
+- `npm run analyze:responses:30d` - Analyze AI response logs from last 30 days
+
 ### Development
 - `npm start` - Start the Electron application
 - `npm run dev` - Start in debug mode
@@ -70,13 +74,37 @@ The application supports three types of FAANG technical interviews:
 - **ShortcutManager** (`src/js/shortcut-manager.js`) - Global keyboard shortcuts
 - **RegionSelector** (`src/js/region-selector.js`) - Screen region selection
 - **Formatter** (`src/js/formatter.js`) - AI response formatting and code highlighting
-- **OCRLogger** (`src/js/ocr-logger.js`) - OCR session logging and analysis
+- **AIResponseLogger** (`src/js/ai-response-logger.js`) - Logs all AI responses for formatter analysis and improvement
 - **ConversationWebSocketServer** (`src/js/conversation-websocket-server.js`) - Real-time WebSocket server for live conversation history updates
 
 ### OCR and Text Processing
 - **LLMFriendlyOCRCleaner** (`src/js/llm-friendly-ocr-cleaner.js`) - Simple text cleaning to remove obvious UI junk while preserving useful content
-- **OCRLogger** - Comprehensive logging for OCR performance analysis
 - Region selection capability to reduce OCR noise
+
+### AI Response Logging & Analysis
+The application automatically logs all AI responses to help improve the formatter and analyze patterns:
+
+- **Automatic Logging**: Every AI response is logged to `logs/ai-responses/YYYY-MM-DD.jsonl`
+- **Rich Metadata**: Includes provider, model, interview type, flow type, question, response, timestamps
+- **Analysis Tools**: Use `npm run analyze:responses` to analyze logged responses
+- **Formatter Improvements**: Use logged responses to test and improve formatter patterns
+- **Privacy**: Logs are gitignored and stored locally only
+
+**What's Logged:**
+- Provider and model information
+- Interview type (DSA, System Design, LLD)
+- Flow type (local, cloud, hybrid)
+- Complete question and response text
+- Response length and session message count
+- Error status
+- Timestamp
+
+**Analysis Features:**
+- Response statistics by provider, model, and interview type
+- Markdown pattern detection (code blocks, headers, lists, tables, math)
+- Common structure identification
+- Response length analytics
+- Recommendations for formatter improvements
 
 ## Environment Configuration
 
@@ -276,14 +304,18 @@ src/js/
 ├── app-controller.js       # Main application controller
 ├── formatter.js           # Response formatting and code highlighting
 ├── llm-friendly-ocr-cleaner.js # OCR text cleaning
-├── ocr-logger.js          # OCR performance logging
+├── ai-response-logger.js  # AI response logging for formatter analysis
 ├── shortcut-manager.js    # Keyboard shortcuts
 ├── conversation-websocket-server.js # WebSocket server for real-time conversation history updates
 └── window-manager.js      # Electron window management
 
 tests/                     # Node.js test files
+scripts/                   # Utility scripts
+└── analyze-ai-responses.js # Analyze AI response logs
 docs/                      # Additional documentation
-logs/ocr/                  # OCR processing logs for analysis
+logs/
+├── ai-responses/          # AI response logs for formatter analysis
+└── ocr/                   # OCR processing logs for analysis (future)
 conversation-history-websocket.html # WebSocket-powered live viewer (served by server)
 ```
 

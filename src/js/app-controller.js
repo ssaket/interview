@@ -3,11 +3,13 @@ const WindowManager = require('./window-manager');
 const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
 const ConversationWebSocketServer = require('./conversation-websocket-server');
+const AIResponseLogger = require('./ai-response-logger');
 
 class AppController {
   constructor() {
     this.windowManager = new WindowManager();
     this.aiManager = new SimpleAIManager(this);
+    this.responseLogger = new AIResponseLogger();
     this.conversationWebSocketServer = new ConversationWebSocketServer(this.aiManager, this.windowManager);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
     this.ocrFilteringEnabled = true;
@@ -186,6 +188,7 @@ class AppController {
     /* ------------ Ask ChatGPT / AI ------------ */
     ipcMain.handle('ask-chatgpt', async (event, question, options = {}) => {
       const requestId = Math.random().toString(36).substring(2, 15);
+      const flowType = options.flow || null;
 
       try {
         // Track this request for potential cancellation
@@ -232,6 +235,9 @@ class AppController {
           }
         }
 
+        // Log AI response for formatter analysis
+        this._logAIResponse(question, response, flowType);
+
         // Broadcast history update via WebSocket
         if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
           await this.conversationWebSocketServer.broadcastHistoryUpdate();
@@ -264,6 +270,9 @@ class AppController {
         } else if (err.status === 429 || (err.response && err.response.status === 429)) {
           errorMsg = '⚠️ Rate limit exceeded. Please try again later.';
         }
+
+        // Log error response
+        this._logAIResponse(question, errorMsg, flowType, true);
 
         // Update session length in UI even on error
         const sess = this.aiManager.getSession();
@@ -789,6 +798,30 @@ class AppController {
     this.clearOcrContext();
     this.clearVisionContext();
     console.log('[AppController] All context cleared');
+  }
+
+  /**
+   * Log AI response for formatter analysis
+   * @private
+   */
+  _logAIResponse(question, response, flowType = null, isError = false) {
+    try {
+      const providerInfo = this.aiManager.getProviderInfo();
+      const sessionStats = this.aiManager.getSessionStats();
+
+      this.responseLogger.logResponse({
+        question: question,
+        response: response,
+        provider: providerInfo.name,
+        model: providerInfo.model,
+        interviewType: this.aiManager.getCurrentInterviewType(),
+        flowType: flowType,
+        messageCount: sessionStats.historyLength,
+        isError: isError,
+      });
+    } catch (error) {
+      console.error('[AppController] Failed to log AI response:', error.message);
+    }
   }
 
   /**

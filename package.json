@@ -11,6 +11,8 @@
     "test:cleaner": "node tests/test-llm-friendly-cleaner.js",
     "test:markdown": "node tests/test-markdown-sections.js",
     "test:session": "node tests/test-session.js",
+    "analyze:responses": "node scripts/analyze-ai-responses.js 7",
+    "analyze:responses:30d": "node scripts/analyze-ai-responses.js 30",
     "lint": "eslint src/js/**/*.js",
     "lint:fix": "eslint src/js/**/*.js --fix",
     "format": "prettier --write \"src/**/*.{js,css,html}\"",
