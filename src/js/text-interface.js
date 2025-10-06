@@ -119,7 +119,7 @@ class StreamlinedTextInterface {
       height: '100%',
       fontSize: '14px',
       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-      overflow: 'hidden',
+      // overflow: 'hidden',
     };
 
     const contentStyle = {
@@ -129,45 +129,65 @@ class StreamlinedTextInterface {
     };
 
     if (this.isDark) {
-      return EditorView.theme({
-        '&': {
-          ...baseStyle,
-          backgroundColor: 'rgba(13, 17, 23, 0.3)',
-          color: '#f0f6fc',
+      return EditorView.theme(
+        {
+          '&': {
+            ...baseStyle,
+            backgroundColor: 'rgba(13, 17, 23, 0.6)', // stronger contrast
+            color: '#e6edf3',
+            border: '1px solid rgba(255,255,255,0.06)',
+            backdropFilter: 'blur(8px)',
+          },
+          // make inner pieces transparent so we only have one background layer
+          '.cm-content': {
+            ...contentStyle,
+            backgroundColor: 'transparent',
+            color: 'inherit',
+          },
+          '.cm-editor': { height: '100%' },
+          '.cm-scroller': {
+            fontFamily: baseStyle.fontFamily,
+            backgroundColor: 'transparent',
+            overflow: 'auto', // allow scrolling
+            height: '100%',
+          },
+          // niceties
+          '.cm-cursor': { borderLeft: '1px solid #58a6ff' },
+          '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+            backgroundColor: '#1f6feb33',
+          },
         },
-        '.cm-content': {
-          ...contentStyle,
-          backgroundColor: 'rgba(13, 17, 23, 0.3)',
-          color: '#f0f6fc',
-        },
-        '.cm-focused': { outline: 'none' },
-        '.cm-editor': { height: '100%', backgroundColor: 'rgba(13, 17, 23, 0.3)' },
-        '.cm-scroller': {
-          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          backgroundColor: 'rgba(13, 17, 23, 0.3)',
-          overflow: 'auto',
-        },
-      });
+        { dark: true }
+      ); // pass dark flag
     } else {
-      return EditorView.theme({
-        '&': {
-          ...baseStyle,
-          backgroundColor: 'rgba(255, 255, 255, 0.21)',
-          color: '#24292f',
+      return EditorView.theme(
+        {
+          '&': {
+            ...baseStyle,
+            backgroundColor: 'rgba(255, 255, 255, 0.5)',
+            color: '#1f2329',
+            border: '1px solid rgba(0,0,0,0.06)',
+            backdropFilter: 'blur(8px)',
+          },
+          '.cm-content': {
+            ...contentStyle,
+            backgroundColor: 'transparent',
+            color: 'inherit',
+          },
+          '.cm-editor': { height: '100%' },
+          '.cm-scroller': {
+            fontFamily: baseStyle.fontFamily,
+            backgroundColor: 'transparent',
+            overflow: 'auto',
+            height: '100%',
+          },
+          '.cm-cursor': { borderLeft: '1px solid #0969da' },
+          '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+            backgroundColor: 'rgba(9,105,218,0.16)',
+          },
         },
-        '.cm-content': {
-          ...contentStyle,
-          backgroundColor: 'rgba(255, 255, 255, 0.21)',
-          color: '#24292f',
-        },
-        '.cm-focused': { outline: 'none' },
-        '.cm-editor': { height: '100%', backgroundColor: 'rgba(255, 255, 255, 0.21)' },
-        '.cm-scroller': {
-          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          backgroundColor: 'rgba(255, 255, 255, 0.21)',
-          overflow: 'auto',
-        },
-      });
+        { dark: false }
+      );
     }
   }
 
@@ -330,10 +350,6 @@ class StreamlinedTextInterface {
     const docLength = this.editor.state.doc.length;
     this.editor.dispatch({
       changes: { from: docLength, to: docLength, insert: processedChunk },
-      effects:
-        docLength % 200 === 0
-          ? EditorView.scrollIntoView(docLength + processedChunk.length, { y: 'end' })
-          : [],
     });
   }
 
@@ -650,7 +666,7 @@ Activity log:
     return this.editor ? this.editor.state.doc.toString() : '';
   }
 
-  appendContent(content, addSeparator = true, autoScroll = true) {
+  appendContent(content, addSeparator = true, autoScroll = false) {
     if (!this.editor || !content) return;
 
     const separator = addSeparator ? '\n\n' : '';
