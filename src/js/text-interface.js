@@ -546,6 +546,7 @@ This text interface provides AI-powered coding interview assistance with compreh
 ${mod}+A - Region screenshot → OCR → AI analysis
 ${mod}+B - Hide/show application
 ${mod}+Arrow Keys - Move window (shows step size)
+${mod}+S - Cycle window positions (top-left → top-right → center → bottom-left → bottom-right)
 
 ### Screenshot Stack Workflow
 ${mod}+1 - Add region screenshot to stack
@@ -556,18 +557,24 @@ ${mod}+3 - Clear screenshot stack
 ${mod}+Shift+F - Cycle AI flows (LOCAL → CLOUD → HYBRID)
 ${mod}+Shift+R - Reset AI session
 ${mod}+Shift+O - Toggle OCR filtering
+${mod}+Shift+T - Cycle interview type (DSA → System Design → LLD)
 
 ### Interface Controls
 ${mod}+Shift+D - Toggle dark/light theme
 ${mod}+Shift+L - Toggle code-only view (extract Python code)
-${mod}+Shift+V - View conversation history in browser
-${mod}+Shift+C - Center window
+${mod}+Shift+I - Developer tools
+${mod}+Shift+0 - Toggle window size (default ⟷ compact)
 F1 - Toggle this help guide
+F11 - Toggle window size (alternative shortcut)
 
 ### Window Adjustments
 ${mod}+Shift+Up/Down - Resize height (shows dimensions)
 ${mod}+Shift+[ ] - Resize width (shows dimensions)
 ${mod}+Shift++/- - Adjust movement step size
+
+### Page Scrolling
+Alt/Opt+Z - Scroll page up
+Alt/Opt+X - Scroll page down
 
 ### Model Management
 ${mod}+Shift+M - Switch Ollama model
@@ -576,8 +583,8 @@ ${mod}+Shift+W - Warmup Ollama model
 
 ### Math Formula Support
 - LaTeX formulas supported: $O(n)$, $O(log n)$, $$T(n) = 2T(n/2) + O(n)$$
-- Use browser view (${mod}+Shift+V) for rendered math formulas
 - Examples: Time complexity $O(n^2)$, Space complexity $O(1)$
+- Note: Math formulas display best in browser-based conversation history viewer
 
 **Status Messages:** All operations now show visual feedback (3 seconds, queued)
 

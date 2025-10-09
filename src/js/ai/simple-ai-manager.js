@@ -760,8 +760,13 @@ Please include:
   _extractContent(response) {
     if (response.choices && response.choices.length > 0) {
       const choice = response.choices[0];
-      if (choice.message && choice.message.content) {
-        return choice.message.content;
+      if (choice.message) {
+        // Only use 'content' field, ignore 'reasoning_content' (thinking process)
+        const content = choice.message.content || '';
+
+        if (content) {
+          return content;
+        }
       }
     }
 

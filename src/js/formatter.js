@@ -24,6 +24,194 @@ class InterviewCodeFormatter {
   }
 
   /**
+   * Parse a markdown table into structured data
+   * @param {string} tableText - Raw markdown table text
+   * @returns {Object} Parsed table with headers, alignments, and rows
+   */
+  parseTable(tableText) {
+    const lines = tableText.trim().split('\n').filter(line => line.trim());
+
+    if (lines.length < 3) {
+      return null; // Need at least header, separator, and one data row
+    }
+
+    // Parse header row
+    const headerLine = lines[0].trim();
+    const headers = headerLine.split('|')
+      .map(cell => cell.trim())
+      .filter(cell => cell.length > 0);
+
+    // Parse separator row to determine alignments
+    const separatorLine = lines[1].trim();
+    const separators = separatorLine.split('|')
+      .map(cell => cell.trim())
+      .filter(cell => cell.length > 0);
+
+    const alignments = separators.map(sep => {
+      const startsWithColon = sep.startsWith(':');
+      const endsWithColon = sep.endsWith(':');
+
+      if (startsWithColon && endsWithColon) return 'center';
+      if (endsWithColon) return 'right';
+      return 'left';
+    });
+
+    // Parse data rows
+    const rows = [];
+    for (let i = 2; i < lines.length; i++) {
+      const rowLine = lines[i].trim();
+      const cells = rowLine.split('|')
+        .map(cell => cell.trim())
+        .filter((cell, idx, arr) => {
+          // Filter out empty first/last cells from leading/trailing pipes
+          return idx > 0 && idx < arr.length - 1 ? true : cell.length > 0;
+        });
+
+      if (cells.length > 0) {
+        rows.push(cells);
+      }
+    }
+
+    return {
+      headers,
+      alignments,
+      rows,
+      columnCount: headers.length
+    };
+  }
+
+  /**
+   * Format a table as ASCII with proper column alignment
+   * @param {string} tableText - Raw markdown table text
+   * @returns {string} Formatted ASCII table with aligned columns
+   */
+  formatTableASCII(tableText) {
+    const parsed = this.parseTable(tableText);
+    if (!parsed) return tableText;
+
+    const { headers, alignments, rows, columnCount } = parsed;
+
+    // Calculate max width for each column
+    const columnWidths = headers.map((header, colIdx) => {
+      let maxWidth = header.length;
+
+      rows.forEach(row => {
+        if (row[colIdx]) {
+          // Strip markdown formatting for width calculation
+          const plainText = row[colIdx]
+            .replace(/\*\*([^*]+)\*\*/g, '$1') // Bold
+            .replace(/\*([^*]+)\*/g, '$1')     // Italic
+            .replace(/`([^`]+)`/g, '$1');      // Inline code
+          maxWidth = Math.max(maxWidth, plainText.length);
+        }
+      });
+
+      return maxWidth;
+    });
+
+    // Helper function to pad cell content based on alignment
+    const padCell = (content, width, alignment) => {
+      // Strip markdown for length calculation but keep in output
+      const plainText = content
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/`([^`]+)`/g, '$1');
+
+      const paddingNeeded = width - plainText.length;
+
+      if (alignment === 'center') {
+        const leftPad = Math.floor(paddingNeeded / 2);
+        const rightPad = paddingNeeded - leftPad;
+        return ' '.repeat(leftPad) + content + ' '.repeat(rightPad);
+      } else if (alignment === 'right') {
+        return ' '.repeat(paddingNeeded) + content;
+      } else { // left
+        return content + ' '.repeat(paddingNeeded);
+      }
+    };
+
+    // Build formatted table
+    const lines = [];
+
+    // Header row
+    const headerCells = headers.map((header, idx) =>
+      padCell(header, columnWidths[idx], alignments[idx])
+    );
+    lines.push('| ' + headerCells.join(' | ') + ' |');
+
+    // Separator row
+    const separatorCells = columnWidths.map((width, idx) => {
+      if (alignments[idx] === 'center') {
+        return ':' + '-'.repeat(width - 2) + ':';
+      } else if (alignments[idx] === 'right') {
+        return '-'.repeat(width - 1) + ':';
+      } else {
+        return '-'.repeat(width);
+      }
+    });
+    lines.push('| ' + separatorCells.join(' | ') + ' |');
+
+    // Data rows
+    rows.forEach(row => {
+      const cells = row.map((cell, idx) =>
+        padCell(cell || '', columnWidths[idx], alignments[idx])
+      );
+      lines.push('| ' + cells.join(' | ') + ' |');
+    });
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Format a table as HTML with proper styling
+   * @param {string} tableText - Raw markdown table text
+   * @returns {string} HTML table element
+   */
+  formatTableHTML(tableText) {
+    const parsed = this.parseTable(tableText);
+    if (!parsed) return this.escapeHtml(tableText);
+
+    const { headers, alignments, rows } = parsed;
+
+    // Helper to convert markdown formatting in cells
+    const formatCellContent = (content) => {
+      let formatted = this.escapeHtml(content);
+      // Apply markdown formatting
+      formatted = formatted
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>') // Bold
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')             // Italic
+        .replace(/`([^`]+)`/g, '<code>$1</code>');          // Inline code
+      return formatted;
+    };
+
+    let html = '<table class="markdown-table">\n';
+
+    // Header
+    html += '  <thead>\n    <tr>\n';
+    headers.forEach((header, idx) => {
+      const align = alignments[idx];
+      html += `      <th style="text-align: ${align}">${formatCellContent(header)}</th>\n`;
+    });
+    html += '    </tr>\n  </thead>\n';
+
+    // Body
+    html += '  <tbody>\n';
+    rows.forEach(row => {
+      html += '    <tr>\n';
+      row.forEach((cell, idx) => {
+        const align = alignments[idx];
+        html += `      <td style="text-align: ${align}">${formatCellContent(cell || '')}</td>\n`;
+      });
+      html += '    </tr>\n';
+    });
+    html += '  </tbody>\n';
+
+    html += '</table>';
+
+    return html;
+  }
+
+  /**
    * Extract Python code with interview-aware prioritization
    * @param {string} raw - Raw AI response
    * @param {boolean} formatterEnabled - Enable/disable formatting
@@ -254,6 +442,12 @@ class InterviewCodeFormatter {
     // Process LaTeX formulas
     let processed = this.processMathFormulas(raw);
 
+    // Convert markdown tables to HTML first (before other replacements)
+    this.markdownTableRegex.lastIndex = 0;
+    processed = processed.replace(this.markdownTableRegex, (tableMatch) => {
+      return this.formatTableHTML(tableMatch.trim());
+    });
+
     // Basic markdown formatting (focused on structure, not inline code)
     processed = processed
       .replace(/```python\n[\s\S]*?```/g, '[PYTHON_CODE_BLOCK]') // Placeholder for code blocks
@@ -320,17 +514,19 @@ class InterviewCodeFormatter {
   }
 
   /**
-   * Detect markdown tables and wrap them in code blocks for better display
+   * Detect markdown tables and wrap them in code blocks with proper formatting
    * @param {string} text - Text containing potential markdown tables
-   * @returns {string} Text with tables wrapped in code blocks
+   * @returns {string} Text with tables formatted and wrapped in code blocks
    */
   wrapTablesInCodeBlocks(text) {
     let tableCounter = 0;
 
     return text.replace(this.markdownTableRegex, (tableMatch) => {
       tableCounter++;
-      // Wrap the table in a code block with a label
-      return `\n\`\`\`markdown\n${tableMatch.trim()}\n\`\`\`\n`;
+      // Format the table with proper column alignment
+      const formattedTable = this.formatTableASCII(tableMatch.trim());
+      // Wrap the formatted table in a code block
+      return `\n\`\`\`markdown\n${formattedTable}\n\`\`\`\n`;
     });
   }
 

@@ -84,10 +84,10 @@ class AIConfig {
           baseUrl: 'https://api.deepseek.com',
           timeout: 120000,
           models: {
-            chat: ['deepseek-chat', 'deepseek-reasoner'],
-            primary: 'deepseek-chat',
+            chat: ['deepseek-reasoner'],
+            primary: 'deepseek-reasoner',
             reasoning: ['deepseek-reasoner'],
-            coding: ['deepseek-chat', 'deepseek-reasoner'],
+            coding: ['deepseek-reasoner'],
           },
           parameters: {
             temperature: 0.1,

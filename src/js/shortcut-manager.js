@@ -1,4 +1,4 @@
-const { globalShortcut, screen } = require('electron');
+const { globalShortcut, screen, app } = require('electron');
 
 class ShortcutManager {
   /**
@@ -46,6 +46,12 @@ class ShortcutManager {
     const secondary = process.platform === 'darwin' ? 'Command+Shift' : 'Control+Shift';
 
     /* ═══ TIER 1: CORE FUNCTIONS (Primary Modifier - Most Used) ═══ */
+
+    // Quit Application (Q = Quit)
+    globalShortcut.register(`${primary}+Q`, () => {
+      console.log('[ShortcutManager] Quitting application');
+      app.quit();
+    });
 
     // Screenshot Functions (A = Area only)
     globalShortcut.register(`${primary}+A`, () => {
@@ -97,7 +103,10 @@ class ShortcutManager {
     globalShortcut.register(`${secondary}+0`, () => {
       this.syncWindowSizeState();
       if (this.isSmallWindowMode) {
-        mainWindow.setSize(defaultWidth, defaultHeight);
+        const cursor = screen.getCursorScreenPoint();
+        const display = screen.getDisplayNearestPoint(cursor);
+        const { width: workWidth, height: workHeight } = display.workArea;
+        mainWindow.setSize(workWidth, workHeight);
         this.isSmallWindowMode = false;
       } else {
         mainWindow.setSize(resizeStep * 20, resizeStep * 2);
@@ -268,6 +277,7 @@ class ShortcutManager {
     const altKey = process.platform === 'darwin' ? 'Option' : 'Alt';
 
     // Unregister all global shortcuts specifically (not cmd+B)
+    globalShortcut.unregister(`${primary}+Q`);
     globalShortcut.unregister(`${primary}+A`);
     globalShortcut.unregister(`${primary}+S`);
 
@@ -330,6 +340,7 @@ class ShortcutManager {
     const mod = process.platform === 'darwin' ? 'Cmd' : 'Ctrl';
     console.log('\n=== PSYCHOLOGY-OPTIMIZED SHORTCUTS ===');
     console.log(`TIER 1 - CORE FUNCTIONS (${mod} + Key):`);
+    console.log(`  ${mod}+Q                 - Quit application`);
     console.log(`  ${mod}+A                 - Area screenshot (region)`);
     console.log(`  ${mod}+B                 - Show/hide window`);
     console.log(`  ${mod}+Arrow Keys        - Move window`);
@@ -339,9 +350,9 @@ class ShortcutManager {
     console.log(`  ${mod}+3                 - Clear screenshot stack`);
     console.log('\nTIER 3 - UTILITIES (Function Keys):');
     console.log('  F1                     - Toggle help guide in interface');
-    console.log('  F11                    - Toggle window size (alternative)');
+    console.log('  F11                    - Toggle small window / fullscreen (alternative)');
     console.log(`\nTIER 4 - ADVANCED (${mod}+Shift + Key):`);
-    console.log(`  ${mod}+Shift+0           - Toggle window size`);
+    console.log(`  ${mod}+Shift+0           - Toggle small window / fullscreen`);
     console.log(`  ${mod}+Shift+R           - Reset AI session`);
     console.log(`  ${mod}+Shift+F           - Toggle AI flow`);
     console.log(`  ${mod}+Shift+O           - Toggle OCR filtering`);

@@ -130,7 +130,7 @@ HF_MODEL=deepseek-ai/DeepSeek-R1-0528
 
 # DeepSeek Configuration (V3.1 with Think Mode) - Required for HYBRID AI flow
 DEEPSEEK_API_KEY=your_deepseek_api_key
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-reasoner
 
 # AssemblyAI Configuration (for speech-to-text)
 ASSEMBLYAI_API_KEY=your_assemblyai_api_key
@@ -174,6 +174,7 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 
 ### **TIER 1: Core Functions** *(Single Modifier - Most Used)*
 **Easy-to-reach keys with strong mnemonics:**
+- `Cmd/Ctrl+Q` - **Q**uit application
 - `Cmd/Ctrl+A` - **A**rea screenshot (region selection)
 - `Cmd/Ctrl+B` - Show/hide window (preserving original)
 - `Cmd/Ctrl+Arrow Keys` - Move window (natural directional mapping with visual feedback)
@@ -186,11 +187,11 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 
 ### **TIER 3: Utilities** *(Function Keys - Universal Standards)*
 - `F1` - Help (universal help key)
-- `F11` - Toggle window size (alternative)
+- `F11` - Toggle small window / fullscreen (alternative)
 
 ### **TIER 4: Advanced Features** *(Double Modifier - Less Frequent)*
 **Grouped by function with memorable mnemonics:**
-- `Cmd/Ctrl+Shift+0` - Toggle window size (original shortcut)
+- `Cmd/Ctrl+Shift+0` - Toggle small window / fullscreen
 - `Cmd/Ctrl+Shift+R` - **R**eset AI session
 - `Cmd/Ctrl+Shift+F` - AI **F**low toggle (LOCAL→CLOUD→HYBRID)
 - `Cmd/Ctrl+Shift+O` - **O**CR filter toggle (shows status message)
@@ -217,7 +218,7 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 
 ### **Psychology Benefits**
 - **Visual Feedback**: All operations now show status messages (improved UX)
-- **Better Mnemonics**: A=Area, O=OCR, U=Understand, D=Dark, V=View
+- **Better Mnemonics**: Q=Quit, A=Area, O=OCR, D=Dark, V=View
 - **Muscle Memory**: Consistent modifier patterns across tiers
 - **Logical Grouping**: Functions organized by frequency and relatedness
 - **Cross-Platform**: Same logical keys work on macOS (Cmd) and Windows (Ctrl)

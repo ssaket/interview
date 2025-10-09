@@ -427,15 +427,14 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
 
               try {
                 const parsed = JSON.parse(data);
-                if (
-                  parsed.choices &&
-                  parsed.choices[0] &&
-                  parsed.choices[0].delta &&
-                  parsed.choices[0].delta.content
-                ) {
+                if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+                  // Only use 'content' field, ignore 'reasoning_content' (thinking process)
                   const content = parsed.choices[0].delta.content;
-                  fullContent += content;
-                  onChunk(content);
+
+                  if (content) {
+                    fullContent += content;
+                    onChunk(content);
+                  }
                 }
               } catch (parseError) {
                 // Ignore parsing errors for partial chunks
