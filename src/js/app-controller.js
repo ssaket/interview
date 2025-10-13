@@ -2,6 +2,7 @@ const { app, ipcMain, desktopCapturer, nativeImage, screen } = require('electron
 const WindowManager = require('./window-manager');
 const SimpleAIManager = require('./ai/simple-ai-manager');
 const ShortcutManager = require('./shortcut-manager');
+const KeyHoldManager = require('./key-hold-manager');
 const ConversationWebSocketServer = require('./conversation-websocket-server');
 const AIResponseLogger = require('./ai-response-logger');
 
@@ -12,6 +13,7 @@ class AppController {
     this.responseLogger = new AIResponseLogger();
     this.conversationWebSocketServer = new ConversationWebSocketServer(this.aiManager, this.windowManager);
     this.shortcutManager = new ShortcutManager(this.windowManager, this.aiManager, this);
+    this.keyHoldManager = new KeyHoldManager(this.windowManager);
     this.ocrFilteringEnabled = true;
 
     // Track OCR context for initial query detection
@@ -757,6 +759,7 @@ class AppController {
     app.whenReady().then(() => {
       this.windowManager.create();
       this.shortcutManager.register();
+      this.keyHoldManager.start();
       this.registerIpc();
       this.aiManager.initialize();
     });
@@ -943,6 +946,7 @@ class AppController {
 
     try {
       this.shortcutManager.unregisterAll();
+      this.keyHoldManager.stop();
       await this.stopWebSocketServer();
     } catch (error) {
       console.error('[AppController] Error during cleanup:', error);

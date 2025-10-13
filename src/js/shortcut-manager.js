@@ -64,23 +64,15 @@ class ShortcutManager {
     });
 
     // Window Movement (Arrow Keys = natural directional mapping)
+    // These shortcuts are registered to prevent key propagation to other apps
+    // Actual continuous movement is handled by KeyHoldManager
     ['Left', 'Right', 'Up', 'Down'].forEach((dir) => {
       globalShortcut.register(`${primary}+${dir}`, () => {
+        // Single press fallback - KeyHoldManager handles continuous movement
         const [x, y] = mainWindow.getPosition();
         const dx = dir === 'Left' ? -this.moveStep : dir === 'Right' ? this.moveStep : 0;
         const dy = dir === 'Up' ? -this.moveStep : dir === 'Down' ? this.moveStep : 0;
         mainWindow.setPosition(x + dx, y + dy);
-
-        // Throttle status messages to prevent flooding
-        const now = Date.now();
-        if (now - this.lastMessageTime >= this.messageThrottleMs) {
-          this.windowManager.send(
-            'show-status-message',
-            `↔️ Moved ${dir} (step: ${this.moveStep}px)`,
-            2000
-          );
-          this.lastMessageTime = now;
-        }
       });
     });
 
@@ -195,31 +187,21 @@ class ShortcutManager {
 
     /* ═══ TIER 5: FINE CONTROL (Secondary Modifier + Arrows/Symbols) ═══ */
 
-    // Window Height Resizing (Secondary + Up/Down Arrows)
+    // Window Height Resizing
+    // These shortcuts are registered to prevent key propagation to other apps
+    // Actual continuous resizing is handled by KeyHoldManager
     globalShortcut.register(`${secondary}+Down`, () => {
+      // Single press fallback - KeyHoldManager handles continuous resizing
       const [width, height] = mainWindow.getSize();
       const newHeight = height + resizeStep;
       mainWindow.setSize(width, newHeight);
-
-      // Throttle resize messages
-      const now = Date.now();
-      if (now - this.lastMessageTime >= this.messageThrottleMs) {
-        this.windowManager.send('show-status-message', `📏 Height: ${newHeight}px`, 2000);
-        this.lastMessageTime = now;
-      }
     });
 
     globalShortcut.register(`${secondary}+Up`, () => {
+      // Single press fallback - KeyHoldManager handles continuous resizing
       const [width, height] = mainWindow.getSize();
       const newHeight = Math.max(minSize, height - resizeStep);
       mainWindow.setSize(width, newHeight);
-
-      // Throttle resize messages
-      const now = Date.now();
-      if (now - this.lastMessageTime >= this.messageThrottleMs) {
-        this.windowManager.send('show-status-message', `📏 Height: ${newHeight}px`, 2000);
-        this.lastMessageTime = now;
-      }
     });
 
     // CodeMirror Transparency Control
@@ -233,31 +215,21 @@ class ShortcutManager {
       this.windowManager.send('increase-transparency');
     });
 
-    // Window Width Controls (Brackets for intuitive left/right adjustment)
+    // Window Width Controls
+    // These shortcuts are registered to prevent key propagation to other apps
+    // Actual continuous resizing is handled by KeyHoldManager
     globalShortcut.register(`${secondary}+]`, () => {
+      // Single press fallback - KeyHoldManager handles continuous resizing
       const [width, height] = mainWindow.getSize();
       const newWidth = width + resizeStep;
       mainWindow.setSize(newWidth, height);
-
-      // Throttle resize messages
-      const now = Date.now();
-      if (now - this.lastMessageTime >= this.messageThrottleMs) {
-        this.windowManager.send('show-status-message', `📐 Width: ${newWidth}px`, 2000);
-        this.lastMessageTime = now;
-      }
     });
 
     globalShortcut.register(`${secondary}+[`, () => {
+      // Single press fallback - KeyHoldManager handles continuous resizing
       const [width, height] = mainWindow.getSize();
       const newWidth = Math.max(minSize, width - resizeStep);
       mainWindow.setSize(newWidth, height);
-
-      // Throttle resize messages
-      const now = Date.now();
-      if (now - this.lastMessageTime >= this.messageThrottleMs) {
-        this.windowManager.send('show-status-message', `📐 Width: ${newWidth}px`, 2000);
-        this.lastMessageTime = now;
-      }
     });
 
     /* ═══ LEGACY/ADDITIONAL FEATURES ═══ */
@@ -324,17 +296,15 @@ class ShortcutManager {
     globalShortcut.unregister(`${secondary}+D`);
     globalShortcut.unregister(`${secondary}+I`);
 
-    // Window height resizing
+    // Window resize shortcuts
     globalShortcut.unregister(`${secondary}+Down`);
     globalShortcut.unregister(`${secondary}+Up`);
+    globalShortcut.unregister(`${secondary}+]`);
+    globalShortcut.unregister(`${secondary}+[`);
 
     // Movement step adjustment
     globalShortcut.unregister(`${secondary}+Plus`);
     globalShortcut.unregister(`${secondary}+-`);
-
-    // Window width controls
-    globalShortcut.unregister(`${secondary}+]`);
-    globalShortcut.unregister(`${secondary}+[`);
 
     // Page scrolling
     globalShortcut.unregister(`${altKey}+Z`);
@@ -365,7 +335,7 @@ class ShortcutManager {
     console.log(`  ${mod}+Z                 - Area screenshot (region)`);
     console.log(`  ${mod}+B                 - Show/hide window`);
     console.log(`  ${mod}+R                 - Reset AI session`);
-    console.log(`  ${mod}+Arrow Keys        - Move window`);
+    console.log(`  ${mod}+Arrow Keys        - Move window (hold for continuous)`);
     console.log('\nTIER 2 - WORKFLOWS (Numbers):');
     console.log(`  ${mod}+1                 - Add region screenshot to stack`);
     console.log(`  ${mod}+2                 - Process screenshot stack`);
@@ -383,8 +353,8 @@ class ShortcutManager {
     console.log(`  ${mod}+Shift+V           - Conversation history`);
     console.log(`  ${mod}+Shift+C           - Center window`);
     console.log(`\nTIER 5 - FINE CONTROL (${mod}+Shift + Symbols/Arrows):`);
-    console.log(`  ${mod}+Shift+Up/Down     - Resize window height`);
-    console.log(`  ${mod}+Shift+[ ]         - Resize window width`);
+    console.log(`  ${mod}+Shift+Up/Down     - Resize window height (hold for continuous)`);
+    console.log(`  ${mod}+Shift+[ ]         - Resize window width (hold for continuous)`);
     console.log(`  ${mod}+Shift+Plus/-      - Adjust CodeMirror transparency`);
     console.log('\nOTHER:');
     console.log('  Alt/Opt+Z/X            - Scroll page up/down');

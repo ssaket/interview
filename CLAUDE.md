@@ -72,6 +72,7 @@ The application supports three types of FAANG technical interviews:
 - **AppController** (`src/js/app-controller.js`) - Main application controller
 - **WindowManager** (`src/js/window-manager.js`) - Electron window management
 - **ShortcutManager** (`src/js/shortcut-manager.js`) - Global keyboard shortcuts
+- **KeyHoldManager** (`src/js/key-hold-manager.js`) - Continuous window movement and resizing on key hold
 - **RegionSelector** (`src/js/region-selector.js`) - Screen region selection
 - **Formatter** (`src/js/formatter.js`) - AI response formatting and code highlighting
 - **AIResponseLogger** (`src/js/ai-response-logger.js`) - Logs all AI responses for formatter analysis and improvement
@@ -177,7 +178,7 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - `Cmd/Ctrl+Q` - **Q**uit application
 - `Cmd/Ctrl+A` - **A**rea screenshot (region selection)
 - `Cmd/Ctrl+B` - Show/hide window (preserving original)
-- `Cmd/Ctrl+Arrow Keys` - Move window (natural directional mapping with visual feedback)
+- `Cmd/Ctrl+Arrow Keys` - Move window (hold for continuous movement)
 
 ### **TIER 2: Workflows** *(Numbers - Sequential Operations)*
 **1→2→3 natural sequence for screenshot stack workflow:**
@@ -201,8 +202,8 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 
 ### **TIER 5: Fine Control** *(Double Modifier + Arrows/Symbols)*
 **Precise adjustments for power users:**
-- `Cmd/Ctrl+Shift+Up/Down` - Resize window height (shows dimensions)
-- `Cmd/Ctrl+Shift+[ ]` - Resize window width (shows dimensions)
+- `Cmd/Ctrl+Shift+Up/Down` - Resize window height (hold for continuous)
+- `Cmd/Ctrl+Shift+[ ]` - Resize window width (hold for continuous)
 - `Cmd/Ctrl+Shift+Plus/Minus` - Adjust CodeMirror transparency (shows transparency %)
 
 ### **Additional Features**
@@ -222,6 +223,7 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - **Muscle Memory**: Consistent modifier patterns across tiers
 - **Logical Grouping**: Functions organized by frequency and relatedness
 - **Cross-Platform**: Same logical keys work on macOS (Cmd) and Windows (Ctrl)
+- **Continuous Actions**: Hold window movement and resize keys for smooth continuous adjustments
 
 ### **Status Message System**
 - All shortcut operations provide visual feedback with status messages
@@ -229,6 +231,22 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 - Clear emoji indicators for operation types
 - Window operations show dimensions and step sizes
 - Model operations show current model and session info
+
+### **Continuous Window Controls**
+The application uses native keyboard hooks (`uiohook-napi`) for smooth continuous window operations:
+
+**Features:**
+- Hold any movement or resize key for continuous action (20 updates/second)
+- 300ms initial delay before continuous action starts
+- Automatic stop when key is released
+- Keys blocked from other apps when window is visible
+- Single-press fallback for quick adjustments
+
+**Implementation:**
+- **KeyHoldManager** (`src/js/key-hold-manager.js`) - Native keyboard event listener
+- **Movement**: `Cmd/Ctrl+Arrow Keys` - 30px steps
+- **Resizing**: `Cmd/Ctrl+Shift+Arrows/Brackets` - 25px steps
+- Status messages throttled to every 500ms to prevent flooding
 
 ## Testing Approach
 
@@ -307,6 +325,7 @@ src/js/
 ├── llm-friendly-ocr-cleaner.js # OCR text cleaning
 ├── ai-response-logger.js  # AI response logging for formatter analysis
 ├── shortcut-manager.js    # Keyboard shortcuts
+├── key-hold-manager.js    # Continuous window movement and resizing
 ├── conversation-websocket-server.js # WebSocket server for real-time conversation history updates
 └── window-manager.js      # Electron window management
 
