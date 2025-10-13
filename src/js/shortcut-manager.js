@@ -36,7 +36,7 @@ class ShortcutManager {
   /** Register all other global shortcuts except toggle */
   registerGlobalShortcuts() {
     const { mainWindow } = this.windowManager;
-    let resizeStep = 50;
+    let resizeStep = 25;
     const defaultWidth = 800;
     const defaultHeight = 800;
     const minSize = 50;
@@ -107,6 +107,7 @@ class ShortcutManager {
         const display = screen.getDisplayNearestPoint(cursor);
         const { width: workWidth, height: workHeight } = display.workArea;
         mainWindow.setSize(workWidth, workHeight);
+        mainWindow.center();
         this.isSmallWindowMode = false;
       } else {
         mainWindow.setSize(resizeStep * 20, resizeStep * 2);
