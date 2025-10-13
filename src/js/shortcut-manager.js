@@ -10,9 +10,13 @@ class ShortcutManager {
     this.windowManager = windowManager;
     this.aiManager = aiManager;
     this.appController = appController;
-    this.isSmallWindowMode = false; // Track window size state
+    this.isSmallWindowMode = false; // Track if window is at full-screen (workArea) size
     this.moveStep = 30; // Move this to instance variable for external access
     this.resizeStep = 25; // Step size for resizing
+
+    // Remember last custom window size for toggle behavior (before going full-screen)
+    this.lastLargeWidth = 800; // Default window width
+    this.lastLargeHeight = 800; // Default window height
 
     // Throttling for status messages
     this.lastMessageTime = 0;
@@ -54,8 +58,8 @@ class ShortcutManager {
       app.quit();
     });
 
-    // Screenshot Functions (A = Area only)
-    globalShortcut.register(`${primary}+A`, () => {
+    // Screenshot Functions (Z = Area only)
+    globalShortcut.register(`${primary}+Z`, () => {
       this.windowManager.send('trigger-screenshot-region');
     });
 
@@ -100,18 +104,26 @@ class ShortcutManager {
     // Help toggle (F1 = universal help key)
     globalShortcut.register('F1', () => this.toggleHelp());
 
-    // Toggle Window Size (preserving original Cmd+Shift+0)
-    globalShortcut.register(`${secondary}+0`, () => {
+    // Toggle Window Size (preserving original Cmd+Shift+/)
+    globalShortcut.register(`${secondary}+/`, () => {
       this.syncWindowSizeState();
       if (this.isSmallWindowMode) {
+        // Switching from full-screen to custom: restore last remembered size
+        mainWindow.setSize(this.lastLargeWidth, this.lastLargeHeight);
+        mainWindow.center();
+        this.isSmallWindowMode = false;
+      } else {
+        // Switching from custom to full-screen: save current size first
+        const [currentWidth, currentHeight] = mainWindow.getSize();
+        this.lastLargeWidth = currentWidth;
+        this.lastLargeHeight = currentHeight;
+
+        // Go to full-screen (workArea size)
         const cursor = screen.getCursorScreenPoint();
         const display = screen.getDisplayNearestPoint(cursor);
         const { width: workWidth, height: workHeight } = display.workArea;
         mainWindow.setSize(workWidth, workHeight);
         mainWindow.center();
-        this.isSmallWindowMode = false;
-      } else {
-        mainWindow.setSize(this.resizeStep * 30, resizeStep * 5);
         this.isSmallWindowMode = true;
       }
     });
@@ -294,7 +306,7 @@ class ShortcutManager {
 
     // Unregister all global shortcuts specifically (not cmd+B)
     globalShortcut.unregister(`${primary}+Q`);
-    globalShortcut.unregister(`${primary}+A`);
+    globalShortcut.unregister(`${primary}+Z`);
     globalShortcut.unregister(`${primary}+R`);
     globalShortcut.unregister(`${primary}+S`);
 
@@ -313,7 +325,7 @@ class ShortcutManager {
     globalShortcut.unregister('F11');
 
     // Secondary modifier shortcuts
-    globalShortcut.unregister(`${secondary}+0`);
+    globalShortcut.unregister(`${secondary}+/`);
     globalShortcut.unregister(`${secondary}+R`);
     globalShortcut.unregister(`${secondary}+F`);
     globalShortcut.unregister(`${secondary}+O`);
@@ -358,7 +370,7 @@ class ShortcutManager {
     console.log('\n=== PSYCHOLOGY-OPTIMIZED SHORTCUTS ===');
     console.log(`TIER 1 - CORE FUNCTIONS (${mod} + Key):`);
     console.log(`  ${mod}+Q                 - Quit application`);
-    console.log(`  ${mod}+A                 - Area screenshot (region)`);
+    console.log(`  ${mod}+Z                 - Area screenshot (region)`);
     console.log(`  ${mod}+B                 - Show/hide window`);
     console.log(`  ${mod}+R                 - Reset AI session`);
     console.log(`  ${mod}+Arrow Keys        - Move window`);
@@ -370,7 +382,7 @@ class ShortcutManager {
     console.log('  F1                     - Toggle help guide in interface');
     console.log('  F11                    - Toggle small window / fullscreen (alternative)');
     console.log(`\nTIER 4 - ADVANCED (${mod}+Shift + Key):`);
-    console.log(`  ${mod}+Shift+0           - Toggle small window / fullscreen`);
+    console.log(`  ${mod}+Shift+/           - Toggle small window / fullscreen`);
     console.log(`  ${mod}+Shift+R           - Master Reset (recover from any error)`);
     console.log(`  ${mod}+Shift+F           - Toggle AI flow`);
     console.log(`  ${mod}+Shift+O           - Toggle OCR filtering`);
@@ -487,15 +499,22 @@ class ShortcutManager {
     const { mainWindow } = this.windowManager;
     const [width, height] = mainWindow.getSize();
 
-    // Consider it small mode if close to small size (allow some tolerance)
-    this.isSmallWindowMode = width >= this.resizeStep * 15 && height <= this.resizeStep * 5;
+    // Get the current display's workArea size
+    const cursor = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursor);
+    const { width: workWidth, height: workHeight } = display.workArea;
+
+    // Consider it full-screen mode if close to workArea size (allow some tolerance)
+    const tolerance = 50; // pixels
+    this.isSmallWindowMode =
+      Math.abs(width - workWidth) < tolerance && Math.abs(height - workHeight) < tolerance;
   }
 
   /**
    * Get current window size mode for external use
    */
   getWindowSizeMode() {
-    return this.isSmallWindowMode ? 'small' : 'default';
+    return this.isSmallWindowMode ? 'fullscreen' : 'custom';
   }
 
   /**
