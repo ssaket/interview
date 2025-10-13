@@ -481,6 +481,8 @@
         </div>
 
         <div class="controls">
+            <button class="btn" id="share-btn" onclick="shareToClaude()" disabled style="background: #8b5cf6; border-color: #a78bfa;">Share to Claude</button>
+            <button class="btn secondary" id="export-btn" onclick="exportChat()" disabled>Export Options</button>
             <button class="btn secondary" id="clear-btn" onclick="clearHistory()" disabled>Clear History</button>
             <button class="btn" id="reconnect-btn" onclick="reconnect()">Reconnect</button>
         </div>
@@ -654,16 +656,22 @@
         function displayHistory(historyData, highlightNew = false) {
             const conversationElement = document.getElementById('conversation');
             const emptyStateElement = document.getElementById('empty-state');
+            const shareBtn = document.getElementById('share-btn');
+            const exportBtn = document.getElementById('export-btn');
 
             if (!historyData.history || historyData.history.length === 0) {
                 emptyStateElement.style.display = 'block';
                 conversationElement.innerHTML = '';
                 conversationElement.appendChild(emptyStateElement);
+                shareBtn.disabled = true;
+                exportBtn.disabled = true;
                 return;
             }
 
             emptyStateElement.style.display = 'none';
             conversationElement.innerHTML = '';
+            shareBtn.disabled = false;
+            exportBtn.disabled = false;
 
             historyData.history.forEach((message, index) => {
                 const isNew = highlightNew && index >= (historyData.history.length - (historyData.history.length - currentHistory.length));
@@ -755,6 +763,8 @@
         }
 
         function enableControls(enabled) {
+            document.getElementById('share-btn').disabled = !enabled || currentHistory.length === 0;
+            document.getElementById('export-btn').disabled = !enabled || currentHistory.length === 0;
             document.getElementById('clear-btn').disabled = !enabled;
             document.getElementById('reconnect-btn').disabled = enabled;
         }
@@ -789,6 +799,191 @@
                 ws.close();
             }
             connectWebSocket();
+        }
+
+        async function shareToClaude() {
+            if (!currentHistory || currentHistory.length === 0) {
+                showNotification('No conversation to share', 'error');
+                return;
+            }
+
+            // Check if Web Share API is supported
+            if (!navigator.share) {
+                showNotification('Share not supported on this device. Use Export Options instead.', 'info');
+                exportChat();
+                return;
+            }
+
+            const provider = document.getElementById('provider-badge').textContent.replace('Provider: ', '');
+            const model = document.getElementById('model-badge').textContent.replace('Model: ', '');
+
+            // Generate markdown content for sharing
+            const content = generateMarkdownExport(provider, model);
+
+            try {
+                await navigator.share({
+                    title: 'DeepSeek Interview Conversation',
+                    text: content
+                });
+                showNotification('Shared successfully! Open in Claude app.', 'success');
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    // User cancelled the share
+                    console.log('Share cancelled');
+                } else {
+                    console.error('Error sharing:', error);
+                    showNotification('Share failed. Copying to clipboard instead...', 'info');
+
+                    // Fallback to clipboard
+                    try {
+                        await navigator.clipboard.writeText(content);
+                        showNotification('Copied to clipboard! Paste into Claude app.', 'success');
+                    } catch (clipError) {
+                        showNotification('Share and copy failed. Use Export Options.', 'error');
+                    }
+                }
+            }
+        }
+
+        function exportChat() {
+            if (!currentHistory || currentHistory.length === 0) {
+                showNotification('No conversation to export', 'error');
+                return;
+            }
+
+            // Create export options menu
+            const exportOptions = [
+                { name: 'Markdown (Recommended)', format: 'markdown' },
+                { name: 'Plain Text', format: 'text' },
+                { name: 'JSON', format: 'json' }
+            ];
+
+            const choice = prompt(
+                'Choose export format:\n' +
+                exportOptions.map((opt, i) => `${i + 1}. ${opt.name}`).join('\n') +
+                '\n\nEnter number (1-3) or press Cancel:',
+                '1'
+            );
+
+            if (!choice) return;
+
+            const selectedIndex = parseInt(choice) - 1;
+            if (selectedIndex < 0 || selectedIndex >= exportOptions.length) {
+                showNotification('Invalid selection', 'error');
+                return;
+            }
+
+            const format = exportOptions[selectedIndex].format;
+            exportConversation(format);
+        }
+
+        function exportConversation(format) {
+            let content, filename, mimeType;
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            const provider = document.getElementById('provider-badge').textContent.replace('Provider: ', '');
+            const model = document.getElementById('model-badge').textContent.replace('Model: ', '');
+
+            switch (format) {
+                case 'markdown':
+                    content = generateMarkdownExport(provider, model);
+                    filename = `conversation-${timestamp}.md`;
+                    mimeType = 'text/markdown';
+                    break;
+                case 'text':
+                    content = generateTextExport(provider, model);
+                    filename = `conversation-${timestamp}.txt`;
+                    mimeType = 'text/plain';
+                    break;
+                case 'json':
+                    content = generateJSONExport(provider, model);
+                    filename = `conversation-${timestamp}.json`;
+                    mimeType = 'application/json';
+                    break;
+                default:
+                    showNotification('Unknown format', 'error');
+                    return;
+            }
+
+            // Download the file
+            downloadFile(content, filename, mimeType);
+
+            // Also copy to clipboard
+            copyToClipboard(content, format);
+        }
+
+        function generateMarkdownExport(provider, model) {
+            let markdown = `# Conversation Export\n\n`;
+            markdown += `**Provider:** ${provider}\n`;
+            markdown += `**Model:** ${model}\n`;
+            markdown += `**Exported:** ${new Date().toLocaleString()}\n`;
+            markdown += `**Messages:** ${currentHistory.length}\n\n`;
+            markdown += `---\n\n`;
+
+            currentHistory.forEach((message, index) => {
+                const role = message.role === 'user' ? 'User' : 'Assistant';
+                markdown += `## ${role}\n\n`;
+                markdown += `${message.content}\n\n`;
+                if (index < currentHistory.length - 1) {
+                    markdown += `---\n\n`;
+                }
+            });
+
+            return markdown;
+        }
+
+        function generateTextExport(provider, model) {
+            let text = `Conversation Export\n`;
+            text += `==================\n\n`;
+            text += `Provider: ${provider}\n`;
+            text += `Model: ${model}\n`;
+            text += `Exported: ${new Date().toLocaleString()}\n`;
+            text += `Messages: ${currentHistory.length}\n\n`;
+            text += `--------------------------------------------------\n\n`;
+
+            currentHistory.forEach((message, index) => {
+                const role = message.role === 'user' ? 'USER' : 'ASSISTANT';
+                text += `${role}:\n${message.content}\n\n`;
+                if (index < currentHistory.length - 1) {
+                    text += `--------------------------------------------------\n\n`;
+                }
+            });
+
+            return text;
+        }
+
+        function generateJSONExport(provider, model) {
+            const exportData = {
+                provider: provider,
+                model: model,
+                exported: new Date().toISOString(),
+                messageCount: currentHistory.length,
+                conversation: currentHistory
+            };
+            return JSON.stringify(exportData, null, 2);
+        }
+
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showNotification(`Downloaded: ${filename}`, 'success');
+        }
+
+        function copyToClipboard(content, format) {
+            navigator.clipboard.writeText(content).then(() => {
+                showNotification(`Copied to clipboard! You can now paste into Claude or ChatGPT mobile app.`, 'success');
+            }).catch(err => {
+                console.error('Failed to copy to clipboard:', err);
+                showNotification('Downloaded file, but clipboard copy failed', 'info');
+            });
         }
 
         // Periodic ping to keep connection alive

@@ -555,6 +555,18 @@ class AppController {
         return { success: false, error: error.message };
       }
     });
+
+    /* ------------ Master Reset ------------ */
+    ipcMain.handle('master-reset', async () => {
+      try {
+        await this.masterReset();
+        return { success: true };
+      } catch (error) {
+        // masterReset should never throw, but just in case
+        console.error('Failed to execute master reset:', error);
+        return { success: false, error: error.message };
+      }
+    });
   }
 
   /**
@@ -772,6 +784,23 @@ class AppController {
       this.cleanup();
       process.exit(1);
     });
+
+    // Handle unhandled promise rejections (prevent app crashes)
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('[AppController] ⚠️ Unhandled Promise Rejection:', reason);
+      console.error('[AppController] Promise:', promise);
+      console.log('[AppController] 💡 Tip: Press Cmd+Shift+R (Ctrl+Shift+R on Windows) for Master Reset to recover from errors');
+
+      // Don't exit - log the error and continue running
+      // This prevents the app from crashing when providers are unavailable
+
+      // Optionally show a user-friendly notification
+      try {
+        this.windowManager.send('show-status-message', '⚠️ Error occurred - Press Cmd+Shift+R to reset', 5000);
+      } catch (e) {
+        // Ignore if window manager isn't ready
+      }
+    });
   }
 
   /**
@@ -798,6 +827,87 @@ class AppController {
     this.clearOcrContext();
     this.clearVisionContext();
     console.log('[AppController] All context cleared');
+  }
+
+  /**
+   * Master reset - recover app from any error state
+   * This function is bulletproof and will never throw
+   * Can be called even during unhandled exceptions
+   */
+  async masterReset() {
+    console.log('[AppController] 🔄 MASTER RESET initiated...');
+
+    try {
+      // 1. Cancel all active streaming requests
+      try {
+        this.cancelAllStreamingRequests();
+        console.log('[AppController] ✓ Streaming requests cancelled');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to cancel streaming:', e.message);
+      }
+
+      // 2. Clear all AI sessions
+      try {
+        this.aiManager.clearAllSessions();
+        console.log('[AppController] ✓ AI sessions cleared');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to clear sessions:', e.message);
+      }
+
+      // 3. Clear all context (OCR, vision, screenshot stack)
+      try {
+        this.clearAllContext();
+        this.screenshotStack = [];
+        console.log('[AppController] ✓ Context and screenshot stack cleared');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to clear context:', e.message);
+      }
+
+      // 4. Clear response cache
+      try {
+        this.originalResponses.clear();
+        console.log('[AppController] ✓ Response cache cleared');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to clear response cache:', e.message);
+      }
+
+      // 5. Reset syntax mode to default
+      try {
+        this.currentSyntaxMode = 'ALL';
+        console.log('[AppController] ✓ Syntax mode reset to ALL');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to reset syntax mode:', e.message);
+      }
+
+      // 6. Broadcast reset to WebSocket clients
+      try {
+        if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
+          await this.conversationWebSocketServer.broadcastHistoryUpdate();
+          console.log('[AppController] ✓ WebSocket clients notified');
+        }
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to notify WebSocket clients:', e.message);
+      }
+
+      // 7. Send reset signals to UI
+      try {
+        this.windowManager.send('session-reset');
+        this.windowManager.send('session-length', 0);
+        this.windowManager.send('screenshot-stack-updated', {
+          count: 0,
+          screenshots: [],
+        });
+        this.windowManager.send('show-status-message', '🔄 Master Reset Complete', 3000);
+        console.log('[AppController] ✓ UI reset signals sent');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to send UI signals:', e.message);
+      }
+
+      console.log('[AppController] ✅ MASTER RESET completed successfully');
+    } catch (error) {
+      // Even if something goes catastrophically wrong, log it and continue
+      console.error('[AppController] ⚠️ Master reset encountered errors but completed:', error);
+    }
   }
 
   /**

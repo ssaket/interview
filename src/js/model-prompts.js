@@ -210,26 +210,23 @@ For each coding problem, respond in the following structured markdown format:
    - Bullet list of important edge cases to consider (e.g., empty input, single element, large inputs).
    - Do not assume unrealistic or unstated scenarios beyond the problem description.
 
-3. Correctness Proof
-   - Provide a short, rigorous justification of why the algorithm works.
-   - Use Lemmas and a final Theorem when appropriate.
+3. Reference Implementation (Python)
+   - Provide a complete, correct, and runnable Python solution.
+   - Use clear, meaningful names and add comments for nontrivial steps.
+   - Ensure all specified edge cases are properly handled.
 
 4. Complexity Analysis
    - Clearly state time and space complexity.
    - Mention whether bounds are worst-case or amortised.
 
-5. Reference Implementation (Python)
-   - Provide a complete, correct, and runnable Python solution.
-   - Use clear, meaningful names and add comments for nontrivial steps.
-   - Ensure all specified edge cases are properly handled.
-   - Place the code in a fenced code block with the python tag.
-   - After the code, add a single sentence linking back to the explanation.
+5. Correctness Proof
+   - Provide a short, rigorous justification of why the algorithm works.
+   - Use Lemmas and a final Theorem when appropriate.
 
 Strict Guidelines:
 - Always follow the above structure in order.
 - Avoid extra assumptions or fabricated details.
 - Deliver clear, accurate, practical solutions ready for real-world use.
-- Keep the tone human and conversational, while staying rigorous and precise.
 `,
 
     systemDesign: `

@@ -11,7 +11,8 @@ class ShortcutManager {
     this.aiManager = aiManager;
     this.appController = appController;
     this.isSmallWindowMode = false; // Track window size state
-    this.moveStep = 20; // Move this to instance variable for external access
+    this.moveStep = 30; // Move this to instance variable for external access
+    this.resizeStep = 25; // Step size for resizing
 
     // Throttling for status messages
     this.lastMessageTime = 0;
@@ -36,7 +37,7 @@ class ShortcutManager {
   /** Register all other global shortcuts except toggle */
   registerGlobalShortcuts() {
     const { mainWindow } = this.windowManager;
-    let resizeStep = 25;
+    const resizeStep = this.resizeStep;
     const defaultWidth = 800;
     const defaultHeight = 800;
     const minSize = 50;
@@ -110,7 +111,7 @@ class ShortcutManager {
         mainWindow.center();
         this.isSmallWindowMode = false;
       } else {
-        mainWindow.setSize(resizeStep * 20, resizeStep * 2);
+        mainWindow.setSize(this.resizeStep * 30, resizeStep * 5);
         this.isSmallWindowMode = true;
       }
     });
@@ -122,15 +123,16 @@ class ShortcutManager {
         mainWindow.setSize(defaultWidth, defaultHeight);
         this.isSmallWindowMode = false;
       } else {
-        mainWindow.setSize(resizeStep * 20, resizeStep * 2);
+        mainWindow.setSize(resizeStep * 30, resizeStep * 5);
         this.isSmallWindowMode = true;
       }
     });
 
-    /* ═══ TIER 4: ADVANCED FEATURES (Secondary Modifier - Less Frequent) ═══ */
+    /* ═══ TIER 1: RESET (Primary Modifier - Frequently Used) ═══ */
 
-    // Session & AI Management
-    globalShortcut.register(`${secondary}+R`, () => {
+    // Reset AI Session (R = Reset)
+    globalShortcut.register(`${primary}+R`, () => {
+      console.log('[ShortcutManager] AI session reset triggered via Cmd+R');
       // Cancel any active streaming requests first
       this.appController.cancelAllStreamingRequests();
 
@@ -140,6 +142,19 @@ class ShortcutManager {
       // Send reset signals to UI
       this.windowManager.send('session-reset');
       this.windowManager.send('session-length', 0);
+    });
+
+    /* ═══ TIER 4: ADVANCED FEATURES (Secondary Modifier - Less Frequent) ═══ */
+
+    // Master Reset - Recover from any error state (even unhandled exceptions)
+    globalShortcut.register(`${secondary}+R`, () => {
+      console.log('[ShortcutManager] Master reset triggered via Cmd+Shift+R');
+      // Call the bulletproof master reset function
+      // This will never throw and can recover from any state
+      this.appController.masterReset().catch((err) => {
+        // Extra safety net - this should never happen since masterReset doesn't throw
+        console.error('[ShortcutManager] Unexpected error in master reset:', err);
+      });
     });
 
     globalShortcut.register(`${secondary}+F`, () => {
@@ -280,6 +295,7 @@ class ShortcutManager {
     // Unregister all global shortcuts specifically (not cmd+B)
     globalShortcut.unregister(`${primary}+Q`);
     globalShortcut.unregister(`${primary}+A`);
+    globalShortcut.unregister(`${primary}+R`);
     globalShortcut.unregister(`${primary}+S`);
 
     // Arrow keys
@@ -344,6 +360,7 @@ class ShortcutManager {
     console.log(`  ${mod}+Q                 - Quit application`);
     console.log(`  ${mod}+A                 - Area screenshot (region)`);
     console.log(`  ${mod}+B                 - Show/hide window`);
+    console.log(`  ${mod}+R                 - Reset AI session`);
     console.log(`  ${mod}+Arrow Keys        - Move window`);
     console.log('\nTIER 2 - WORKFLOWS (Numbers):');
     console.log(`  ${mod}+1                 - Add region screenshot to stack`);
@@ -354,7 +371,7 @@ class ShortcutManager {
     console.log('  F11                    - Toggle small window / fullscreen (alternative)');
     console.log(`\nTIER 4 - ADVANCED (${mod}+Shift + Key):`);
     console.log(`  ${mod}+Shift+0           - Toggle small window / fullscreen`);
-    console.log(`  ${mod}+Shift+R           - Reset AI session`);
+    console.log(`  ${mod}+Shift+R           - Master Reset (recover from any error)`);
     console.log(`  ${mod}+Shift+F           - Toggle AI flow`);
     console.log(`  ${mod}+Shift+O           - Toggle OCR filtering`);
     console.log(`  ${mod}+Shift+U           - Toggle Vision mode`);
@@ -375,14 +392,14 @@ class ShortcutManager {
     console.log('=====================================\n');
   }
 
-  switchOllamaModel() {
+  async switchOllamaModel() {
     const info = this.aiManager.getProviderInfo();
 
     // If not using Ollama, switch to it first with default model
     if (!info.isOllama) {
       console.log('[Shortcut] Switching to Ollama first...');
       try {
-        this.aiManager.switchProvider('ollama');
+        await this.aiManager.switchProvider('ollama');
         this.windowManager.send('model-switched', {
           model: this.aiManager.getProviderInfo().model,
           question: '',
@@ -471,7 +488,7 @@ class ShortcutManager {
     const [width, height] = mainWindow.getSize();
 
     // Consider it small mode if close to small size (allow some tolerance)
-    this.isSmallWindowMode = width >= 750 && height <= 250;
+    this.isSmallWindowMode = width >= this.resizeStep * 15 && height <= this.resizeStep * 5;
   }
 
   /**

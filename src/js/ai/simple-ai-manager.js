@@ -564,6 +564,8 @@ Please include:
       }
     } catch (restoreError) {
       console.error('[SimpleAIManager] Failed to restore provider:', restoreError.message);
+      // Gracefully handle restoration failure - don't propagate error
+      // The flow has already completed, this is just cleanup
     }
   }
 
