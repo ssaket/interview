@@ -203,7 +203,7 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 **Precise adjustments for power users:**
 - `Cmd/Ctrl+Shift+Up/Down` - Resize window height (shows dimensions)
 - `Cmd/Ctrl+Shift+[ ]` - Resize window width (shows dimensions)
-- `Cmd/Ctrl+Shift+Plus/Minus` - Adjust movement step size (shows current step)
+- `Cmd/Ctrl+Shift+Plus/Minus` - Adjust CodeMirror transparency (shows transparency %)
 
 ### **Additional Features**
 - `Alt/Opt+Z/X` - Scroll page up/down

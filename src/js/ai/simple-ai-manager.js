@@ -450,19 +450,21 @@ class SimpleAIManager {
   }
 
   /**
-   * Process local AI phase with optimized prompt (parallel execution)
+   * Process local AI phase with hybrid brute-force prompt (parallel execution)
    * @private
    */
   async _processLocalPhase(question, options) {
-    console.log('[SimpleAIManager] Phase 1: Starting local response (TRUE parallel)...');
+    console.log('[SimpleAIManager] Phase 1: Brute-force solution (local, TRUE parallel)...');
 
     // Add local phase header immediately
     if (options.onChunk) {
-      options.onChunk('🚀 **Local AI Response:**\n\n');
+      options.onChunk('🚀 **Quick Solution (Brute Force):**\n\n');
     }
 
     try {
       const aiConfig = require('./ai-config');
+      const MODEL_PROMPTS = require('../model-prompts');
+      const simpleAI = require('./simple-ai');
       const hybridModel = aiConfig.getHybridModel('ollama');
 
       if (this.currentProvider !== 'ollama') {
@@ -470,9 +472,27 @@ class SimpleAIManager {
       }
       this.setModel(hybridModel);
 
-      // Use optimized prompt for quick local analysis
-      const localPrompt = `Quick summary and initial thoughts: ${question}`;
-      const localResponse = await this.query(localPrompt, {
+      // Create temporary session for local phase with hybrid brute-force prompt
+      const sessionKey = this._getSessionKey('ollama-hybrid-local', hybridModel);
+      const session = this._getOrCreateSession(sessionKey);
+
+      // Add hybrid local prompt (brute-force focused)
+      if (session.messages.length === 0) {
+        const hybridLocalPrompt = MODEL_PROMPTS.getHybridPrompt('local', this.currentInterviewType);
+        session.messages.push({
+          role: 'system',
+          content: hybridLocalPrompt,
+        });
+        console.log('[SimpleAIManager] Added hybrid LOCAL prompt for brute-force solution');
+      }
+
+      // Add user question
+      session.messages.push({ role: 'user', content: question });
+
+      // Use simpleAI directly for streaming with hybrid session
+      const localResponse = await simpleAI.chatCompletion({
+        provider: 'ollama',
+        messages: session.messages,
         stream: true,
         onChunk: options.onChunk, // Direct streaming to UI
         parameters: {
@@ -482,8 +502,16 @@ class SimpleAIManager {
         },
       });
 
-      console.log('[SimpleAIManager] Local phase streaming completed');
-      return localResponse.content;
+      const content = this._extractContent(localResponse);
+
+      // Add assistant response to session for context
+      session.messages.push({
+        role: 'assistant',
+        content: content,
+      });
+
+      console.log('[SimpleAIManager] Local brute-force phase completed');
+      return content;
     } catch (error) {
       console.error('[SimpleAIManager] Local phase failed:', error);
       throw error;
@@ -503,26 +531,43 @@ class SimpleAIManager {
   }
 
   /**
-   * Process cloud AI phase (DeepSeek) with detailed analysis (parallel execution)
+   * Process cloud AI phase (DeepSeek) with hybrid optimization prompt (parallel execution)
    * @private
    */
   async _processCloudPhase(question, options) {
-    console.log('[SimpleAIManager] Phase 2: Starting cloud response (TRUE parallel)...');
+    console.log('[SimpleAIManager] Phase 2: Deep analysis & optimization (cloud, TRUE parallel)...');
 
     try {
+      const MODEL_PROMPTS = require('../model-prompts');
+      const simpleAI = require('./simple-ai');
+
       // Switch to cloud provider
       await this.switchProvider('deepseek', true);
 
-      // Use detailed prompt for comprehensive analysis
-      const cloudPrompt = `Provide a detailed technical analysis and comprehensive solution for: ${question}
+      // Create temporary session for cloud phase with hybrid optimization prompt
+      const sessionKey = this._getSessionKey('deepseek-hybrid-cloud', 'deepseek-reasoner');
+      const session = this._getOrCreateSession(sessionKey);
 
-Please include:
-- In-depth technical reasoning
-- Step-by-step solution approach
-- Best practices and considerations
-- Potential edge cases or alternatives`;
+      // Add hybrid cloud prompt (optimization & reasoning focused)
+      if (session.messages.length === 0) {
+        const hybridCloudPrompt = MODEL_PROMPTS.getHybridPrompt('cloud', this.currentInterviewType);
+        session.messages.push({
+          role: 'system',
+          content: hybridCloudPrompt,
+        });
+        console.log('[SimpleAIManager] Added hybrid CLOUD prompt for optimization & deep reasoning');
+      }
 
-      const cloudResponse = await this.query(cloudPrompt, {
+      // Add user question (DeepSeek will analyze independently)
+      session.messages.push({
+        role: 'user',
+        content: question,
+      });
+
+      // Use simpleAI directly for streaming with hybrid session
+      const cloudResponse = await simpleAI.chatCompletion({
+        provider: 'deepseek',
+        messages: session.messages,
         stream: true,
         onChunk: options.onChunk, // Will be controlled by hybrid flow coordination
         parameters: {
@@ -532,8 +577,16 @@ Please include:
         },
       });
 
-      console.log('[SimpleAIManager] Cloud phase streaming completed');
-      return cloudResponse.content;
+      const content = this._extractContent(cloudResponse);
+
+      // Add assistant response to session for context
+      session.messages.push({
+        role: 'assistant',
+        content: content,
+      });
+
+      console.log('[SimpleAIManager] Cloud optimization phase completed');
+      return content;
     } catch (error) {
       console.error('[SimpleAIManager] Cloud phase failed:', error);
       throw error;
@@ -764,9 +817,10 @@ Please include:
       const choice = response.choices[0];
       if (choice.message) {
         // Only use 'content' field, ignore 'reasoning_content' (thinking process)
-        const content = choice.message.content || '';
+        const content = choice.message.content;
 
-        if (content) {
+        // Return content even if it's an empty string (empty response is valid)
+        if (content !== undefined && content !== null) {
           return content;
         }
       }
@@ -777,7 +831,7 @@ Please include:
       return response;
     }
 
-    if (response.content) {
+    if (response.content !== undefined && response.content !== null) {
       return response.content;
     }
 

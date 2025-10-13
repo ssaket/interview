@@ -396,8 +396,16 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
       });
 
       let fullContent = '';
+      let resolved = false;
 
       return new Promise((resolve, reject) => {
+        const resolveOnce = (result) => {
+          if (!resolved) {
+            resolved = true;
+            resolve(result);
+          }
+        };
+
         response.data.on('data', (chunk) => {
           const lines = chunk
             .toString()
@@ -409,7 +417,7 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
               const data = line.slice(6).trim();
 
               if (data === '[DONE]') {
-                resolve({
+                resolveOnce({
                   choices: [
                     {
                       message: {
@@ -448,21 +456,20 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         });
 
         response.data.on('end', () => {
-          if (fullContent) {
-            resolve({
-              choices: [
-                {
-                  message: {
-                    role: 'assistant',
-                    content: fullContent,
-                  },
+          // Always resolve even if content is empty (empty response is valid)
+          resolveOnce({
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: fullContent,
                 },
-              ],
-              provider: 'deepseek',
-              model: config.model,
-              version: '3.1',
-            });
-          }
+              },
+            ],
+            provider: 'deepseek',
+            model: config.model,
+            version: '3.1',
+          });
         });
       });
     } else {

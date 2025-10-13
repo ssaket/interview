@@ -32,6 +32,9 @@ class StreamlinedTextInterface {
     this.isDark = false;
     this.themeCompartment = new Compartment();
 
+    // Editor transparency (0.1 to 1.0)
+    this.editorOpacity = 0.6; // Default opacity
+
     // Syntax highlighting mode: 0=ALL, 1=PYTHON_ONLY
     this.syntaxMode = 0;
     this.syntaxCompartment = new Compartment();
@@ -88,6 +91,10 @@ class StreamlinedTextInterface {
     const savedTheme = localStorage.getItem('codemirror-theme');
     this.isDark = savedTheme ? savedTheme === 'dark' : false;
 
+    // Load editor opacity
+    const savedOpacity = localStorage.getItem('codemirror-opacity');
+    this.editorOpacity = savedOpacity ? parseFloat(savedOpacity) : 0.6;
+
     // Load syntax mode
     const savedSyntaxMode = localStorage.getItem('codemirror-syntax-mode');
     this.syntaxMode = savedSyntaxMode ? parseInt(savedSyntaxMode) : 0;
@@ -133,7 +140,7 @@ class StreamlinedTextInterface {
         {
           '&': {
             ...baseStyle,
-            backgroundColor: 'rgba(13, 17, 23, 0.6)', // stronger contrast
+            backgroundColor: `rgba(13, 17, 23, ${this.editorOpacity})`,
             color: '#e6edf3',
             border: '1px solid rgba(255,255,255,0.06)',
             backdropFilter: 'blur(8px)',
@@ -164,7 +171,7 @@ class StreamlinedTextInterface {
         {
           '&': {
             ...baseStyle,
-            backgroundColor: 'rgba(255, 255, 255, 0.5)',
+            backgroundColor: `rgba(255, 255, 255, ${this.editorOpacity})`,
             color: '#1f2329',
             border: '1px solid rgba(0,0,0,0.06)',
             backdropFilter: 'blur(8px)',
@@ -248,6 +255,8 @@ class StreamlinedTextInterface {
     addListener('toggle-theme', () => this.toggleTheme());
     addListener('toggle-syntax-highlighting', () => this.toggleSyntaxMode());
     addListener('cycle-ai-flow', () => this.cycleAIFlow());
+    addListener('increase-transparency', () => this.increaseTransparency());
+    addListener('decrease-transparency', () => this.decreaseTransparency());
 
     // Feature toggles with status messages
     addListener('ocr-filtering-changed', (event, enabled) =>
@@ -497,6 +506,34 @@ class StreamlinedTextInterface {
     this.editor.dispatch({
       effects: this.syntaxCompartment.reconfigure(this.getSyntaxHighlighting()),
     });
+  }
+
+  increaseTransparency() {
+    // Decrease opacity (more transparent)
+    this.editorOpacity = Math.max(0.1, this.editorOpacity - 0.1);
+    this.editorOpacity = Math.round(this.editorOpacity * 10) / 10; // Round to 1 decimal
+    localStorage.setItem('codemirror-opacity', this.editorOpacity.toString());
+
+    this.editor.dispatch({
+      effects: this.themeCompartment.reconfigure(this.getTheme()),
+    });
+
+    const percent = Math.round(this.editorOpacity * 100);
+    this.showMessage(`🔍 Transparency: ${100 - percent}% (Opacity: ${percent}%)`, 2500);
+  }
+
+  decreaseTransparency() {
+    // Increase opacity (less transparent)
+    this.editorOpacity = Math.min(1.0, this.editorOpacity + 0.1);
+    this.editorOpacity = Math.round(this.editorOpacity * 10) / 10; // Round to 1 decimal
+    localStorage.setItem('codemirror-opacity', this.editorOpacity.toString());
+
+    this.editor.dispatch({
+      effects: this.themeCompartment.reconfigure(this.getTheme()),
+    });
+
+    const percent = Math.round(this.editorOpacity * 100);
+    this.showMessage(`🔍 Transparency: ${100 - percent}% (Opacity: ${percent}%)`, 2500);
   }
 
   cycleAIFlow() {

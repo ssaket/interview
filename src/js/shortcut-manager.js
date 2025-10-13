@@ -222,23 +222,15 @@ class ShortcutManager {
       }
     });
 
-    // Movement Step Adjustment
+    // CodeMirror Transparency Control
     globalShortcut.register(`${secondary}+Plus`, () => {
-      if (this.moveStep < 400) {
-        this.moveStep *= 2;
-        // Always show step adjustment (not throttled)
-        this.windowManager.send('show-status-message', `⚡ Move step: ${this.moveStep}px`, 2000);
-        this.lastMessageTime = Date.now();
-      }
+      // Decrease transparency (increase opacity)
+      this.windowManager.send('decrease-transparency');
     });
 
     globalShortcut.register(`${secondary}+-`, () => {
-      if (this.moveStep > 20) {
-        this.moveStep /= 2;
-        // Always show step adjustment (not throttled)
-        this.windowManager.send('show-status-message', `⚡ Move step: ${this.moveStep}px`, 2000);
-        this.lastMessageTime = Date.now();
-      }
+      // Increase transparency (decrease opacity)
+      this.windowManager.send('increase-transparency');
     });
 
     // Window Width Controls (Brackets for intuitive left/right adjustment)
@@ -393,7 +385,7 @@ class ShortcutManager {
     console.log(`\nTIER 5 - FINE CONTROL (${mod}+Shift + Symbols/Arrows):`);
     console.log(`  ${mod}+Shift+Up/Down     - Resize window height`);
     console.log(`  ${mod}+Shift+[ ]         - Resize window width`);
-    console.log(`  ${mod}+Shift+Plus/-      - Adjust movement step`);
+    console.log(`  ${mod}+Shift+Plus/-      - Adjust CodeMirror transparency`);
     console.log('\nOTHER:');
     console.log('  Alt/Opt+Z/X            - Scroll page up/down');
     console.log(`  ${mod}+Shift+M           - Switch Ollama model`);

@@ -919,16 +919,17 @@ class AppController {
       const providerInfo = this.aiManager.getProviderInfo();
       const sessionStats = this.aiManager.getSessionStats();
 
-      this.responseLogger.logResponse({
-        question: question,
-        response: response,
-        provider: providerInfo.name,
-        model: providerInfo.model,
-        interviewType: this.aiManager.getCurrentInterviewType(),
-        flowType: flowType,
-        messageCount: sessionStats.historyLength,
-        isError: isError,
-      });
+      // Logging disabled
+      // this.responseLogger.logResponse({
+      //   question: question,
+      //   response: response,
+      //   provider: providerInfo.name,
+      //   model: providerInfo.model,
+      //   interviewType: this.aiManager.getCurrentInterviewType(),
+      //   flowType: flowType,
+      //   messageCount: sessionStats.historyLength,
+      //   isError: isError,
+      // });
     } catch (error) {
       console.error('[AppController] Failed to log AI response:', error.message);
     }
