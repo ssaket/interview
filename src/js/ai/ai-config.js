@@ -22,7 +22,7 @@ class AIConfig {
           name: 'ollama',
           model: 'gpt-oss',
           baseUrl: 'http://localhost:11434',
-          timeout: 300000,
+          timeout: 90000,
           models: {
             local: ['deepseek-coder-v2', 'qwen3:4b-instruct-2507-fp16', 'gpt-oss', 'magistral'],
             primary: 'gpt-oss',
@@ -80,20 +80,22 @@ class AIConfig {
         },
         deepseek: {
           name: 'deepseek',
-          model: 'deepseek-reasoner',
+          model: 'deepseek-chat',
           baseUrl: 'https://api.deepseek.com',
           timeout: 120000,
+          reasonerTimeout: 60000, // Timeout for deepseek-reasoner (60s default to limit thinking)
           models: {
-            chat: ['deepseek-reasoner'],
-            primary: 'deepseek-reasoner',
+            chat: ['deepseek-chat'],
+            primary: 'deepseek-chat',
             reasoning: ['deepseek-reasoner'],
-            coding: ['deepseek-reasoner'],
+            coding: ['deepseek-chat'],
+            cloud: 'deepseek-chat', // For CLOUD flow - fast, no extended reasoning
+            hybrid: 'deepseek-reasoner', // For HYBRID flow - deep reasoning to optimize local solution
           },
           parameters: {
             temperature: 0.3,
             top_p: 0.9,
             max_tokens: 2048,
-            repeat_penalty: 1.1,
           },
           version: '3.1',
         },
@@ -143,6 +145,14 @@ class AIConfig {
           timeout: process.env.DEEPSEEK_TIMEOUT
             ? parseInt(process.env.DEEPSEEK_TIMEOUT)
             : defaults.providers.deepseek.timeout,
+          reasonerTimeout: process.env.DEEPSEEK_REASONER_TIMEOUT
+            ? parseInt(process.env.DEEPSEEK_REASONER_TIMEOUT)
+            : defaults.providers.deepseek.reasonerTimeout,
+          models: {
+            ...defaults.providers.deepseek.models,
+            cloud: process.env.DEEPSEEK_CLOUD_MODEL || defaults.providers.deepseek.models.cloud,
+            hybrid: process.env.DEEPSEEK_HYBRID_MODEL || defaults.providers.deepseek.models.hybrid,
+          },
         },
       },
     };
@@ -263,6 +273,48 @@ class AIConfig {
   getHybridModel(providerName) {
     const config = this.getProviderConfig(providerName);
     return config.models?.hybrid || config.models?.primary || config.model;
+  }
+
+  /**
+   * Get cloud model for a provider (used in cloud AI flow)
+   * @param {string} providerName - Provider name
+   * @returns {string} Cloud model name
+   */
+  getCloudModel(providerName) {
+    const config = this.getProviderConfig(providerName);
+    return config.models?.cloud || config.models?.primary || config.model;
+  }
+
+  /**
+   * Get model for specific flow type
+   * @param {string} providerName - Provider name
+   * @param {string} flowType - Flow type ('local', 'cloud', 'hybrid')
+   * @returns {string} Model name for the flow
+   */
+  getFlowModel(providerName, flowType) {
+    const config = this.getProviderConfig(providerName);
+
+    let model;
+    switch (flowType) {
+      case 'cloud':
+        model = config.models?.cloud || config.models?.primary || config.model;
+        break;
+      case 'hybrid':
+        model = config.models?.hybrid || config.models?.primary || config.model;
+        break;
+      case 'local':
+        model = config.models?.local || config.models?.primary || config.model;
+        break;
+      default:
+        model = config.models?.primary || config.model;
+    }
+
+    // If model is an array (like the local models list), use the primary model instead
+    if (Array.isArray(model)) {
+      return config.models?.primary || config.model;
+    }
+
+    return model;
   }
 
   /**

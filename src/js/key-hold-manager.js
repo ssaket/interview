@@ -1,4 +1,5 @@
 const { uIOhook, UiohookKey } = require('uiohook-napi');
+const windowControlsConfig = require('./window-controls-config');
 
 /**
  * KeyHoldManager - Detects and handles continuous key holding for window resizing and movement
@@ -16,16 +17,16 @@ class KeyHoldManager {
     // Active resize intervals
     this.resizeIntervals = new Map();
 
-    // Configuration
-    this.holdDelayMs = 300; // Delay before continuous action starts
-    this.repeatIntervalMs = 50; // How often to repeat the action (20 times per second)
-    this.resizeStep = 25; // Pixels per resize action
-    this.moveStep = 30; // Pixels per move action
-    this.minSize = 50; // Minimum window size
+    // Configuration - imported from centralized config
+    this.holdDelayMs = windowControlsConfig.holdDelayMs;
+    this.repeatIntervalMs = windowControlsConfig.repeatIntervalMs;
+    this.resizeStep = windowControlsConfig.resizeStep;
+    this.moveStep = windowControlsConfig.moveStep;
+    this.minSize = windowControlsConfig.minSize;
 
     // Throttling for status messages
     this.lastMessageTime = 0;
-    this.messageThrottleMs = 500;
+    this.messageThrottleMs = windowControlsConfig.messageThrottleMs;
 
     // Track if we're currently listening
     this.isListening = false;

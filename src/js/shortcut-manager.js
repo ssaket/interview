@@ -1,4 +1,5 @@
 const { globalShortcut, screen, app } = require('electron');
+const windowControlsConfig = require('./window-controls-config');
 
 class ShortcutManager {
   /**
@@ -11,8 +12,10 @@ class ShortcutManager {
     this.aiManager = aiManager;
     this.appController = appController;
     this.isSmallWindowMode = false; // Track if window is at full-screen (workArea) size
-    this.moveStep = 30; // Move this to instance variable for external access
-    this.resizeStep = 25; // Step size for resizing
+
+    // Configuration - imported from centralized config
+    this.moveStep = windowControlsConfig.moveStep;
+    this.resizeStep = windowControlsConfig.resizeStep;
 
     // Remember last custom window size for toggle behavior (before going full-screen)
     this.lastLargeWidth = 800; // Default window width
@@ -20,7 +23,7 @@ class ShortcutManager {
 
     // Throttling for status messages
     this.lastMessageTime = 0;
-    this.messageThrottleMs = 500; // Only show messages every 500ms
+    this.messageThrottleMs = windowControlsConfig.messageThrottleMs;
     this.positionIndex = 0;
   }
 
@@ -42,9 +45,9 @@ class ShortcutManager {
   registerGlobalShortcuts() {
     const { mainWindow } = this.windowManager;
     const resizeStep = this.resizeStep;
+    const minSize = windowControlsConfig.minSize;
     const defaultWidth = 800;
     const defaultHeight = 800;
-    const minSize = 50;
 
     // Cross-platform modifier keys (Cmd on macOS, Ctrl on Windows/Linux)
     const primary = process.platform === 'darwin' ? 'Command' : 'Control';
@@ -58,8 +61,8 @@ class ShortcutManager {
       app.quit();
     });
 
-    // Screenshot Functions (Z = Area only)
-    globalShortcut.register(`${primary}+Z`, () => {
+    // Screenshot Functions (0 = Area screenshot)
+    globalShortcut.register(`${primary}+0`, () => {
       this.windowManager.send('trigger-screenshot-region');
     });
 
@@ -102,7 +105,14 @@ class ShortcutManager {
       if (this.isSmallWindowMode) {
         // Switching from full-screen to custom: restore last remembered size
         mainWindow.setSize(this.lastLargeWidth, this.lastLargeHeight);
-        mainWindow.center();
+
+        // Center on the display where cursor is located
+        const cursor = screen.getCursorScreenPoint();
+        const display = screen.getDisplayNearestPoint(cursor);
+        const centerX = display.workArea.x + Math.round((display.workArea.width - this.lastLargeWidth) / 2);
+        const centerY = display.workArea.y + Math.round((display.workArea.height - this.lastLargeHeight) / 2);
+        mainWindow.setPosition(centerX, centerY);
+
         this.isSmallWindowMode = false;
       } else {
         // Switching from custom to full-screen: save current size first
@@ -115,7 +125,12 @@ class ShortcutManager {
         const display = screen.getDisplayNearestPoint(cursor);
         const { width: workWidth, height: workHeight } = display.workArea;
         mainWindow.setSize(workWidth, workHeight);
-        mainWindow.center();
+
+        // Center on the display where cursor is located
+        const centerX = display.workArea.x + Math.round((display.workArea.width - workWidth) / 2);
+        const centerY = display.workArea.y + Math.round((display.workArea.height - workHeight) / 2);
+        mainWindow.setPosition(centerX, centerY);
+
         this.isSmallWindowMode = true;
       }
     });
@@ -137,7 +152,11 @@ class ShortcutManager {
     // Reset AI Session (R = Reset)
     globalShortcut.register(`${primary}+R`, () => {
       console.log('[ShortcutManager] AI session reset triggered via Cmd+R');
-      // Cancel any active streaming requests first
+
+      // IMMEDIATELY cancel any pending OCR-to-AI workflows in renderer
+      this.windowManager.send('cancel-ocr-flow');
+
+      // Cancel any active streaming requests
       this.appController.cancelAllStreamingRequests();
 
       // Clear sessions
@@ -234,10 +253,9 @@ class ShortcutManager {
 
     /* ═══ LEGACY/ADDITIONAL FEATURES ═══ */
 
-    // Page Scrolling (Alt/Option + Z/X)
-    const altKey = process.platform === 'darwin' ? 'Option' : 'Alt';
-    globalShortcut.register(`${altKey}+Z`, () => this.windowManager.send('scroll-page', 'up'));
-    globalShortcut.register(`${altKey}+X`, () => this.windowManager.send('scroll-page', 'down'));
+    // Page Scrolling (Cmd/Ctrl+Shift+Left/Right)
+    globalShortcut.register(`${secondary}+Left`, () => this.windowManager.send('scroll-page', 'up'));
+    globalShortcut.register(`${secondary}+Right`, () => this.windowManager.send('scroll-page', 'down'));
 
     // Additional Model Management
     globalShortcut.register(`${secondary}+M`, () => this.switchOllamaModel());
@@ -270,7 +288,7 @@ class ShortcutManager {
 
     // Unregister all global shortcuts specifically (not cmd+B)
     globalShortcut.unregister(`${primary}+Q`);
-    globalShortcut.unregister(`${primary}+Z`);
+    globalShortcut.unregister(`${primary}+0`);
     globalShortcut.unregister(`${primary}+R`);
     globalShortcut.unregister(`${primary}+S`);
 
@@ -307,8 +325,8 @@ class ShortcutManager {
     globalShortcut.unregister(`${secondary}+-`);
 
     // Page scrolling
-    globalShortcut.unregister(`${altKey}+Z`);
-    globalShortcut.unregister(`${altKey}+X`);
+    globalShortcut.unregister(`${secondary}+Left`);
+    globalShortcut.unregister(`${secondary}+Right`);
 
     // Additional features
     globalShortcut.unregister(`${secondary}+M`);
@@ -332,9 +350,10 @@ class ShortcutManager {
     console.log('\n=== PSYCHOLOGY-OPTIMIZED SHORTCUTS ===');
     console.log(`TIER 1 - CORE FUNCTIONS (${mod} + Key):`);
     console.log(`  ${mod}+Q                 - Quit application`);
-    console.log(`  ${mod}+Z                 - Area screenshot (region)`);
+    console.log(`  ${mod}+0                 - Area screenshot`);
     console.log(`  ${mod}+B                 - Show/hide window`);
     console.log(`  ${mod}+R                 - Reset AI session`);
+    console.log(`  ${mod}+S                 - Cycle window positions`);
     console.log(`  ${mod}+Arrow Keys        - Move window (hold for continuous)`);
     console.log('\nTIER 2 - WORKFLOWS (Numbers):');
     console.log(`  ${mod}+1                 - Add region screenshot to stack`);
@@ -348,16 +367,14 @@ class ShortcutManager {
     console.log(`  ${mod}+Shift+R           - Master Reset (recover from any error)`);
     console.log(`  ${mod}+Shift+F           - Toggle AI flow`);
     console.log(`  ${mod}+Shift+O           - Toggle OCR filtering`);
-    console.log(`  ${mod}+Shift+U           - Toggle Vision mode`);
+    console.log(`  ${mod}+Shift+T           - Cycle interview type`);
     console.log(`  ${mod}+Shift+D           - Toggle theme`);
-    console.log(`  ${mod}+Shift+V           - Conversation history`);
-    console.log(`  ${mod}+Shift+C           - Center window`);
     console.log(`\nTIER 5 - FINE CONTROL (${mod}+Shift + Symbols/Arrows):`);
     console.log(`  ${mod}+Shift+Up/Down     - Resize window height (hold for continuous)`);
     console.log(`  ${mod}+Shift+[ ]         - Resize window width (hold for continuous)`);
     console.log(`  ${mod}+Shift+Plus/-      - Adjust CodeMirror transparency`);
+    console.log(`  ${mod}+Shift+Left/Right  - Scroll page up/down`);
     console.log('\nOTHER:');
-    console.log('  Alt/Opt+Z/X            - Scroll page up/down');
     console.log(`  ${mod}+Shift+M           - Switch Ollama model`);
     console.log(`  ${mod}+Shift+Y           - Toggle system prompts`);
     console.log(`  ${mod}+Shift+W           - Warmup Ollama model`);

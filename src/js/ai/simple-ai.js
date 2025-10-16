@@ -45,6 +45,8 @@ function getHttpAgent(url) {
  * @param {Object} options.parameters - Additional parameters
  * @param {boolean} options.stream - Enable streaming responses
  * @param {Function} options.onChunk - Callback for streaming chunks
+ * @param {boolean} options.includeReasoning - Include reasoning content for DeepSeek (default: false)
+ * @param {AbortSignal} options.signal - AbortSignal for cancelling the request
  * @returns {Promise<Object>} Standardized response
  */
 async function chatCompletion({
@@ -53,6 +55,8 @@ async function chatCompletion({
   parameters = {},
   stream = false,
   onChunk = null,
+  includeReasoning = false,
+  signal = null,
 }) {
   if (!provider) {
     provider = aiConfig.getDefaultProvider();
@@ -68,13 +72,13 @@ async function chatCompletion({
   // Provider-specific handling
   switch (provider.toLowerCase()) {
     case 'ollama':
-      return await handleOllama(config, messages, parameters, stream, onChunk);
+      return await handleOllama(config, messages, parameters, stream, onChunk, signal);
     case 'openai':
-      return await handleOpenAI(config, messages, parameters, stream, onChunk);
+      return await handleOpenAI(config, messages, parameters, stream, onChunk, signal);
     case 'deepseek':
-      return await handleDeepSeek(config, messages, parameters, stream, onChunk);
+      return await handleDeepSeek(config, messages, parameters, stream, onChunk, includeReasoning, signal);
     case 'huggingface':
-      return await handleHuggingFace(config, messages, parameters, stream, onChunk);
+      return await handleHuggingFace(config, messages, parameters, stream, onChunk, signal);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
@@ -83,7 +87,7 @@ async function chatCompletion({
 /**
  * Handle Ollama requests
  */
-async function handleOllama(config, messages, parameters, stream = false, onChunk = null) {
+async function handleOllama(config, messages, parameters, stream = false, onChunk = null, signal = null) {
   const requestBody = {
     model: config.model,
     messages: messages,
@@ -119,6 +123,7 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
         responseType: 'stream',
         httpAgent: getHttpAgent(config.baseUrl),
         httpsAgent: getHttpAgent(config.baseUrl),
+        signal: signal,
       });
 
       let fullContent = '';
@@ -187,6 +192,7 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
         headers: { 'Content-Type': 'application/json' },
         httpAgent: getHttpAgent(config.baseUrl),
         httpsAgent: getHttpAgent(config.baseUrl),
+        signal: signal,
       });
 
       return {
@@ -210,7 +216,7 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
 /**
  * Handle OpenAI requests
  */
-async function handleOpenAI(config, messages, parameters, stream = false, onChunk = null) {
+async function handleOpenAI(config, messages, parameters, stream = false, onChunk = null, signal = null) {
   if (!config.apiKey) {
     throw new Error('OpenAI API key is required');
   }
@@ -220,9 +226,9 @@ async function handleOpenAI(config, messages, parameters, stream = false, onChun
 
   try {
     if (stream && onChunk) {
-      return await handleOpenAIStreaming(config, requestBody, headers, onChunk);
+      return await handleOpenAIStreaming(config, requestBody, headers, onChunk, signal);
     } else {
-      return await handleOpenAINonStreaming(config, requestBody, headers);
+      return await handleOpenAINonStreaming(config, requestBody, headers, signal);
     }
   } catch (error) {
     throw formatError('openai', error);
@@ -260,13 +266,14 @@ function buildOpenAIHeaders(apiKey) {
  * Handle OpenAI streaming response with connection pooling
  * @private
  */
-async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
+async function handleOpenAIStreaming(config, requestBody, headers, onChunk, signal = null) {
   const response = await axios.post(`${config.baseUrl}/chat/completions`, requestBody, {
     timeout: config.timeout,
     headers,
     responseType: 'stream',
     httpAgent: getHttpAgent(config.baseUrl),
     httpsAgent: getHttpAgent(config.baseUrl),
+    signal: signal,
   });
 
   let fullContent = '';
@@ -341,12 +348,13 @@ async function handleOpenAIStreaming(config, requestBody, headers, onChunk) {
  * Handle OpenAI non-streaming response with connection pooling
  * @private
  */
-async function handleOpenAINonStreaming(config, requestBody, headers) {
+async function handleOpenAINonStreaming(config, requestBody, headers, signal = null) {
   const response = await axios.post(`${config.baseUrl}/chat/completions`, requestBody, {
     timeout: config.timeout,
     headers,
     httpAgent: getHttpAgent(config.baseUrl),
     httpsAgent: getHttpAgent(config.baseUrl),
+    signal: signal,
   });
 
   return {
@@ -359,7 +367,7 @@ async function handleOpenAINonStreaming(config, requestBody, headers) {
 /**
  * Handle DeepSeek requests (V3.1 with think mode support)
  */
-async function handleDeepSeek(config, messages, parameters, stream = false, onChunk = null) {
+async function handleDeepSeek(config, messages, parameters, stream = false, onChunk = null, includeReasoning = false, signal = null) {
   if (!config.apiKey) {
     throw new Error('DeepSeek API key is required');
   }
@@ -383,9 +391,14 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
 
   try {
     if (stream && onChunk) {
-      // Streaming response with connection pooling
+      // Use reasoner-specific timeout if model is deepseek-reasoner
+      const timeoutMs = config.model === 'deepseek-reasoner' && config.reasonerTimeout
+        ? config.reasonerTimeout
+        : config.timeout;
+
+      // Streaming response with connection pooling and timeout
       const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
-        timeout: config.timeout,
+        timeout: timeoutMs,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${config.apiKey}`,
@@ -393,9 +406,13 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         responseType: 'stream',
         httpAgent: getHttpAgent(baseUrl),
         httpsAgent: getHttpAgent(baseUrl),
+        signal: signal,
       });
 
+      console.log(`[DeepSeek] Using timeout: ${timeoutMs}ms for model: ${config.model}`);
+
       let fullContent = '';
+      let fullReasoningContent = ''; // Track reasoning/thinking text
       let resolved = false;
 
       return new Promise((resolve, reject) => {
@@ -417,12 +434,19 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
               const data = line.slice(6).trim();
 
               if (data === '[DONE]') {
+                // Use reasoning content as fallback when final content is null/empty
+                let finalContent = fullContent;
+                if (!finalContent && fullReasoningContent) {
+                  console.log('[DeepSeek] Final content is empty, using reasoning content as fallback');
+                  finalContent = `**🧠 Reasoning Process** (no final answer provided):\n\n${fullReasoningContent}`;
+                }
+
                 resolveOnce({
                   choices: [
                     {
                       message: {
                         role: 'assistant',
-                        content: fullContent,
+                        content: finalContent,
                       },
                     },
                   ],
@@ -436,9 +460,20 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
               try {
                 const parsed = JSON.parse(data);
                 if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
-                  // Only use 'content' field, ignore 'reasoning_content' (thinking process)
-                  const content = parsed.choices[0].delta.content;
+                  const delta = parsed.choices[0].delta;
 
+                  // Always accumulate reasoning content for fallback when final response is null
+                  if (delta.reasoning_content) {
+                    fullReasoningContent += delta.reasoning_content;
+
+                    // Optionally stream reasoning content if requested
+                    if (includeReasoning && onChunk) {
+                      onChunk(delta.reasoning_content);
+                    }
+                  }
+
+                  // Always stream actual content
+                  const content = delta.content;
                   if (content) {
                     fullContent += content;
                     onChunk(content);
@@ -456,13 +491,20 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         });
 
         response.data.on('end', () => {
+          // Use reasoning content as fallback when final content is null/empty
+          let finalContent = fullContent;
+          if (!finalContent && fullReasoningContent) {
+            console.log('[DeepSeek] Stream ended with empty content, using reasoning content as fallback');
+            finalContent = `**🧠 Reasoning Process** (no final answer provided):\n\n${fullReasoningContent}`;
+          }
+
           // Always resolve even if content is empty (empty response is valid)
           resolveOnce({
             choices: [
               {
                 message: {
                   role: 'assistant',
-                  content: fullContent,
+                  content: finalContent,
                 },
               },
             ],
@@ -473,15 +515,23 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         });
       });
     } else {
-      // Non-streaming response with connection pooling
+      // Use reasoner-specific timeout if model is deepseek-reasoner
+      const timeoutMs = config.model === 'deepseek-reasoner' && config.reasonerTimeout
+        ? config.reasonerTimeout
+        : config.timeout;
+
+      console.log(`[DeepSeek] Using timeout: ${timeoutMs}ms for model: ${config.model}`);
+
+      // Non-streaming response with connection pooling and timeout
       const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
-        timeout: config.timeout,
+        timeout: timeoutMs,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${config.apiKey}`,
         },
         httpAgent: getHttpAgent(baseUrl),
         httpsAgent: getHttpAgent(baseUrl),
+        signal: signal,
       });
 
       return {
@@ -499,7 +549,7 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
 /**
  * Handle HuggingFace requests
  */
-async function handleHuggingFace(config, messages, parameters, stream = false, onChunk = null) {
+async function handleHuggingFace(config, messages, parameters, stream = false, onChunk = null, signal = null) {
   // HuggingFace provider logic (simplified)
   const requestBody = {
     model: config.model,
@@ -528,6 +578,7 @@ async function handleHuggingFace(config, messages, parameters, stream = false, o
       responseType: stream && onChunk ? 'stream' : 'json',
       httpAgent: getHttpAgent(config.baseUrl),
       httpsAgent: getHttpAgent(config.baseUrl),
+      signal: signal,
     });
 
     if (stream && onChunk) {
@@ -587,6 +638,11 @@ async function handleHuggingFace(config, messages, parameters, stream = false, o
  * Format errors consistently
  */
 function formatError(provider, error) {
+  // Handle cancellation errors (from AbortSignal)
+  if (error.message === 'canceled' || error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+    return new Error(`${provider} request was canceled`);
+  }
+
   if (error.code === 'ECONNREFUSED') {
     if (provider === 'ollama') {
       return new Error('Ollama server not running. Please start with: ollama serve');

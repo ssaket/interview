@@ -29,6 +29,13 @@ class AppController {
     // Track active streaming requests for cancellation
     this.activeStreamingRequests = new Set();
 
+    // Track AbortControllers for AI requests (requestId → AbortController)
+    this.abortControllers = new Map();
+
+    // Cancellation flags
+    this.ocrCancelled = false;
+    this.stackProcessingCancelled = false;
+
     // Content preservation for syntax toggle
     this.originalResponses = new Map();
     this.currentSyntaxMode = 'ALL'; // 'ALL' or 'CODE_ONLY'
@@ -47,7 +54,19 @@ class AppController {
     console.log(
       `[AppController] Cancelling ${this.activeStreamingRequests.size} active streaming requests`
     );
+
+    // Abort all HTTP requests via AbortControllers
+    for (const [requestId, controller] of this.abortControllers.entries()) {
+      try {
+        controller.abort();
+        console.log(`[AppController] Aborted request ${requestId}`);
+      } catch (err) {
+        console.error(`[AppController] Failed to abort request ${requestId}:`, err);
+      }
+    }
+
     this.activeStreamingRequests.clear();
+    this.abortControllers.clear();
   }
 
   /**
@@ -150,11 +169,23 @@ class AppController {
       console.log('[AppController] Image data URL length:', imageDataUrl.length);
 
       try {
+        // Check if OCR was cancelled before starting
+        if (this.ocrCancelled) {
+          console.log('[AppController] OCR cancelled before starting');
+          return '';
+        }
+
         const Tesseract = require('tesseract.js');
 
         const {
           data: { text, confidence },
         } = await Tesseract.recognize(imageDataUrl, 'eng');
+
+        // Check if cancelled after recognition
+        if (this.ocrCancelled) {
+          console.log('[AppController] OCR cancelled after recognition');
+          return '';
+        }
 
         console.log('[AppController] Raw OCR text length:', text.length);
         console.log('[AppController] OCR confidence:', confidence);
@@ -163,12 +194,19 @@ class AppController {
         let finalText = text;
 
         // Apply OCR cleaning with AI enhancement
-        if (this.ocrFilteringEnabled) {
+        if (this.ocrFilteringEnabled && !this.ocrCancelled) {
           const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
           const cleaner = new LLMFriendlyOCRCleaner();
 
           console.log('[AppController] Starting AI-enhanced OCR cleaning...');
           finalText = await cleaner.cleanText(text, { enhanceWithAI: true });
+
+          // Check if cancelled after cleaning
+          if (this.ocrCancelled) {
+            console.log('[AppController] OCR cancelled after cleaning');
+            return '';
+          }
+
           console.log('[AppController] AI-enhanced text length:', finalText.length);
           console.log('[AppController] AI-enhanced text: \n', finalText);
         }
@@ -182,6 +220,11 @@ class AppController {
 
         return finalText;
       } catch (error) {
+        // Check if this is a cancellation
+        if (this.ocrCancelled) {
+          console.log('[AppController] OCR cancelled due to error during cancellation');
+          return '';
+        }
         console.error('[OCR] Text extraction failed:', error);
         throw error;
       }
@@ -192,9 +235,16 @@ class AppController {
       const requestId = Math.random().toString(36).substring(2, 15);
       const flowType = options.flow || null;
 
+      // Create AbortController for this request
+      const abortController = new AbortController();
+
       try {
         // Track this request for potential cancellation
         this.activeStreamingRequests.add(requestId);
+        this.abortControllers.set(requestId, abortController);
+
+        // Notify UI that AI processing has started
+        event.sender.send('ai-processing-started');
 
         // Set up streaming callback if requested
         if (options.onChunk) {
@@ -206,6 +256,9 @@ class AppController {
             }
           };
         }
+
+        // Pass AbortSignal to options
+        options.signal = abortController.signal;
 
         // Check if this is the initial OCR query (question matches extracted text from OCR/Vision)
         const isInitialOcrQuery = this.isOcrContext && question === this.lastOcrText;
@@ -223,6 +276,7 @@ class AppController {
 
         // Clean up tracking
         this.activeStreamingRequests.delete(requestId);
+        this.abortControllers.delete(requestId);
 
         // Store original response for syntax toggle
         if (response && typeof response === 'string') {
@@ -245,10 +299,23 @@ class AppController {
           await this.conversationWebSocketServer.broadcastHistoryUpdate();
         }
 
+        // Notify UI that AI processing has completed
+        event.sender.send('ai-processing-complete');
+
         return response;
       } catch (err) {
         // Clean up tracking on error
         this.activeStreamingRequests.delete(requestId);
+        this.abortControllers.delete(requestId);
+
+        // Notify UI that AI processing has completed (even on error)
+        event.sender.send('ai-processing-complete');
+
+        // Check if this was an abort (user cancelled)
+        if (err.name === 'AbortError' || err.code === 'ERR_CANCELED' || err.message?.includes('abort')) {
+          console.log('[AppController] AI request was cancelled by user');
+          return '🛑 Request cancelled';
+        }
 
         const info = this.aiManager.getProviderInfo();
 
@@ -625,6 +692,12 @@ class AppController {
     const ocrResults = [];
 
     for (let i = 0; i < this.screenshotStack.length; i++) {
+      // Check if stack processing was cancelled
+      if (this.stackProcessingCancelled) {
+        console.log('[Stack] Screenshot stack processing cancelled');
+        return '';
+      }
+
       const screenshot = this.screenshotStack[i];
 
       try {
@@ -635,6 +708,12 @@ class AppController {
         const {
           data: { text, confidence },
         } = await Tesseract.recognize(screenshot.data, 'eng');
+
+        // Check again after async operation
+        if (this.stackProcessingCancelled) {
+          console.log('[Stack] Screenshot stack processing cancelled after OCR');
+          return '';
+        }
 
         let finalText = text;
         if (this.ocrFilteringEnabled) {
@@ -655,17 +734,29 @@ class AppController {
 
         combinedText += `--- Screenshot ${i + 1} (${screenshot.type}, ${new Date(screenshot.timestamp).toLocaleTimeString()}) ---\n${finalText}\n\n`;
       } catch (error) {
+        // Check if this is a cancellation
+        if (this.stackProcessingCancelled) {
+          console.log('[Stack] Screenshot stack processing cancelled during error');
+          return '';
+        }
         console.error(`[Stack] OCR failed for screenshot ${i + 1}:`, error);
         combinedText += `--- Screenshot ${i + 1} (${screenshot.type}) - OCR FAILED ---\nError: ${error.message}\n\n`;
       }
     }
 
     // Apply AI enhancement to the complete merged text
-    if (this.ocrFilteringEnabled && combinedText.trim().length > 0) {
+    if (this.ocrFilteringEnabled && combinedText.trim().length > 0 && !this.stackProcessingCancelled) {
       const LLMFriendlyOCRCleaner = require('./llm-friendly-ocr-cleaner');
       const cleaner = new LLMFriendlyOCRCleaner();
       console.log('[Stack] Applying AI enhancement to complete merged text...');
       combinedText = await cleaner.cleanText(combinedText, { enhanceWithAI: true });
+
+      // Check one last time after AI enhancement
+      if (this.stackProcessingCancelled) {
+        console.log('[Stack] Screenshot stack processing cancelled after AI enhancement');
+        return '';
+      }
+
       console.log('[Stack] AI-enhanced merged text length:', combinedText.length);
     }
 
@@ -841,15 +932,43 @@ class AppController {
     console.log('[AppController] 🔄 MASTER RESET initiated...');
 
     try {
-      // 1. Cancel all active streaming requests
+      // 0. IMMEDIATELY notify renderer to cancel any pending OCR-to-AI workflows
+      // This must be FIRST to prevent race conditions
       try {
-        this.cancelAllStreamingRequests();
-        console.log('[AppController] ✓ Streaming requests cancelled');
+        this.windowManager.send('cancel-ocr-flow');
+        console.log('[AppController] ✓ OCR flow cancellation signal sent to renderer');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to send OCR cancellation signal:', e.message);
+      }
+
+      // 1. Set cancellation flags to stop ongoing operations
+      try {
+        this.ocrCancelled = true;
+        this.stackProcessingCancelled = true;
+        console.log('[AppController] ✓ Cancellation flags set');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to set cancellation flags:', e.message);
+      }
+
+      // 2. Cancel all active streaming requests and abort HTTP requests
+      try {
+        this.cancelAllStreamingRequests(); // This aborts all AbortControllers
+        console.log('[AppController] ✓ All HTTP requests aborted and streaming requests cancelled');
       } catch (e) {
         console.error('[AppController] ✗ Failed to cancel streaming:', e.message);
       }
 
-      // 2. Clear all AI sessions
+      // 3. Stop KeyHoldManager continuous operations
+      try {
+        if (this.keyHoldManager && this.keyHoldManager.isListening) {
+          this.keyHoldManager.stop();
+          console.log('[AppController] ✓ KeyHoldManager stopped');
+        }
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to stop KeyHoldManager:', e.message);
+      }
+
+      // 4. Clear all AI sessions
       try {
         this.aiManager.clearAllSessions();
         console.log('[AppController] ✓ AI sessions cleared');
@@ -857,7 +976,7 @@ class AppController {
         console.error('[AppController] ✗ Failed to clear sessions:', e.message);
       }
 
-      // 3. Clear all context (OCR, vision, screenshot stack)
+      // 5. Clear all context (OCR, vision, screenshot stack)
       try {
         this.clearAllContext();
         this.screenshotStack = [];
@@ -866,7 +985,7 @@ class AppController {
         console.error('[AppController] ✗ Failed to clear context:', e.message);
       }
 
-      // 4. Clear response cache
+      // 6. Clear response cache
       try {
         this.originalResponses.clear();
         console.log('[AppController] ✓ Response cache cleared');
@@ -874,7 +993,7 @@ class AppController {
         console.error('[AppController] ✗ Failed to clear response cache:', e.message);
       }
 
-      // 5. Reset syntax mode to default
+      // 7. Reset syntax mode to default
       try {
         this.currentSyntaxMode = 'ALL';
         console.log('[AppController] ✓ Syntax mode reset to ALL');
@@ -882,7 +1001,7 @@ class AppController {
         console.error('[AppController] ✗ Failed to reset syntax mode:', e.message);
       }
 
-      // 6. Broadcast reset to WebSocket clients
+      // 8. Broadcast reset to WebSocket clients
       try {
         if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
           await this.conversationWebSocketServer.broadcastHistoryUpdate();
@@ -892,7 +1011,7 @@ class AppController {
         console.error('[AppController] ✗ Failed to notify WebSocket clients:', e.message);
       }
 
-      // 7. Send reset signals to UI
+      // 9. Send reset signals to UI
       try {
         this.windowManager.send('session-reset');
         this.windowManager.send('session-length', 0);
@@ -904,6 +1023,25 @@ class AppController {
         console.log('[AppController] ✓ UI reset signals sent');
       } catch (e) {
         console.error('[AppController] ✗ Failed to send UI signals:', e.message);
+      }
+
+      // 10. Reset cancellation flags
+      try {
+        this.ocrCancelled = false;
+        this.stackProcessingCancelled = false;
+        console.log('[AppController] ✓ Cancellation flags reset');
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to reset cancellation flags:', e.message);
+      }
+
+      // 11. Restart KeyHoldManager if window is visible
+      try {
+        if (this.keyHoldManager && this.windowManager.mainWindow && this.windowManager.mainWindow.isVisible()) {
+          this.keyHoldManager.start();
+          console.log('[AppController] ✓ KeyHoldManager restarted');
+        }
+      } catch (e) {
+        console.error('[AppController] ✗ Failed to restart KeyHoldManager:', e.message);
       }
 
       console.log('[AppController] ✅ MASTER RESET completed successfully');

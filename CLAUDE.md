@@ -37,9 +37,9 @@ The AI system supports three distinct processing flows for different use cases:
 - **SimpleAI** (`src/js/ai/simple-ai.js`) - Direct HTTP functions for all AI providers
 - **AIConfig** (`src/js/ai/ai-config.js`) - Centralized configuration management
 - **AI Flows**:
-  - **LOCAL** - Ollama local models only (fast, private)
-  - **CLOUD** - DeepSeek API only (enhanced reasoning)
-  - **HYBRID** - Streaming: local response first, then DeepSeek analysis appended
+  - **LOCAL** - Ollama local models only (fast, private, single-phase)
+  - **CLOUD** - Two-phase parallel: `deepseek-chat` fast answer → `deepseek-reasoner` verification
+  - **HYBRID** - Two-phase parallel: Ollama brute-force → `deepseek-reasoner` optimization
 - **Supported Providers**:
   - Ollama - Local AI models with hybrid model support (`OLLAMA_HYBRID_MODEL`)
   - OpenAI - GPT models via API
@@ -129,9 +129,17 @@ HF_TOKEN=your_huggingface_token
 HF_PROVIDER=hyperbolic
 HF_MODEL=deepseek-ai/DeepSeek-R1-0528
 
-# DeepSeek Configuration (V3.1 with Think Mode) - Required for HYBRID AI flow
+# DeepSeek Configuration (V3.1 with Think Mode) - Required for CLOUD and HYBRID AI flows
 DEEPSEEK_API_KEY=your_deepseek_api_key
-DEEPSEEK_MODEL=deepseek-reasoner
+DEEPSEEK_MODEL=deepseek-chat  # Default model (optional, defaults to deepseek-chat)
+
+# Optional: Override flow-specific DeepSeek models
+# DEEPSEEK_CLOUD_MODEL=deepseek-chat     # Fast responses without extended reasoning (for CLOUD flow)
+# DEEPSEEK_HYBRID_MODEL=deepseek-reasoner # Deep reasoning to optimize local solution (for HYBRID flow)
+
+# Optional: Timeout configuration
+# DEEPSEEK_TIMEOUT=120000                 # General timeout in ms (default: 120000 = 2 minutes)
+# DEEPSEEK_REASONER_TIMEOUT=60000         # Timeout for deepseek-reasoner to limit thinking time (default: 60000 = 1 minute)
 
 # AssemblyAI Configuration (for speech-to-text)
 ASSEMBLYAI_API_KEY=your_assemblyai_api_key
@@ -148,10 +156,54 @@ The system now uses simple functions instead of classes:
 3. Most providers use OpenAI-compatible APIs for easy integration
 
 ### DeepSeek V3.1
-DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
-- **Think mode**: Uses `<think>` tags automatically for step-by-step reasoning
-- **Optimized parameters**: Lower temperature (0.1) and higher token limits (4096)
+DeepSeek V3.1 supports two models optimized for different use cases:
+- **`deepseek-chat`**: Fast responses without extended reasoning
+  - Used in CLOUD flow (Phase 1: Answer)
+  - No `<think>` tags or reasoning loops
+  - Optimized for speed and cost-effectiveness
+  - Best for quick, correct solutions
+- **`deepseek-reasoner`**: Deep reasoning with think mode
+  - Used in CLOUD flow (Phase 2: Verification) and HYBRID flow (Phase 2: Optimization)
+  - Uses `<think>` tags for step-by-step reasoning (up to 32K tokens)
+  - **Timeout Protection**: 60-second timeout by default to prevent endless thinking
+  - Streams reasoning content in real-time for transparency
+  - Optimized parameters: Lower temperature (0.1) and higher token limits (4096)
+  - Best for verification, optimization, and deep analysis
+- **Configuration**: Flow-specific models and timeouts can be overridden via environment variables
 - **Version**: Automatically uses V3.1 API features
+
+### Timeout Configuration
+To prevent `deepseek-reasoner` from thinking too long:
+- **Default**: 60 seconds (1 minute) - reasonable for most interview questions
+- **Configurable**: Set `DEEPSEEK_REASONER_TIMEOUT` in milliseconds
+- **Examples**:
+  - `DEEPSEEK_REASONER_TIMEOUT=30000` - 30 seconds (faster, less reasoning)
+  - `DEEPSEEK_REASONER_TIMEOUT=90000` - 90 seconds (more time for complex problems)
+  - `DEEPSEEK_REASONER_TIMEOUT=120000` - 2 minutes (maximum for very complex problems)
+- **Behavior**: If timeout is hit, request is cancelled and error is returned
+
+### Flow Details
+
+#### LOCAL Flow (Single-Phase)
+- **Model**: Ollama (configurable)
+- **Speed**: Fastest (local execution)
+- **Use Case**: Quick responses, privacy-focused, offline
+
+#### CLOUD Flow (Two-Phase Sequential)
+- **Phase 1 - Fast Answer**: `deepseek-chat` provides correct, efficient solution (streams immediately to UI)
+- **Phase 2 - Verification**: `deepseek-reasoner` receives Phase 1's answer and validates/suggests improvements
+- **Sequential Execution**: Phase 2 starts after Phase 1 completes with Phase 1's solution as context
+- **Total Time**: answer_time + verification_time
+- **Perceived Latency**: answer_time (user sees Phase 1 results immediately)
+- **Use Case**: Cloud-powered answer with deep verification for confidence
+
+#### HYBRID Flow (Two-Phase Sequential)
+- **Phase 1 - Brute Force**: Ollama provides working solution quickly (streams immediately to UI)
+- **Phase 2 - Optimization**: `deepseek-reasoner` receives Phase 1's solution and optimizes it
+- **Sequential Execution**: Phase 2 starts after Phase 1 completes with Phase 1's solution as context
+- **Total Time**: local_time + cloud_time
+- **Perceived Latency**: local_time (user sees Phase 1 results immediately)
+- **Use Case**: Instant local answer with cloud-powered optimization
 
 ### Session Management
 - Sessions are maintained per provider-model combination
@@ -204,10 +256,10 @@ DeepSeek V3.1 is configured with optimized parameters for enhanced reasoning:
 **Precise adjustments for power users:**
 - `Cmd/Ctrl+Shift+Up/Down` - Resize window height (hold for continuous)
 - `Cmd/Ctrl+Shift+[ ]` - Resize window width (hold for continuous)
+- `Cmd/Ctrl+Shift+Left/Right` - Scroll page up/down
 - `Cmd/Ctrl+Shift+Plus/Minus` - Adjust CodeMirror transparency (shows transparency %)
 
 ### **Additional Features**
-- `Alt/Opt+Z/X` - Scroll page up/down
 - `Cmd/Ctrl+Shift+M` - Switch Ollama **M**odel (shows model info)
 - `Cmd/Ctrl+Shift+T` - Cycle interview **T**ype (DSA → System Design → LLD)
 - `Cmd/Ctrl+Shift+Y` - Toggle s**Y**stem prompts
@@ -244,9 +296,17 @@ The application uses native keyboard hooks (`uiohook-napi`) for smooth continuou
 
 **Implementation:**
 - **KeyHoldManager** (`src/js/key-hold-manager.js`) - Native keyboard event listener
-- **Movement**: `Cmd/Ctrl+Arrow Keys` - 30px steps
-- **Resizing**: `Cmd/Ctrl+Shift+Arrows/Brackets` - 25px steps
-- Status messages throttled to every 500ms to prevent flooding
+- **ShortcutManager** (`src/js/shortcut-manager.js`) - Single-press fallback handlers
+- **Centralized Configuration** (`src/js/window-controls-config.js`) - Single source of truth for all step sizes
+  - `moveStep`: 10px - Window movement increment (used by both managers)
+  - `resizeStep`: 10px - Window resize increment (used by both managers)
+  - `holdDelayMs`: 300ms - Delay before continuous action starts
+  - `repeatIntervalMs`: 50ms - Update frequency (20 times per second)
+  - `minSize`: 50px - Minimum window dimension
+  - `messageThrottleMs`: 500ms - Status message throttling
+- **Movement**: `Cmd/Ctrl+Arrow Keys` - Uses `moveStep` from config
+- **Resizing**: `Cmd/Ctrl+Shift+Arrows/Brackets` - Uses `resizeStep` from config
+- Status messages throttled to prevent flooding
 
 ## Testing Approach
 
@@ -275,6 +335,15 @@ The project uses Node.js-based testing without external frameworks:
 - Modify `formatter.js` for code highlighting and response processing
 - Test with various AI responses to ensure compatibility
 - Update tests as needed
+
+### Modifying Window Control Settings
+- All window movement and resize step sizes are centralized in `window-controls-config.js`
+- **Single source of truth**: Both `KeyHoldManager` and `ShortcutManager` import from this file
+- **Step sizes**: `moveStep` (10px) and `resizeStep` (10px) control increment amounts
+- **Timing**: `holdDelayMs` (300ms) and `repeatIntervalMs` (50ms) control continuous action behavior
+- **Constraints**: `minSize` (50px) prevents window from becoming too small
+- **No code duplication**: Changes automatically apply to both continuous holding and single-press actions
+- Restart the application to apply configuration changes
 
 ### Math Formula Support
 - **LaTeX Rendering**: Full support for LaTeX math formulas using KaTeX
@@ -326,6 +395,7 @@ src/js/
 ├── ai-response-logger.js  # AI response logging for formatter analysis
 ├── shortcut-manager.js    # Keyboard shortcuts
 ├── key-hold-manager.js    # Continuous window movement and resizing
+├── window-controls-config.js # Centralized configuration for window controls
 ├── conversation-websocket-server.js # WebSocket server for real-time conversation history updates
 └── window-manager.js      # Electron window management
 

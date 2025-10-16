@@ -46,6 +46,9 @@ class StreamlinedTextInterface {
     this.isCodeOnlyMode = false;
     this.originalContent = null;
 
+    // OCR flow cancellation flag
+    this.ocrFlowCancelled = false;
+
     // Event listeners for cleanup
     this.eventListeners = [];
 
@@ -286,23 +289,43 @@ class StreamlinedTextInterface {
     addListener('process-screenshot-stack', () => this.processScreenshotStack());
     addListener('clear-screenshot-stack', () => this.clearScreenshotStack());
 
+    // OCR flow cancellation
+    addListener('cancel-ocr-flow', () => this.cancelOCRFlow());
+
     console.log('✅ Event handlers setup complete');
   }
 
   // Core functionality methods
 
   async handleScreenshot() {
+    // Clear cancellation flag at start of new OCR flow
+    this.ocrFlowCancelled = false;
+
     this.updateOCRStatus('capturing');
     this.showMessage('📸 Capturing region...', 3000);
 
     try {
       const image = await ipcRenderer.invoke('capture-screen-region');
 
+      // Check if flow was cancelled after screenshot
+      if (this.ocrFlowCancelled) {
+        this.updateOCRStatus('ready');
+        this.showMessage('🛑 OCR flow cancelled', 3000);
+        return;
+      }
+
       // Process screenshot with Tesseract OCR
       this.updateOCRStatus('processing');
       this.showMessage('🔍 Running OCR...', 4000);
 
       const extractedText = await ipcRenderer.invoke('perform-ocr', image);
+
+      // Check if flow was cancelled after OCR
+      if (this.ocrFlowCancelled) {
+        this.updateOCRStatus('ready');
+        this.showMessage('🛑 OCR flow cancelled', 3000);
+        return;
+      }
 
       if (!extractedText || !extractedText.trim()) {
         this.updateOCRStatus('error');
@@ -317,6 +340,13 @@ class StreamlinedTextInterface {
 
       setTimeout(() => this.updateOCRStatus('ready'), 2000);
     } catch (error) {
+      // Check if error is due to cancellation
+      if (this.ocrFlowCancelled) {
+        this.updateOCRStatus('ready');
+        this.showMessage('🛑 OCR flow cancelled', 3000);
+        return;
+      }
+
       this.updateOCRStatus('error');
       this.showMessage(`❌ Screenshot error: ${error.message}`, 5000);
       setTimeout(() => this.updateOCRStatus('ready'), 3000);
@@ -580,10 +610,12 @@ ${this.getStatusLine()}
 This text interface provides AI-powered coding interview assistance with comprehensive status message feedback.
 
 ### Core Functions
-${mod}+A - Region screenshot → OCR → AI analysis
+${mod}+Q - Quit application
+${mod}+Z - Region screenshot → OCR → AI analysis
 ${mod}+B - Hide/show application
-${mod}+Arrow Keys - Move window (shows step size)
+${mod}+R - Reset AI session
 ${mod}+S - Cycle window positions (top-left → top-right → center → bottom-left → bottom-right)
+${mod}+Arrow Keys - Move window (hold for continuous)
 
 ### Screenshot Stack Workflow
 ${mod}+1 - Add region screenshot to stack
@@ -592,7 +624,7 @@ ${mod}+3 - Clear screenshot stack
 
 ### AI Controls
 ${mod}+Shift+F - Cycle AI flows (LOCAL → CLOUD → HYBRID)
-${mod}+Shift+R - Reset AI session
+${mod}+Shift+R - Master Reset (recover from any error)
 ${mod}+Shift+O - Toggle OCR filtering
 ${mod}+Shift+T - Cycle interview type (DSA → System Design → LLD)
 
@@ -600,14 +632,14 @@ ${mod}+Shift+T - Cycle interview type (DSA → System Design → LLD)
 ${mod}+Shift+D - Toggle dark/light theme
 ${mod}+Shift+L - Toggle code-only view (extract Python code)
 ${mod}+Shift+I - Developer tools
-${mod}+Shift+0 - Toggle window size (default ⟷ compact)
+${mod}+Shift+/ - Toggle window size (default ⟷ fullscreen)
 F1 - Toggle this help guide
 F11 - Toggle window size (alternative shortcut)
 
 ### Window Adjustments
-${mod}+Shift+Up/Down - Resize height (shows dimensions)
-${mod}+Shift+[ ] - Resize width (shows dimensions)
-${mod}+Shift++/- - Adjust movement step size
+${mod}+Shift+Up/Down - Resize height (hold for continuous)
+${mod}+Shift+[ ] - Resize width (hold for continuous)
+${mod}+Shift++/- - Adjust CodeMirror transparency
 
 ### Page Scrolling
 Alt/Opt+Z - Scroll page up
@@ -666,10 +698,20 @@ Activity log:
   }
 
   async processScreenshotStack() {
+    // Clear cancellation flag at start of stack processing
+    this.ocrFlowCancelled = false;
+
     this.showMessage('📸 Processing screenshot stack...', 3000);
 
     try {
       const result = await ipcRenderer.invoke('process-screenshot-stack');
+
+      // Check if flow was cancelled after processing
+      if (this.ocrFlowCancelled) {
+        this.showMessage('🛑 Stack processing cancelled', 3000);
+        return;
+      }
+
       if (result.success) {
         this.status.ocr = 'Processing Stack';
         this.startAIProcessing();
@@ -678,6 +720,12 @@ Activity log:
         this.showMessage(`❌ Processing failed: ${result.error}`, 3000);
       }
     } catch (error) {
+      // Check if error is due to cancellation
+      if (this.ocrFlowCancelled) {
+        this.showMessage('🛑 Stack processing cancelled', 3000);
+        return;
+      }
+
       this.showMessage(`❌ Stack error: ${error.message}`, 3000);
     }
   }
@@ -691,6 +739,14 @@ Activity log:
     } catch (error) {
       this.showMessage(`❌ Clear error: ${error.message}`, 3000);
     }
+  }
+
+  // OCR flow cancellation
+  cancelOCRFlow() {
+    console.log('[TextInterface] OCR flow cancellation received');
+    this.ocrFlowCancelled = true;
+    this.updateOCRStatus('ready');
+    this.showMessage('🛑 OCR flow cancelled', 3000);
   }
 
   // Content management

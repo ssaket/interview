@@ -494,7 +494,9 @@ class InterviewCodeFormatter {
       // Comments
       .replace(/(#.*?$)/gm, '<span class="comment">$1</span>')
       // Strings (after comments to avoid conflicts)
-      .replace(/(?<!<span class="comment">.*?)(".*?"|'.*?')/g, '<span class="string">$1</span>')
+      // Matches: triple-quoted strings, double-quoted strings with escapes, single-quoted strings with escapes
+      // Won't match apostrophes in contractions (don't, it's, won't)
+      .replace(/(?<!<span class="comment">.*?)("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="string">$1</span>')
       // Keywords
       .replace(/\b(def|class|if|else|elif|for|while|try|except|finally|with|return|import|from|as|lambda|True|False|None|and|or|not|in|is)\b/g, '<span class="keyword">$1</span>')
       // Numbers
