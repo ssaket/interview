@@ -6,7 +6,6 @@
 const { ipcRenderer } = require('electron');
 const { EditorState, Compartment } = require('@codemirror/state');
 const { EditorView } = require('@codemirror/view');
-const { python } = require('@codemirror/lang-python');
 const { markdown } = require('@codemirror/lang-markdown');
 const { syntaxHighlighting, defaultHighlightStyle } = require('@codemirror/language');
 const path = require('path');
@@ -175,7 +174,7 @@ class StreamlinedTextInterface {
           '&': {
             ...baseStyle,
             backgroundColor: `rgba(255, 255, 255, ${this.editorOpacity})`,
-            color: '#1f2329',
+            color: '#57729aff',
             border: '1px solid rgba(0,0,0,0.06)',
             backdropFilter: 'blur(8px)',
           },
@@ -208,13 +207,8 @@ class StreamlinedTextInterface {
     // Add basic syntax highlighting
     extensions.push(syntaxHighlighting(defaultHighlightStyle));
 
-    // Always include Python
-    extensions.push(python());
-
-    // Include Markdown only in ALL mode
-    if (this.syntaxMode === 0) {
-      extensions.push(markdown());
-    }
+    // Always include Markdown highlighting
+    extensions.push(markdown());
 
     return extensions;
   }
@@ -258,6 +252,7 @@ class StreamlinedTextInterface {
     addListener('toggle-theme', () => this.toggleTheme());
     addListener('toggle-syntax-highlighting', () => this.toggleSyntaxMode());
     addListener('cycle-ai-flow', () => this.cycleAIFlow());
+    addListener('trigger-flow-toggle', () => this.cycleAIFlow()); // Triggered by Opt+Cmd / Alt+Ctrl
     addListener('increase-transparency', () => this.increaseTransparency());
     addListener('decrease-transparency', () => this.decreaseTransparency());
 
@@ -386,10 +381,19 @@ class StreamlinedTextInterface {
     // Preprocess chunk to handle escape sequences and HTML tags
     const processedChunk = this.preprocessChunk(chunk);
 
+    // Preserve scroll position to prevent auto-scroll
+    const scroller = this.editor.scrollDOM;
+    const scrollTop = scroller ? scroller.scrollTop : 0;
+
     const docLength = this.editor.state.doc.length;
     this.editor.dispatch({
       changes: { from: docLength, to: docLength, insert: processedChunk },
     });
+
+    // Restore scroll position (prevent auto-scroll)
+    if (scroller) {
+      scroller.scrollTop = scrollTop;
+    }
   }
 
   preprocessChunk(chunk) {
@@ -436,12 +440,23 @@ class StreamlinedTextInterface {
       }
     }
 
+    // Preserve scroll position before clearing content
+    const scroller = this.editor.scrollDOM;
+    const scrollTop = scroller ? scroller.scrollTop : 0;
+
     // Clear to just status and AI response header
     const newContent = `${statusLine}
 
 ## AI Response
 `;
     this.setContent(newContent);
+
+    // Restore scroll position after CodeMirror finishes view updates
+    if (scroller) {
+      requestAnimationFrame(() => {
+        scroller.scrollTop = scrollTop;
+      });
+    }
   }
 
   // Status management
@@ -509,7 +524,19 @@ class StreamlinedTextInterface {
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].startsWith('🔍 OCR:') || lines[i].startsWith('👁️ Vision:')) {
         lines[i] = statusLine;
+
+        // Preserve scroll position before updating content
+        const scroller = this.editor.scrollDOM;
+        const scrollTop = scroller ? scroller.scrollTop : 0;
+
         this.setContent(lines.join('\n'));
+
+        // Restore scroll position after CodeMirror finishes view updates
+        if (scroller) {
+          requestAnimationFrame(() => {
+            scroller.scrollTop = scrollTop;
+          });
+        }
         break;
       }
     }
@@ -567,7 +594,7 @@ class StreamlinedTextInterface {
   }
 
   cycleAIFlow() {
-    const flows = ['LOCAL', 'CLOUD', 'HYBRID'];
+    const flows = ['LOCAL', 'CLOUD', 'HYBRID', 'STEPS'];
     const currentIndex = flows.indexOf(this.aiFlow);
     const nextIndex = (currentIndex + 1) % flows.length;
     this.aiFlow = flows[nextIndex];
@@ -623,7 +650,7 @@ ${mod}+2 - Process screenshot stack
 ${mod}+3 - Clear screenshot stack
 
 ### AI Controls
-${mod}+Shift+F - Cycle AI flows (LOCAL → CLOUD → HYBRID)
+Opt+${mod} - Cycle AI flows (LOCAL → CLOUD → HYBRID → STEPS)
 ${mod}+Shift+R - Master Reset (recover from any error)
 ${mod}+Shift+O - Toggle OCR filtering
 ${mod}+Shift+T - Cycle interview type (DSA → System Design → LLD)

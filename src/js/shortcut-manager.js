@@ -180,9 +180,10 @@ class ShortcutManager {
       });
     });
 
-    globalShortcut.register(`${secondary}+F`, () => {
-      this.cycleAiFlow();
-    });
+    // Flow toggle is now handled by KeyHoldManager (Opt+Cmd / Alt+Ctrl)
+    // globalShortcut.register(`${secondary}+F`, () => {
+    //   this.cycleAiFlow();
+    // });
 
     globalShortcut.register(`${secondary}+O`, () => {
       this.appController.ocrFilteringEnabled = !this.appController.ocrFilteringEnabled;
@@ -223,14 +224,14 @@ class ShortcutManager {
       mainWindow.setSize(width, newHeight);
     });
 
-    // CodeMirror Transparency Control
-    globalShortcut.register(`${secondary}+Plus`, () => {
-      // Decrease transparency (increase opacity)
+    // CodeMirror Transparency Control (< and > keys)
+    globalShortcut.register(`${secondary}+,`, () => {
+      // Cmd/Ctrl+Shift+< (Comma) - Decrease transparency (increase opacity)
       this.windowManager.send('decrease-transparency');
     });
 
-    globalShortcut.register(`${secondary}+-`, () => {
-      // Increase transparency (decrease opacity)
+    globalShortcut.register(`${secondary}+.`, () => {
+      // Cmd/Ctrl+Shift+> (Period) - Increase transparency (decrease opacity)
       this.windowManager.send('increase-transparency');
     });
 
@@ -309,7 +310,7 @@ class ShortcutManager {
     // Secondary modifier shortcuts
     globalShortcut.unregister(`${secondary}+/`);
     globalShortcut.unregister(`${secondary}+R`);
-    globalShortcut.unregister(`${secondary}+F`);
+    // globalShortcut.unregister(`${secondary}+F`); // Flow toggle now handled by KeyHoldManager
     globalShortcut.unregister(`${secondary}+O`);
     globalShortcut.unregister(`${secondary}+D`);
     globalShortcut.unregister(`${secondary}+I`);
@@ -320,9 +321,9 @@ class ShortcutManager {
     globalShortcut.unregister(`${secondary}+]`);
     globalShortcut.unregister(`${secondary}+[`);
 
-    // Movement step adjustment
-    globalShortcut.unregister(`${secondary}+Plus`);
-    globalShortcut.unregister(`${secondary}+-`);
+    // Transparency adjustment
+    globalShortcut.unregister(`${secondary}+,`);
+    globalShortcut.unregister(`${secondary}+.`);
 
     // Page scrolling
     globalShortcut.unregister(`${secondary}+Left`);
@@ -365,14 +366,14 @@ class ShortcutManager {
     console.log(`\nTIER 4 - ADVANCED (${mod}+Shift + Key):`);
     console.log(`  ${mod}+Shift+/           - Toggle small window / fullscreen`);
     console.log(`  ${mod}+Shift+R           - Master Reset (recover from any error)`);
-    console.log(`  ${mod}+Shift+F           - Toggle AI flow`);
+    console.log(`  Opt+${mod}               - Toggle AI flow (Alt+Ctrl on Windows/Linux)`);
     console.log(`  ${mod}+Shift+O           - Toggle OCR filtering`);
     console.log(`  ${mod}+Shift+T           - Cycle interview type`);
     console.log(`  ${mod}+Shift+D           - Toggle theme`);
     console.log(`\nTIER 5 - FINE CONTROL (${mod}+Shift + Symbols/Arrows):`);
     console.log(`  ${mod}+Shift+Up/Down     - Resize window height (hold for continuous)`);
     console.log(`  ${mod}+Shift+[ ]         - Resize window width (hold for continuous)`);
-    console.log(`  ${mod}+Shift+Plus/-      - Adjust CodeMirror transparency`);
+    console.log(`  ${mod}+Shift+< >         - Adjust CodeMirror transparency (hold for continuous)`);
     console.log(`  ${mod}+Shift+Left/Right  - Scroll page up/down`);
     console.log('\nOTHER:');
     console.log(`  ${mod}+Shift+M           - Switch Ollama model`);

@@ -17,13 +17,13 @@ const FLOW_CONFIGS = {
       provider: 'deepseek',
       flowType: 'cloud', // Use deepseek-chat model
       sessionKey: 'deepseek-cloud-clarification',
-      header: '🔍 **Problem Analysis:**\n\n',
-      logMessage: 'Phase 0: Problem clarification, assumptions, and pseudo-code (deepseek-chat, sequential)...',
+      header: '🧠 **Brute-Force Pseudo-Code:**\n\n',
+      logMessage: 'Phase 0: Brute-force pseudo-code generation (deepseek-chat, sequential)...',
       promptGetter: (interviewType) => MODEL_PROMPTS.getCloudPrompt('clarification', interviewType),
-      promptLogMessage: 'Added cloud CLARIFICATION prompt for problem analysis',
+      promptLogMessage: 'Added cloud CLARIFICATION prompt for brute-force pseudo-code',
       parameters: {
-        temperature: 0.3,
-        max_tokens: 1024, // Shorter responses for clarification
+        temperature: 0.5, // Higher temperature for simple, straightforward answers
+        max_tokens: 1536,
       },
       includeReasoning: undefined,
     },
@@ -121,6 +121,63 @@ const FLOW_CONFIGS = {
     phase1CompletionLog: 'Local phase completed',
     phase2CompletionLog: 'Cloud phase completed',
     errorPrefix: 'DeepSeek Error',
+  },
+  steps: {
+    name: 'steps',
+    displayName: 'Steps',
+    logPrefix: 'Sequential steps flow',
+    phase0: {
+      name: 'clarification',
+      provider: 'deepseek',
+      flowType: 'cloud', // Use deepseek-chat model
+      sessionKey: 'deepseek-steps-clarification',
+      header: '❓ **Problem Clarification:**\n\n',
+      logMessage: 'Phase 0: Problem clarification Q&A (deepseek-chat, sequential)...',
+      promptGetter: (interviewType) => MODEL_PROMPTS.getStepsPrompt('clarification', interviewType),
+      promptLogMessage: 'Added steps CLARIFICATION prompt for Q&A analysis',
+      parameters: {
+        temperature: 0.5, // Higher temperature for generating diverse questions
+        max_tokens: 1024,
+      },
+      includeReasoning: undefined,
+    },
+    phase1: {
+      name: 'bruteforce',
+      provider: 'deepseek',
+      flowType: 'cloud', // Use deepseek-chat model
+      sessionKey: 'deepseek-steps-bruteforce',
+      header: '🧠 **Brute-Force Approach:**\n\n',
+      logMessage: 'Phase 1: Brute-force algorithm/pseudocode (deepseek-chat, sequential)...',
+      promptGetter: (interviewType) => MODEL_PROMPTS.getStepsPrompt('bruteforce', interviewType),
+      promptLogMessage: 'Added steps BRUTEFORCE prompt for simple solution',
+      parameters: {
+        temperature: 0.3,
+        max_tokens: 2048,
+      },
+      includeReasoning: undefined,
+    },
+    phase2: {
+      name: 'optimization',
+      provider: 'deepseek',
+      flowType: 'steps', // Use steps flow model (deepseek-reasoner with 240s timeout)
+      sessionKey: 'deepseek-steps-optimization',
+      header: '', // No header - added via separator
+      logMessage: 'Phase 2: Optimization with Phase 1 solution (deepseek-reasoner, sequential)...',
+      promptGetter: (interviewType) => MODEL_PROMPTS.getStepsPrompt('optimization', interviewType),
+      promptLogMessage: 'Added steps OPTIMIZATION prompt for step-by-step improvement',
+      parameters: {
+        temperature: 0.1,
+        max_tokens: 4096,
+      },
+      includeReasoning: false,
+      logReasonerTimeout: true,
+    },
+    separator0: '\n\n---\n\n',
+    separator1: '\n\n---\n\n**✨ Optimized Solution:**\n\n',
+    phase0CompletionLog: 'Clarification phase completed',
+    phase1CompletionLog: 'Brute-force phase completed',
+    phase2CompletionLog: 'Optimization phase completed',
+    errorPrefix: 'Steps Flow Error',
   },
 };
 
@@ -275,6 +332,7 @@ class SimpleAIManager {
         stream: options.stream || false,
         onChunk: options.onChunk || null,
         signal: options.signal || null,
+        interviewType: this.currentInterviewType,
       });
 
       const content = this._extractContent(response);
@@ -417,7 +475,7 @@ class SimpleAIManager {
     const flow = options.flow;
 
     // Handle special flows with streaming
-    if (flow && ['local', 'cloud', 'hybrid'].includes(flow)) {
+    if (flow && ['local', 'cloud', 'hybrid', 'steps'].includes(flow)) {
       return await this._executeFlow(question, options, flow);
     }
 
@@ -438,6 +496,8 @@ class SimpleAIManager {
     try {
       if (flow === 'hybrid') {
         return await this._executeHybridFlow(question, options);
+      } else if (flow === 'steps') {
+        return await this._executeStepsFlow(question, options);
       } else {
         return await this._executeSingleProviderFlow(question, options, flow);
       }
@@ -480,9 +540,9 @@ class SimpleAIManager {
       );
     } else {
       // Either switching providers or using flow-specific model
-      const flowModel = aiConfig.getFlowModel(provider, flow);
+      const flowModel = aiConfig.getFlowModel(provider, flow, this.currentInterviewType);
       this.setModel(flowModel);
-      console.log(`[SimpleAIManager] Using flow model ${flowModel} for ${flow} flow`);
+      console.log(`[SimpleAIManager] Using flow model ${flowModel} for ${flow} flow (interview type: ${this.currentInterviewType})`);
     }
 
     const response = await this.query(question, {
@@ -518,11 +578,11 @@ class SimpleAIManager {
         await this.switchProvider(phaseConfig.provider, true);
       }
 
-      // Get flow-specific model
-      const model = aiConfig.getFlowModel(phaseConfig.provider, phaseConfig.flowType);
+      // Get flow-specific model (pass interview type for hybrid flow)
+      const model = aiConfig.getFlowModel(phaseConfig.provider, phaseConfig.flowType, this.currentInterviewType);
       this.setModel(model);
 
-      console.log(`[SimpleAIManager] Using ${model} for ${phaseConfig.name} phase`);
+      console.log(`[SimpleAIManager] Using ${model} for ${phaseConfig.name} phase (interview type: ${this.currentInterviewType})`);
 
       // Log reasoner timeout if specified
       if (phaseConfig.logReasonerTimeout) {
@@ -536,22 +596,18 @@ class SimpleAIManager {
       const sessionKey = this._getSessionKey(phaseConfig.sessionKey, model);
       const session = this._getOrCreateSession(sessionKey);
 
-      // IMPORTANT: Clear phase session before each execution to prevent stale context
-      // Each phase should start fresh with only its system prompt and current question
-      const hadPreviousMessages = session.messages.length > 0;
-      session.messages = [];
-
-      if (hadPreviousMessages) {
-        console.log(`[SimpleAIManager] Cleared ${phaseConfig.name} phase session (had ${hadPreviousMessages} messages from previous call)`);
+      // Add system prompt only if this is the first message in this phase session
+      // This allows conversation history to be maintained across multiple screenshots
+      if (session.messages.length === 0) {
+        const systemPrompt = phaseConfig.promptGetter(this.currentInterviewType);
+        session.messages.push({
+          role: 'system',
+          content: systemPrompt,
+        });
+        console.log(`[SimpleAIManager] ${phaseConfig.promptLogMessage}`);
+      } else {
+        console.log(`[SimpleAIManager] Reusing existing ${phaseConfig.name} phase session (${session.messages.length} messages)`);
       }
-
-      // Add system prompt for this phase
-      const systemPrompt = phaseConfig.promptGetter(this.currentInterviewType);
-      session.messages.push({
-        role: 'system',
-        content: systemPrompt,
-      });
-      console.log(`[SimpleAIManager] ${phaseConfig.promptLogMessage}`);
 
       // Add user question
       session.messages.push({ role: 'user', content: question });
@@ -564,6 +620,8 @@ class SimpleAIManager {
         onChunk: options.onChunk,
         includeReasoning: phaseConfig.includeReasoning,
         signal: options.signal || null,
+        flowType: phaseConfig.flowType, // Pass flowType for timeout selection
+        interviewType: this.currentInterviewType, // Pass interviewType for interview-specific timeout
         parameters: {
           ...phaseConfig.parameters,
           ...options.parameters,
@@ -584,6 +642,86 @@ class SimpleAIManager {
       // Log error without full stack trace for cleaner output
       console.error(`[SimpleAIManager] ${phaseConfig.name} phase failed: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Execute phase with automatic fallback to deepseek-chat on failure
+   * Used for Phase 2 optimization/verification to ensure user always gets content
+   * @private
+   */
+  async _executePhaseWithFallback(question, phaseConfig, options) {
+    try {
+      // Try primary model (e.g., deepseek-reasoner)
+      const content = await this._executePhase(question, phaseConfig, options);
+
+      // Check if content is empty, just whitespace, or the reasoning-only fallback message
+      // The reasoning-only fallback is created by simple-ai.js when deepseek-reasoner
+      // returns only <think> tags without a final answer
+      const isEmptyResponse = !content || content.trim().length === 0;
+      const isReasoningOnlyFallback = content && content.includes('**🧠 Reasoning Process** (no final answer provided)');
+
+      if (isEmptyResponse || isReasoningOnlyFallback) {
+        const errorMsg = isReasoningOnlyFallback
+          ? 'Reasoner provided only thinking process without final answer'
+          : 'Empty response from primary model';
+        throw new Error(errorMsg);
+      }
+
+      return content;
+    } catch (primaryError) {
+      // Check if error is timeout, network-related, or reasoning-only response
+      const isTimeout = primaryError.message.includes('timeout') ||
+                       primaryError.message.includes('ECONNABORTED');
+      const isNetworkError = primaryError.message.includes('request failed') ||
+                            primaryError.message.includes('Empty response');
+      const isReasoningOnly = primaryError.message.includes('only thinking process');
+
+      if (!isTimeout && !isNetworkError && !isReasoningOnly) {
+        // Not a timeout/network/reasoning-only error - re-throw
+        throw primaryError;
+      }
+
+      // Log fallback attempt
+      console.warn(`[SimpleAIManager] ${phaseConfig.name} phase failed (${primaryError.message}), attempting fallback to deepseek-chat...`);
+
+      // Notify user via UI with appropriate message
+      if (options.onChunk) {
+        let warningMsg;
+        if (isReasoningOnly) {
+          warningMsg = `\n\n⚠️ **Note**: Deep reasoner provided only thinking process without final answer, using fast model for optimization...\n\n`;
+        } else if (isTimeout) {
+          const timeoutSecs = Math.floor(require('./ai-config').getProviderConfig('deepseek').reasonerTimeout / 1000);
+          warningMsg = `\n\n⚠️ **Note**: Deep reasoning timed out (${timeoutSecs}s limit), using fast model for optimization...\n\n`;
+        } else {
+          warningMsg = `\n\n⚠️ **Note**: Deep reasoning failed, using fast model for optimization...\n\n`;
+        }
+        options.onChunk(warningMsg);
+      }
+
+      // Create fallback phase config with deepseek-chat
+      const aiConfig = require('./ai-config');
+      const fallbackConfig = {
+        ...phaseConfig,
+        flowType: 'cloud', // Use cloud flow model (deepseek-chat)
+        logMessage: `${phaseConfig.logMessage.replace('deepseek-reasoner', 'deepseek-chat')} [FALLBACK]`,
+        logReasonerTimeout: false, // Don't log timeout for fallback
+      };
+
+      try {
+        // Execute with fallback model
+        const fallbackContent = await this._executePhase(question, fallbackConfig, {
+          ...options,
+          // Don't duplicate the warning message when streaming fallback content
+        });
+
+        console.log(`[SimpleAIManager] ${phaseConfig.name} phase completed via fallback (deepseek-chat)`);
+        return fallbackContent;
+      } catch (fallbackError) {
+        // Both primary and fallback failed - throw original error
+        console.error(`[SimpleAIManager] Fallback also failed: ${fallbackError.message}`);
+        throw primaryError; // Throw original error, not fallback error
+      }
     }
   }
 
@@ -624,9 +762,23 @@ class SimpleAIManager {
         }
       }
 
-      // Phase 1: Execute and stream to UI immediately (uses original question, NOT Phase 0's output)
+      // Phase 1: Execute and stream to UI immediately (uses original question + Phase 0's pseudo-code as context)
       console.log(`[SimpleAIManager] ===== PHASE 1: ${flowConfig.phase1.name.toUpperCase()} =====`);
-      const phase1Response = await this._executePhase(question, flowConfig.phase1, {
+
+      // Construct Phase 1 query with original question + Phase 0's pseudo-code
+      const phase1Query = hasPhase0
+        ? `Brute-force approach from initial analysis:
+${phase0Response}
+
+Now provide an optimized solution for the following problem:
+${question}`
+        : question;
+
+      if (hasPhase0) {
+        console.log(`[SimpleAIManager] Phase 1 query constructed (${phase1Query.length} chars total: ${phase0Response.length} phase0 pseudo-code + ${question.length} question)`);
+      }
+
+      const phase1Response = await this._executePhase(phase1Query, flowConfig.phase1, {
         ...options,
         onChunk: options.onChunk, // Stream Phase 1 directly to UI
       });
@@ -652,7 +804,9 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
 
       console.log(`[SimpleAIManager] Phase 2 query constructed (${phase2Query.length} chars total: ${question.length} question + ${phase1Response.length} phase1 response)`);
 
-      const phase2Response = await this._executePhase(phase2Query, flowConfig.phase2, {
+      // Use fallback for Phase 2 to ensure user always gets optimization/verification
+      // If deepseek-reasoner times out, automatically retry with deepseek-chat
+      const phase2Response = await this._executePhaseWithFallback(phase2Query, flowConfig.phase2, {
         ...options,
         onChunk: options.onChunk, // Stream Phase 2 directly to UI
       });
@@ -701,6 +855,19 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
    */
   async _executeHybridFlow(question, options) {
     return await this._executeTwoPhaseSequentialFlow(question, options, FLOW_CONFIGS.hybrid);
+  }
+
+  /**
+   * Execute steps flow with three-phase sequential execution
+   * Phase 0 (deepseek-chat) clarifies problem with Q&A format
+   * Phase 1 (deepseek-chat) provides brute-force algorithm/pseudocode
+   * Phase 2 (deepseek-reasoner) optimizes Phase 1's solution with 240s timeout
+   * Total time = clarification_time + bruteforce_time + optimization_time
+   * User sees each phase immediately as it completes
+   * @private
+   */
+  async _executeStepsFlow(question, options) {
+    return await this._executeTwoPhaseSequentialFlow(question, options, FLOW_CONFIGS.steps);
   }
 
   /**
@@ -777,6 +944,39 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
    * @returns {Object} Session object with history
    */
   getSession() {
+    // Check if there are any phase sessions (CLOUD, HYBRID, STEPS flows)
+    const phaseSessions = [];
+
+    for (const [key, session] of this.sessions.entries()) {
+      // Identify phase sessions by their key patterns
+      if (key.includes('-cloud-') || key.includes('-hybrid-') || key.includes('-steps-')) {
+        phaseSessions.push({ key, session });
+      }
+    }
+
+    // If phase sessions exist, aggregate messages from all phase sessions
+    if (phaseSessions.length > 0) {
+      // Aggregate all messages from phase sessions
+      const allMessages = [];
+
+      for (const { session } of phaseSessions) {
+        // Add all non-system messages from this phase
+        const phaseMessages = session.messages
+          .filter((msg) => msg.role !== 'system')
+          .map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+          }));
+        allMessages.push(...phaseMessages);
+      }
+
+      return {
+        history: allMessages,
+        active: allMessages.length > 0,
+      };
+    }
+
+    // No phase sessions found - use current provider/model session (LOCAL flow)
     const sessionKey = this._getSessionKey(this.currentProvider, this.currentModel);
     const session = this.sessions.get(sessionKey);
 
@@ -865,8 +1065,8 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
 
     console.log(`[SimpleAIManager] Interview type changed to: ${this.currentInterviewType}`);
 
-    // Clear current session to apply new system prompt on next query
-    this.clearSession();
+    // Clear all sessions (including phase sessions) to apply new system prompts on next query
+    this.clearAllSessions();
 
     return this.currentInterviewType;
   }

@@ -4,8 +4,11 @@
  */
 module.exports = {
   // Step sizes for window operations (in pixels)
-  moveStep: 10, // Pixels per move action
+  moveStep: 20, // Pixels per move action
   resizeStep: 10, // Pixels per resize action
+
+  // Transparency adjustment step (0.1 = 10% change per action)
+  transparencyStep: 0.1, // Opacity change per transparency action
 
   // Timing configuration for continuous key holding
   holdDelayMs: 300, // Delay before continuous action starts (ms)

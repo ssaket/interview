@@ -31,7 +31,7 @@ This is an Electron-based DeepSeek Overlay Helper application that captures scre
 ## Core Architecture
 
 ### AI System with Flow Management
-The AI system supports three distinct processing flows for different use cases:
+The AI system supports four distinct processing flows for different use cases:
 
 - **SimpleAIManager** (`src/js/ai/simple-ai-manager.js`) - Main AI controller with session management
 - **SimpleAI** (`src/js/ai/simple-ai.js`) - Direct HTTP functions for all AI providers
@@ -40,6 +40,7 @@ The AI system supports three distinct processing flows for different use cases:
   - **LOCAL** - Ollama local models only (fast, private, single-phase)
   - **CLOUD** - Two-phase parallel: `deepseek-chat` fast answer → `deepseek-reasoner` verification
   - **HYBRID** - Two-phase parallel: Ollama brute-force → `deepseek-reasoner` optimization
+  - **STEPS** - Three-phase sequential: Problem clarification → Brute-force approach → Optimized solution (human-like problem solving)
 - **Supported Providers**:
   - Ollama - Local AI models with hybrid model support (`OLLAMA_HYBRID_MODEL`)
   - OpenAI - GPT models via API
@@ -118,7 +119,14 @@ AI_PROVIDER=ollama
 # Ollama Configuration
 OLLAMA_MODEL=gpt-oss
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_HYBRID_MODEL=qwen3:4b-instruct-2507-fp16
+
+# Hybrid Flow Model Configuration (Phase 1: Brute-force solution)
+OLLAMA_HYBRID_MODEL=qwen3:4b-instruct-2507-fp16  # Global fallback for all interview types
+
+# Optional: Interview-type-specific hybrid models (overrides OLLAMA_HYBRID_MODEL)
+# OLLAMA_HYBRID_MODEL_DSA=qwen3:4b-instruct-2507-fp16           # For DSA interviews
+# OLLAMA_HYBRID_MODEL_SYSTEM_DESIGN=magistral                   # For System Design interviews
+# OLLAMA_HYBRID_MODEL_LLD=magistral                             # For Low-Level Design interviews
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key
@@ -129,17 +137,31 @@ HF_TOKEN=your_huggingface_token
 HF_PROVIDER=hyperbolic
 HF_MODEL=deepseek-ai/DeepSeek-R1-0528
 
-# DeepSeek Configuration (V3.1 with Think Mode) - Required for CLOUD and HYBRID AI flows
+# DeepSeek Configuration (V3.1 with Think Mode) - Required for CLOUD, HYBRID, and STEPS AI flows
 DEEPSEEK_API_KEY=your_deepseek_api_key
 DEEPSEEK_MODEL=deepseek-chat  # Default model (optional, defaults to deepseek-chat)
 
 # Optional: Override flow-specific DeepSeek models
 # DEEPSEEK_CLOUD_MODEL=deepseek-chat     # Fast responses without extended reasoning (for CLOUD flow)
 # DEEPSEEK_HYBRID_MODEL=deepseek-reasoner # Deep reasoning to optimize local solution (for HYBRID flow)
+# DEEPSEEK_STEPS_MODEL=deepseek-reasoner  # Deep reasoning for STEPS flow optimization phase (default: deepseek-reasoner)
 
 # Optional: Timeout configuration
 # DEEPSEEK_TIMEOUT=120000                 # General timeout in ms (default: 120000 = 2 minutes)
-# DEEPSEEK_REASONER_TIMEOUT=60000         # Timeout for deepseek-reasoner to limit thinking time (default: 60000 = 1 minute)
+
+# Global timeouts for deepseek-reasoner (applies to all interview types unless overridden)
+# DEEPSEEK_REASONER_TIMEOUT=100000        # Timeout for deepseek-reasoner in CLOUD/HYBRID flows (default: 100000 = 100 seconds)
+# DEEPSEEK_STEPS_TIMEOUT=240000           # Timeout for deepseek-reasoner in STEPS flow optimization (default: 240000 = 4 minutes)
+
+# Optional: Interview-type-specific timeouts for deepseek-reasoner in CLOUD/HYBRID flows
+# DEEPSEEK_REASONER_TIMEOUT_DSA=100000            # DSA interviews (default: 100 seconds)
+# DEEPSEEK_REASONER_TIMEOUT_SYSTEM_DESIGN=180000  # System Design interviews (default: 180 seconds = 3 minutes)
+# DEEPSEEK_REASONER_TIMEOUT_LLD=180000            # Low-Level Design interviews (default: 180 seconds = 3 minutes)
+
+# Optional: Interview-type-specific timeouts for deepseek-reasoner in STEPS flow
+# DEEPSEEK_STEPS_TIMEOUT_DSA=240000               # DSA interviews (default: 240 seconds = 4 minutes)
+# DEEPSEEK_STEPS_TIMEOUT_SYSTEM_DESIGN=360000     # System Design interviews (default: 360 seconds = 6 minutes)
+# DEEPSEEK_STEPS_TIMEOUT_LLD=360000               # Low-Level Design interviews (default: 360 seconds = 6 minutes)
 
 # AssemblyAI Configuration (for speech-to-text)
 ASSEMBLYAI_API_KEY=your_assemblyai_api_key
@@ -165,7 +187,7 @@ DeepSeek V3.1 supports two models optimized for different use cases:
 - **`deepseek-reasoner`**: Deep reasoning with think mode
   - Used in CLOUD flow (Phase 2: Verification) and HYBRID flow (Phase 2: Optimization)
   - Uses `<think>` tags for step-by-step reasoning (up to 32K tokens)
-  - **Timeout Protection**: 60-second timeout by default to prevent endless thinking
+  - **Timeout Protection**: 100-second timeout by default to prevent endless thinking
   - Streams reasoning content in real-time for transparency
   - Optimized parameters: Lower temperature (0.1) and higher token limits (4096)
   - Best for verification, optimization, and deep analysis
@@ -174,13 +196,37 @@ DeepSeek V3.1 supports two models optimized for different use cases:
 
 ### Timeout Configuration
 To prevent `deepseek-reasoner` from thinking too long:
-- **Default**: 60 seconds (1 minute) - reasonable for most interview questions
-- **Configurable**: Set `DEEPSEEK_REASONER_TIMEOUT` in milliseconds
+
+**CLOUD/HYBRID Flows:**
+- **Default Timeouts by Interview Type**:
+  - **DSA**: 100 seconds - reasonable for algorithmic problems
+  - **System Design**: 180 seconds (3 minutes) - more time for architecture decisions
+  - **LLD**: 180 seconds (3 minutes) - more time for design pattern selection
+- **Global Override**: Set `DEEPSEEK_REASONER_TIMEOUT` to apply same timeout to all interview types
+- **Interview-Specific Override**: Set `DEEPSEEK_REASONER_TIMEOUT_SYSTEM_DESIGN` or `DEEPSEEK_REASONER_TIMEOUT_LLD` for specific types
 - **Examples**:
-  - `DEEPSEEK_REASONER_TIMEOUT=30000` - 30 seconds (faster, less reasoning)
-  - `DEEPSEEK_REASONER_TIMEOUT=90000` - 90 seconds (more time for complex problems)
-  - `DEEPSEEK_REASONER_TIMEOUT=120000` - 2 minutes (maximum for very complex problems)
+  - `DEEPSEEK_REASONER_TIMEOUT=120000` - 2 minutes for all interview types
+  - `DEEPSEEK_REASONER_TIMEOUT_SYSTEM_DESIGN=240000` - 4 minutes for System Design only
+  - `DEEPSEEK_REASONER_TIMEOUT_LLD=210000` - 3.5 minutes for LLD only
 - **Behavior**: If timeout is hit, request is cancelled and error is returned
+
+**STEPS Flow:**
+- **Default Timeouts by Interview Type**:
+  - **DSA**: 240 seconds (4 minutes) - allows deep algorithmic optimization
+  - **System Design**: 360 seconds (6 minutes) - more time for scalability analysis
+  - **LLD**: 360 seconds (6 minutes) - more time for design pattern refinement
+- **Global Override**: Set `DEEPSEEK_STEPS_TIMEOUT` to apply same timeout to all interview types
+- **Interview-Specific Override**: Set `DEEPSEEK_STEPS_TIMEOUT_SYSTEM_DESIGN` or `DEEPSEEK_STEPS_TIMEOUT_LLD` for specific types
+- **Examples**:
+  - `DEEPSEEK_STEPS_TIMEOUT=300000` - 5 minutes for all interview types
+  - `DEEPSEEK_STEPS_TIMEOUT_SYSTEM_DESIGN=420000` - 7 minutes for System Design only
+- **Purpose**: STEPS flow Phase 2 (optimization) benefits from extended thinking time, especially for design problems
+- **Behavior**: If timeout is hit, automatic fallback to `deepseek-chat` for faster optimization
+
+**Why Different Timeouts?**
+- System Design and LLD problems typically require more reasoning time than DSA problems
+- Architecture decisions and design pattern selection need deeper analysis than algorithmic optimization
+- Default timeouts are tuned based on typical interview problem complexity
 
 ### Flow Details
 
@@ -204,6 +250,28 @@ To prevent `deepseek-reasoner` from thinking too long:
 - **Total Time**: local_time + cloud_time
 - **Perceived Latency**: local_time (user sees Phase 1 results immediately)
 - **Use Case**: Instant local answer with cloud-powered optimization
+- **Interview-Type-Specific Models**: Phase 1 supports different Ollama models for each interview type:
+  - **DSA**: Uses `OLLAMA_HYBRID_MODEL_DSA` (default: `qwen3:4b-instruct-2507-fp16`)
+  - **System Design**: Uses `OLLAMA_HYBRID_MODEL_SYSTEM_DESIGN` (default: `magistral`)
+  - **Low-Level Design**: Uses `OLLAMA_HYBRID_MODEL_LLD` (default: `magistral`)
+  - **Fallback**: If interview-specific model not set, uses `OLLAMA_HYBRID_MODEL`
+  - **Rationale**: Different models excel at different interview types (e.g., Magistral for design, Qwen for algorithms)
+
+#### STEPS Flow (Three-Phase Sequential)
+Human-like problem-solving approach with systematic step-by-step reasoning:
+
+- **Phase 0 - Clarification**: `deepseek-chat` generates clarifying questions and immediately answers them with reasonable assumptions (auto-Q&A format, no code)
+- **Phase 1 - Brute Force**: `deepseek-chat` provides simple brute-force algorithm/pseudocode with step-by-step breakdown
+- **Phase 2 - Optimization**: `deepseek-reasoner` receives Phase 1's solution and optimizes it (4-minute timeout for deep reasoning)
+- **Sequential Execution**: Each phase builds on the previous phase's output as context
+- **Total Time**: clarification_time + bruteforce_time + optimization_time
+- **Perceived Latency**: clarification_time (user sees each phase immediately as it completes)
+- **Key Features**:
+  - Minimal, step-by-step answers at each phase
+  - Auto-generated Q&A in Phase 0 (no user interaction needed)
+  - Extended reasoning timeout (240s) for Phase 2 optimization
+  - If optimization isn't possible within timeout, AI explicitly states "already optimal"
+- **Use Case**: Systematic interview-style problem solving, mimicking human thought process with clarification → simple solution → optimization
 
 ### Session Management
 - Sessions are maintained per provider-model combination
@@ -231,6 +299,7 @@ To prevent `deepseek-reasoner` from thinking too long:
 - `Cmd/Ctrl+A` - **A**rea screenshot (region selection)
 - `Cmd/Ctrl+B` - Show/hide window (preserving original)
 - `Cmd/Ctrl+Arrow Keys` - Move window (hold for continuous movement)
+- `Cmd/Ctrl+Mouse Move` - Move window to follow cursor (no clicking needed)
 
 ### **TIER 2: Workflows** *(Numbers - Sequential Operations)*
 **1→2→3 natural sequence for screenshot stack workflow:**
@@ -246,7 +315,7 @@ To prevent `deepseek-reasoner` from thinking too long:
 **Grouped by function with memorable mnemonics:**
 - `Cmd/Ctrl+Shift+0` - Toggle small window / fullscreen
 - `Cmd/Ctrl+Shift+R` - **R**eset AI session
-- `Cmd/Ctrl+Shift+F` - AI **F**low toggle (LOCAL→CLOUD→HYBRID)
+- `Opt+Cmd` / `Alt+Ctrl` - AI flow toggle (LOCAL→CLOUD→HYBRID→STEPS)
 - `Cmd/Ctrl+Shift+O` - **O**CR filter toggle (shows status message)
 - `Cmd/Ctrl+Shift+D` - **D**ark/light theme toggle
 - `Cmd/Ctrl+Shift+V` - **V**iew conversation history in browser
@@ -257,7 +326,7 @@ To prevent `deepseek-reasoner` from thinking too long:
 - `Cmd/Ctrl+Shift+Up/Down` - Resize window height (hold for continuous)
 - `Cmd/Ctrl+Shift+[ ]` - Resize window width (hold for continuous)
 - `Cmd/Ctrl+Shift+Left/Right` - Scroll page up/down
-- `Cmd/Ctrl+Shift+Plus/Minus` - Adjust CodeMirror transparency (shows transparency %)
+- `Cmd/Ctrl+Shift+< >` - Adjust CodeMirror transparency (hold for continuous, shows transparency %)
 
 ### **Additional Features**
 - `Cmd/Ctrl+Shift+M` - Switch Ollama **M**odel (shows model info)
@@ -285,7 +354,7 @@ To prevent `deepseek-reasoner` from thinking too long:
 - Model operations show current model and session info
 
 ### **Continuous Window Controls**
-The application uses native keyboard hooks (`uiohook-napi`) for smooth continuous window operations:
+The application uses native keyboard and mouse hooks (`uiohook-napi`) for smooth continuous window operations:
 
 **Features:**
 - Hold any movement or resize key for continuous action (20 updates/second)
@@ -293,9 +362,19 @@ The application uses native keyboard hooks (`uiohook-napi`) for smooth continuou
 - Automatic stop when key is released
 - Keys blocked from other apps when window is visible
 - Single-press fallback for quick adjustments
+- **Mouse Following**: Hold `Cmd/Ctrl` and move mouse to make window follow cursor
+  - Works cross-platform (Cmd on macOS, Ctrl on Windows/Linux)
+  - No clicking or dragging required - just hold modifier and move mouse
+  - No visual feedback (invisible follow mode)
+  - Smooth following at native mouse refresh rate
+  - Stops following when modifier key is released
+  - Compatible with existing keyboard-based movement
 
 **Implementation:**
-- **KeyHoldManager** (`src/js/key-hold-manager.js`) - Native keyboard event listener
+- **KeyHoldManager** (`src/js/key-hold-manager.js`) - Native keyboard and mouse event listener
+  - Handles keyboard-based continuous movement and resizing
+  - Handles mouse following with `Cmd/Ctrl` modifier (no clicking needed)
+  - Preserves existing `Cmd/Ctrl+Double-Click` repositioning feature
 - **ShortcutManager** (`src/js/shortcut-manager.js`) - Single-press fallback handlers
 - **Centralized Configuration** (`src/js/window-controls-config.js`) - Single source of truth for all step sizes
   - `moveStep`: 10px - Window movement increment (used by both managers)
@@ -306,6 +385,7 @@ The application uses native keyboard hooks (`uiohook-napi`) for smooth continuou
   - `messageThrottleMs`: 500ms - Status message throttling
 - **Movement**: `Cmd/Ctrl+Arrow Keys` - Uses `moveStep` from config
 - **Resizing**: `Cmd/Ctrl+Shift+Arrows/Brackets` - Uses `resizeStep` from config
+- **Mouse Following**: `Cmd/Ctrl+Mouse Move` - Direct window positioning at mouse movement rate (no clicking)
 - Status messages throttled to prevent flooding
 
 ## Testing Approach

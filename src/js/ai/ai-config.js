@@ -26,7 +26,13 @@ class AIConfig {
           models: {
             local: ['deepseek-coder-v2', 'qwen3:4b-instruct-2507-fp16', 'gpt-oss', 'magistral'],
             primary: 'gpt-oss',
-            hybrid: 'qwen3:4b-instruct-2507-fp16', // Default model for hybrid AI flow
+            hybrid: 'qwen3:4b-instruct-2507-fp16', // Default model for hybrid AI flow (fallback)
+            hybridByType: {
+              // Interview-type-specific hybrid models (Phase 1 of hybrid flow)
+              dsa: 'qwen3:4b-instruct-2507-fp16',
+              systemDesign: 'magistral',
+              lld: 'magistral',
+            },
           },
           parameters: {
             temperature: 0.3,
@@ -83,7 +89,20 @@ class AIConfig {
           model: 'deepseek-chat',
           baseUrl: 'https://api.deepseek.com',
           timeout: 120000,
-          reasonerTimeout: 60000, // Timeout for deepseek-reasoner (60s default to limit thinking)
+          reasonerTimeout: 100000, // Timeout for deepseek-reasoner (100s default to limit thinking)
+          stepsReasonerTimeout: 240000, // Timeout for deepseek-reasoner in STEPS flow (240s = 4 minutes)
+          reasonerTimeoutByType: {
+            // Interview-type-specific timeouts for deepseek-reasoner in CLOUD/HYBRID flows
+            dsa: 100000, // 100s for DSA (default)
+            systemDesign: 180000, // 180s (3 minutes) for System Design
+            lld: 180000, // 180s (3 minutes) for Low-Level Design
+          },
+          stepsReasonerTimeoutByType: {
+            // Interview-type-specific timeouts for deepseek-reasoner in STEPS flow
+            dsa: 240000, // 240s (4 minutes) for DSA (default)
+            systemDesign: 360000, // 360s (6 minutes) for System Design
+            lld: 360000, // 360s (6 minutes) for Low-Level Design
+          },
           models: {
             chat: ['deepseek-chat'],
             primary: 'deepseek-chat',
@@ -91,6 +110,7 @@ class AIConfig {
             coding: ['deepseek-chat'],
             cloud: 'deepseek-chat', // For CLOUD flow - fast, no extended reasoning
             hybrid: 'deepseek-reasoner', // For HYBRID flow - deep reasoning to optimize local solution
+            steps: 'deepseek-reasoner', // For STEPS flow optimization phase - deep reasoning with 240s timeout
           },
           parameters: {
             temperature: 0.3,
@@ -116,6 +136,11 @@ class AIConfig {
           models: {
             ...defaults.providers.ollama.models,
             hybrid: process.env.OLLAMA_HYBRID_MODEL || defaults.providers.ollama.models.hybrid,
+            hybridByType: {
+              dsa: process.env.OLLAMA_HYBRID_MODEL_DSA || defaults.providers.ollama.models.hybridByType.dsa,
+              systemDesign: process.env.OLLAMA_HYBRID_MODEL_SYSTEM_DESIGN || defaults.providers.ollama.models.hybridByType.systemDesign,
+              lld: process.env.OLLAMA_HYBRID_MODEL_LLD || defaults.providers.ollama.models.hybridByType.lld,
+            },
           },
         },
         openai: {
@@ -148,10 +173,36 @@ class AIConfig {
           reasonerTimeout: process.env.DEEPSEEK_REASONER_TIMEOUT
             ? parseInt(process.env.DEEPSEEK_REASONER_TIMEOUT)
             : defaults.providers.deepseek.reasonerTimeout,
+          stepsReasonerTimeout: process.env.DEEPSEEK_STEPS_TIMEOUT
+            ? parseInt(process.env.DEEPSEEK_STEPS_TIMEOUT)
+            : defaults.providers.deepseek.stepsReasonerTimeout,
+          reasonerTimeoutByType: {
+            dsa: process.env.DEEPSEEK_REASONER_TIMEOUT_DSA
+              ? parseInt(process.env.DEEPSEEK_REASONER_TIMEOUT_DSA)
+              : defaults.providers.deepseek.reasonerTimeoutByType.dsa,
+            systemDesign: process.env.DEEPSEEK_REASONER_TIMEOUT_SYSTEM_DESIGN
+              ? parseInt(process.env.DEEPSEEK_REASONER_TIMEOUT_SYSTEM_DESIGN)
+              : defaults.providers.deepseek.reasonerTimeoutByType.systemDesign,
+            lld: process.env.DEEPSEEK_REASONER_TIMEOUT_LLD
+              ? parseInt(process.env.DEEPSEEK_REASONER_TIMEOUT_LLD)
+              : defaults.providers.deepseek.reasonerTimeoutByType.lld,
+          },
+          stepsReasonerTimeoutByType: {
+            dsa: process.env.DEEPSEEK_STEPS_TIMEOUT_DSA
+              ? parseInt(process.env.DEEPSEEK_STEPS_TIMEOUT_DSA)
+              : defaults.providers.deepseek.stepsReasonerTimeoutByType.dsa,
+            systemDesign: process.env.DEEPSEEK_STEPS_TIMEOUT_SYSTEM_DESIGN
+              ? parseInt(process.env.DEEPSEEK_STEPS_TIMEOUT_SYSTEM_DESIGN)
+              : defaults.providers.deepseek.stepsReasonerTimeoutByType.systemDesign,
+            lld: process.env.DEEPSEEK_STEPS_TIMEOUT_LLD
+              ? parseInt(process.env.DEEPSEEK_STEPS_TIMEOUT_LLD)
+              : defaults.providers.deepseek.stepsReasonerTimeoutByType.lld,
+          },
           models: {
             ...defaults.providers.deepseek.models,
             cloud: process.env.DEEPSEEK_CLOUD_MODEL || defaults.providers.deepseek.models.cloud,
             hybrid: process.env.DEEPSEEK_HYBRID_MODEL || defaults.providers.deepseek.models.hybrid,
+            steps: process.env.DEEPSEEK_STEPS_MODEL || defaults.providers.deepseek.models.steps,
           },
         },
       },
@@ -276,6 +327,24 @@ class AIConfig {
   }
 
   /**
+   * Get hybrid model for a provider based on interview type
+   * @param {string} providerName - Provider name
+   * @param {string} interviewType - Interview type (dsa, systemDesign, lld)
+   * @returns {string} Hybrid model name for the specific interview type
+   */
+  getHybridModelByType(providerName, interviewType) {
+    const config = this.getProviderConfig(providerName);
+
+    // Try to get interview-type-specific hybrid model
+    if (config.models?.hybridByType && config.models.hybridByType[interviewType]) {
+      return config.models.hybridByType[interviewType];
+    }
+
+    // Fallback to general hybrid model
+    return this.getHybridModel(providerName);
+  }
+
+  /**
    * Get cloud model for a provider (used in cloud AI flow)
    * @param {string} providerName - Provider name
    * @returns {string} Cloud model name
@@ -289,9 +358,10 @@ class AIConfig {
    * Get model for specific flow type
    * @param {string} providerName - Provider name
    * @param {string} flowType - Flow type ('local', 'cloud', 'hybrid')
+   * @param {string} interviewType - Optional interview type for hybrid flow (dsa, systemDesign, lld)
    * @returns {string} Model name for the flow
    */
-  getFlowModel(providerName, flowType) {
+  getFlowModel(providerName, flowType, interviewType = null) {
     const config = this.getProviderConfig(providerName);
 
     let model;
@@ -300,7 +370,16 @@ class AIConfig {
         model = config.models?.cloud || config.models?.primary || config.model;
         break;
       case 'hybrid':
-        model = config.models?.hybrid || config.models?.primary || config.model;
+        // For hybrid flow: Use interview-type-specific model if provided and available
+        if (interviewType && config.models?.hybridByType && config.models.hybridByType[interviewType]) {
+          model = config.models.hybridByType[interviewType];
+        } else {
+          model = config.models?.hybrid || config.models?.primary || config.model;
+        }
+        break;
+      case 'steps':
+        // For STEPS flow: Use steps model (deepseek-reasoner for optimization phase)
+        model = config.models?.steps || config.models?.hybrid || config.models?.primary || config.model;
         break;
       case 'local':
         model = config.models?.local || config.models?.primary || config.model;
@@ -369,6 +448,39 @@ class AIConfig {
   isProviderConfigured(providerName) {
     const validation = this.validateProvider(providerName);
     return validation.valid;
+  }
+
+  /**
+   * Get reasoner timeout based on interview type and flow type
+   * @param {string} providerName - Provider name (should be 'deepseek')
+   * @param {string} flowType - Flow type ('cloud', 'hybrid', 'steps')
+   * @param {string} interviewType - Interview type ('dsa', 'systemDesign', 'lld')
+   * @returns {number} Timeout in milliseconds
+   */
+  getReasonerTimeout(providerName, flowType, interviewType) {
+    const config = this.getProviderConfig(providerName);
+
+    // Only applicable for DeepSeek
+    if (providerName !== 'deepseek') {
+      return config.timeout;
+    }
+
+    // Determine which timeout configuration to use based on flow type
+    if (flowType === 'steps') {
+      // STEPS flow uses stepsReasonerTimeoutByType
+      if (config.stepsReasonerTimeoutByType && config.stepsReasonerTimeoutByType[interviewType]) {
+        return config.stepsReasonerTimeoutByType[interviewType];
+      }
+      // Fallback to general stepsReasonerTimeout
+      return config.stepsReasonerTimeout || config.timeout;
+    } else {
+      // CLOUD/HYBRID flows use reasonerTimeoutByType
+      if (config.reasonerTimeoutByType && config.reasonerTimeoutByType[interviewType]) {
+        return config.reasonerTimeoutByType[interviewType];
+      }
+      // Fallback to general reasonerTimeout
+      return config.reasonerTimeout || config.timeout;
+    }
   }
 
   /**

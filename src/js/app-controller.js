@@ -576,7 +576,7 @@ class AppController {
 
     ipcMain.handle('clear-conversation-history', async () => {
       try {
-        this.aiManager.clearSession();
+        this.aiManager.clearAllSessions();
         // Broadcast update via WebSocket
         if (this.conversationWebSocketServer && this.conversationWebSocketServer.isRunning) {
           await this.conversationWebSocketServer.broadcastHistoryUpdate();

@@ -127,7 +127,7 @@ node tests/test-clarification-phase.js
    ```
 
 2. **Switch to CLOUD flow**:
-   - Press `Cmd+Shift+F` repeatedly until you see "CLOUD" flow
+   - Press `Opt+Cmd` (or `Alt+Ctrl` on Windows/Linux) repeatedly until you see "CLOUD" flow
 
 3. **Test with DSA problem**:
    - Ensure interview type is DSA (press `Cmd+Shift+T` to cycle if needed)
@@ -153,7 +153,7 @@ node tests/test-clarification-phase.js
 #### Test HYBRID Flow
 
 1. **Switch to HYBRID flow**:
-   - Press `Cmd+Shift+F` until you see "HYBRID" flow
+   - Press `Opt+Cmd` (or `Alt+Ctrl` on Windows/Linux) until you see "HYBRID" flow
 
 2. **Test with DSA problem**:
    - Use the same testing approach as CLOUD flow

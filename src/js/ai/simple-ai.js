@@ -47,6 +47,8 @@ function getHttpAgent(url) {
  * @param {Function} options.onChunk - Callback for streaming chunks
  * @param {boolean} options.includeReasoning - Include reasoning content for DeepSeek (default: false)
  * @param {AbortSignal} options.signal - AbortSignal for cancelling the request
+ * @param {string} options.flowType - Flow type (local, cloud, hybrid, steps) for timeout selection
+ * @param {string} options.interviewType - Interview type (dsa, systemDesign, lld) for timeout selection
  * @returns {Promise<Object>} Standardized response
  */
 async function chatCompletion({
@@ -57,6 +59,8 @@ async function chatCompletion({
   onChunk = null,
   includeReasoning = false,
   signal = null,
+  flowType = null,
+  interviewType = null,
 }) {
   if (!provider) {
     provider = aiConfig.getDefaultProvider();
@@ -76,7 +80,7 @@ async function chatCompletion({
     case 'openai':
       return await handleOpenAI(config, messages, parameters, stream, onChunk, signal);
     case 'deepseek':
-      return await handleDeepSeek(config, messages, parameters, stream, onChunk, includeReasoning, signal);
+      return await handleDeepSeek(config, messages, parameters, stream, onChunk, includeReasoning, signal, flowType, interviewType);
     case 'huggingface':
       return await handleHuggingFace(config, messages, parameters, stream, onChunk, signal);
     default:
@@ -367,7 +371,7 @@ async function handleOpenAINonStreaming(config, requestBody, headers, signal = n
 /**
  * Handle DeepSeek requests (V3.1 with think mode support)
  */
-async function handleDeepSeek(config, messages, parameters, stream = false, onChunk = null, includeReasoning = false, signal = null) {
+async function handleDeepSeek(config, messages, parameters, stream = false, onChunk = null, includeReasoning = false, signal = null, flowType = null, interviewType = null) {
   if (!config.apiKey) {
     throw new Error('DeepSeek API key is required');
   }
@@ -391,10 +395,19 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
 
   try {
     if (stream && onChunk) {
-      // Use reasoner-specific timeout if model is deepseek-reasoner
-      const timeoutMs = config.model === 'deepseek-reasoner' && config.reasonerTimeout
-        ? config.reasonerTimeout
-        : config.timeout;
+      // Use interview-type-specific timeout if model is deepseek-reasoner
+      let timeoutMs = config.timeout;
+      if (config.model === 'deepseek-reasoner' && flowType && interviewType) {
+        const AIConfig = require('./ai-config');
+        timeoutMs = AIConfig.getReasonerTimeout('deepseek', flowType, interviewType);
+      } else if (config.model === 'deepseek-reasoner') {
+        // Fallback to flow-specific timeout if interview type not provided
+        if (flowType === 'steps' && config.stepsReasonerTimeout) {
+          timeoutMs = config.stepsReasonerTimeout;
+        } else if (config.reasonerTimeout) {
+          timeoutMs = config.reasonerTimeout;
+        }
+      }
 
       // Streaming response with connection pooling and timeout
       const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
@@ -515,10 +528,19 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         });
       });
     } else {
-      // Use reasoner-specific timeout if model is deepseek-reasoner
-      const timeoutMs = config.model === 'deepseek-reasoner' && config.reasonerTimeout
-        ? config.reasonerTimeout
-        : config.timeout;
+      // Use interview-type-specific timeout if model is deepseek-reasoner
+      let timeoutMs = config.timeout;
+      if (config.model === 'deepseek-reasoner' && flowType && interviewType) {
+        const AIConfig = require('./ai-config');
+        timeoutMs = AIConfig.getReasonerTimeout('deepseek', flowType, interviewType);
+      } else if (config.model === 'deepseek-reasoner') {
+        // Fallback to flow-specific timeout if interview type not provided
+        if (flowType === 'steps' && config.stepsReasonerTimeout) {
+          timeoutMs = config.stepsReasonerTimeout;
+        } else if (config.reasonerTimeout) {
+          timeoutMs = config.reasonerTimeout;
+        }
+      }
 
       console.log(`[DeepSeek] Using timeout: ${timeoutMs}ms for model: ${config.model}`);
 
