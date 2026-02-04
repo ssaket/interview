@@ -40,6 +40,8 @@ class KeyHoldManager {
     this.isFollowingMouse = false;
     this.lastMouseX = 0;
     this.lastMouseY = 0;
+    // Store window size at start of mouse following to prevent size drift on Windows
+    this.followModeSize = null;
 
     // Track if flow toggle combo was triggered (to prevent repeated triggers)
     this.flowToggleTriggered = false;
@@ -154,6 +156,7 @@ class KeyHoldManager {
 
     // Clear mouse follow state
     this.isFollowingMouse = false;
+    this.followModeSize = null;
   }
 
   /**
@@ -212,11 +215,14 @@ class KeyHoldManager {
     // Remove from pressed keys
     this.pressedKeys.delete(keyName);
 
-    // Reset flow toggle trigger flag when modifier keys are released
+    // Reset flow toggle trigger flag and mouse following when modifier keys are released
     if (keyName === 'AltLeft' || keyName === 'AltRight' ||
         keyName === 'MetaLeft' || keyName === 'MetaRight' ||
         keyName === 'ControlLeft' || keyName === 'ControlRight') {
       this.flowToggleTriggered = false;
+      // Clear mouse following state when Ctrl/Cmd is released
+      this.isFollowingMouse = false;
+      this.followModeSize = null;
     }
 
     // Clear any intervals that involved this key
@@ -286,17 +292,32 @@ class KeyHoldManager {
     );
 
     if (!hasModifier) {
-      // Modifier key not pressed, stop following
+      // Modifier key not pressed, stop following and clear saved size
       this.isFollowingMouse = false;
+      this.followModeSize = null;
       return;
     }
+
+    const { mainWindow } = this.windowManager;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
 
     // Initialize tracking on first mouse move with modifier
     if (!this.isFollowingMouse) {
       this.isFollowingMouse = true;
       this.lastMouseX = event.x;
       this.lastMouseY = event.y;
+      // IMPORTANT: Capture window size at the START of following
+      // This prevents size drift on Windows where getBounds() can return
+      // slightly different values during rapid position changes
+      const [width, height] = mainWindow.getSize();
+      this.followModeSize = { width, height };
       return; // Don't move on first detection, just initialize
+    }
+
+    // If we don't have a saved size (shouldn't happen), capture it now
+    if (!this.followModeSize) {
+      const [width, height] = mainWindow.getSize();
+      this.followModeSize = { width, height };
     }
 
     // Calculate mouse movement delta
@@ -307,12 +328,14 @@ class KeyHoldManager {
     this.lastMouseX = event.x;
     this.lastMouseY = event.y;
 
-    // Move window by delta
-    const { mainWindow } = this.windowManager;
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-
-    const [x, y] = mainWindow.getPosition();
-    mainWindow.setPosition(x + dx, y + dy);
+    // Move window by delta, using the ORIGINAL captured size to prevent drift
+    const [currentX, currentY] = mainWindow.getPosition();
+    mainWindow.setBounds({
+      x: currentX + dx,
+      y: currentY + dy,
+      width: this.followModeSize.width,
+      height: this.followModeSize.height,
+    });
   }
 
   /**
