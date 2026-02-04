@@ -597,14 +597,17 @@ class SimpleAIManager {
       const session = this._getOrCreateSession(sessionKey);
 
       // Add system prompt only if this is the first message in this phase session
+      // AND system prompts are enabled
       // This allows conversation history to be maintained across multiple screenshots
-      if (session.messages.length === 0) {
+      if (session.messages.length === 0 && this.systemPromptsEnabled) {
         const systemPrompt = phaseConfig.promptGetter(this.currentInterviewType);
         session.messages.push({
           role: 'system',
           content: systemPrompt,
         });
         console.log(`[SimpleAIManager] ${phaseConfig.promptLogMessage}`);
+      } else if (session.messages.length === 0 && !this.systemPromptsEnabled) {
+        console.log(`[SimpleAIManager] System prompts disabled - skipping ${phaseConfig.name} phase prompt`);
       } else {
         console.log(`[SimpleAIManager] Reusing existing ${phaseConfig.name} phase session (${session.messages.length} messages)`);
       }
