@@ -75,21 +75,71 @@ console.log(`Cloud flow model (with lld):          ${cloudModel}`);
 
 // Local flow returns the 'local' array or primary, cloud returns cloud model
 const test4Pass = (Array.isArray(localModel) || localModel === 'gpt-oss') &&
-                  cloudModel === 'deepseek-chat';
+                  cloudModel === 'deepseek-v4-pro';
 
 console.log(`\n✅ Test 4: ${test4Pass ? 'PASSED' : 'FAILED'}\n`);
+
+// Test 5: DeepSeek V4 thinking mode is selected per flow, not per model
+console.log('📋 Test 5: DeepSeek V4 thinking mode selection by flow');
+console.log('─'.repeat(60));
+
+const flowModes = {
+  cloud: AIConfig.isThinkingFlow('deepseek', 'cloud'),
+  hybrid: AIConfig.isThinkingFlow('deepseek', 'hybrid'),
+  steps: AIConfig.isThinkingFlow('deepseek', 'steps'),
+  local: AIConfig.isThinkingFlow('deepseek', 'local'),
+};
+
+for (const [flow, thinking] of Object.entries(flowModes)) {
+  console.log(`${flow.padEnd(8)} flow thinking mode: ${thinking}`);
+}
+
+// All flows resolve to the same V4 model - only the thinking flag differs
+const sameModel = AIConfig.getFlowModel('deepseek', 'cloud', 'dsa') ===
+                  AIConfig.getFlowModel('deepseek', 'steps', 'dsa');
+console.log(`Cloud and steps flows share one model: ${sameModel}`);
+
+const test5Pass = flowModes.cloud === false &&
+                  flowModes.hybrid === true &&
+                  flowModes.steps === true &&
+                  flowModes.local === false &&
+                  sameModel;
+
+console.log(`\n✅ Test 5: ${test5Pass ? 'PASSED' : 'FAILED'}\n`);
+
+// Test 6: Thinking-mode timeouts still vary by flow and interview type
+console.log('📋 Test 6: Reasoner timeouts by flow and interview type');
+console.log('─'.repeat(60));
+
+const dsaCloudTimeout = AIConfig.getReasonerTimeout('deepseek', 'hybrid', 'dsa');
+const lldCloudTimeout = AIConfig.getReasonerTimeout('deepseek', 'hybrid', 'lld');
+const dsaStepsTimeout = AIConfig.getReasonerTimeout('deepseek', 'steps', 'dsa');
+const sdStepsTimeout = AIConfig.getReasonerTimeout('deepseek', 'steps', 'systemDesign');
+
+console.log(`Hybrid/DSA:          ${dsaCloudTimeout}ms`);
+console.log(`Hybrid/LLD:          ${lldCloudTimeout}ms`);
+console.log(`Steps/DSA:           ${dsaStepsTimeout}ms`);
+console.log(`Steps/System Design: ${sdStepsTimeout}ms`);
+
+const test6Pass = dsaCloudTimeout === 100000 &&
+                  lldCloudTimeout === 180000 &&
+                  dsaStepsTimeout === 240000 &&
+                  sdStepsTimeout === 360000;
+
+console.log(`\n✅ Test 6: ${test6Pass ? 'PASSED' : 'FAILED'}\n`);
 
 // Summary
 console.log('═'.repeat(60));
 console.log('📊 Test Summary');
 console.log('═'.repeat(60));
 
-const allTestsPassed = test1Pass && test2Pass && test3Pass && test4Pass;
-const passCount = [test1Pass, test2Pass, test3Pass, test4Pass].filter(Boolean).length;
+const results = [test1Pass, test2Pass, test3Pass, test4Pass, test5Pass, test6Pass];
+const allTestsPassed = results.every(Boolean);
+const passCount = results.filter(Boolean).length;
 
-console.log(`Total tests: 4`);
+console.log(`Total tests: ${results.length}`);
 console.log(`Passed: ${passCount}`);
-console.log(`Failed: ${4 - passCount}`);
+console.log(`Failed: ${results.length - passCount}`);
 
 if (allTestsPassed) {
   console.log('\n✅ All tests PASSED! Interview-type-specific hybrid models working correctly.');

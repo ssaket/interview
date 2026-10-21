@@ -3,6 +3,12 @@ const simpleAI = require('./simple-ai');
 const MODEL_PROMPTS = require('../model-prompts');
 
 /**
+ * Marker that simple-ai.js prepends when a thinking-mode request streamed only
+ * reasoning and never produced a final answer. Must stay in sync with simple-ai.js.
+ */
+const REASONING_ONLY_MARKER = '**🧠 Reasoning Process** (no final answer provided)';
+
+/**
  * Flow configurations for three-phase sequential execution
  * Phase 0 analyzes the problem, Phase 1 provides solution, Phase 2 verifies/optimizes
  * Defines provider, model, prompt, and parameters for each phase of Cloud and Hybrid flows
@@ -15,10 +21,10 @@ const FLOW_CONFIGS = {
     phase0: {
       name: 'clarification',
       provider: 'deepseek',
-      flowType: 'cloud', // Use deepseek-chat model
+      flowType: 'cloud', // Non-thinking mode (fast)
       sessionKey: 'deepseek-cloud-clarification',
       header: '🧠 **Brute-Force Pseudo-Code:**\n\n',
-      logMessage: 'Phase 0: Brute-force pseudo-code generation (deepseek-chat, sequential)...',
+      logMessage: 'Phase 0: Brute-force pseudo-code generation (non-thinking, sequential)...',
       promptGetter: (interviewType) => MODEL_PROMPTS.getCloudPrompt('clarification', interviewType),
       promptLogMessage: 'Added cloud CLARIFICATION prompt for brute-force pseudo-code',
       parameters: {
@@ -33,7 +39,7 @@ const FLOW_CONFIGS = {
       flowType: 'cloud',
       sessionKey: 'deepseek-cloud-answer',
       header: '💨 **Fast Answer:**\n\n',
-      logMessage: 'Phase 1: Fast answer (deepseek-chat, sequential)...',
+      logMessage: 'Phase 1: Fast answer (non-thinking, sequential)...',
       promptGetter: (interviewType) => MODEL_PROMPTS.getCloudPrompt('answer', interviewType),
       promptLogMessage: 'Added cloud ANSWER prompt for fast solution',
       parameters: {
@@ -45,10 +51,10 @@ const FLOW_CONFIGS = {
     phase2: {
       name: 'verification',
       provider: 'deepseek',
-      flowType: 'hybrid', // Use hybrid flow model (deepseek-reasoner)
+      flowType: 'hybrid', // Thinking mode (deep reasoning)
       sessionKey: 'deepseek-cloud-verification',
       header: '', // No header - added via separator
-      logMessage: 'Phase 2: Verification with Phase 1 solution (deepseek-reasoner, sequential)...',
+      logMessage: 'Phase 2: Verification with Phase 1 solution (thinking, sequential)...',
       promptGetter: (interviewType) => MODEL_PROMPTS.getCloudPrompt('verification', interviewType),
       promptLogMessage: 'Added cloud VERIFICATION prompt for deep reasoning validation',
       parameters: {
@@ -72,10 +78,10 @@ const FLOW_CONFIGS = {
     phase0: {
       name: 'clarification',
       provider: 'deepseek',
-      flowType: 'cloud', // Use deepseek-chat model
+      flowType: 'cloud', // Non-thinking mode (fast)
       sessionKey: 'deepseek-hybrid-clarification',
       header: '🔍 **Problem Analysis:**\n\n',
-      logMessage: 'Phase 0: Problem clarification, assumptions, and pseudo-code (deepseek-chat, sequential)...',
+      logMessage: 'Phase 0: Problem clarification, assumptions, and pseudo-code (non-thinking, sequential)...',
       promptGetter: (interviewType) => MODEL_PROMPTS.getHybridPrompt('clarification', interviewType),
       promptLogMessage: 'Added hybrid CLARIFICATION prompt for problem analysis',
       parameters: {
@@ -129,10 +135,10 @@ const FLOW_CONFIGS = {
     phase0: {
       name: 'clarification',
       provider: 'deepseek',
-      flowType: 'cloud', // Use deepseek-chat model
+      flowType: 'cloud', // Non-thinking mode (fast)
       sessionKey: 'deepseek-steps-clarification',
       header: '❓ **Problem Clarification:**\n\n',
-      logMessage: 'Phase 0: Problem clarification Q&A (deepseek-chat, sequential)...',
+      logMessage: 'Phase 0: Problem clarification Q&A (non-thinking, sequential)...',
       promptGetter: (interviewType) => MODEL_PROMPTS.getStepsPrompt('clarification', interviewType),
       promptLogMessage: 'Added steps CLARIFICATION prompt for Q&A analysis',
       parameters: {
@@ -144,10 +150,10 @@ const FLOW_CONFIGS = {
     phase1: {
       name: 'bruteforce',
       provider: 'deepseek',
-      flowType: 'cloud', // Use deepseek-chat model
+      flowType: 'cloud', // Non-thinking mode (fast)
       sessionKey: 'deepseek-steps-bruteforce',
       header: '🧠 **Brute-Force Approach:**\n\n',
-      logMessage: 'Phase 1: Brute-force algorithm/pseudocode (deepseek-chat, sequential)...',
+      logMessage: 'Phase 1: Brute-force algorithm/pseudocode (non-thinking, sequential)...',
       promptGetter: (interviewType) => MODEL_PROMPTS.getStepsPrompt('bruteforce', interviewType),
       promptLogMessage: 'Added steps BRUTEFORCE prompt for simple solution',
       parameters: {
@@ -159,10 +165,10 @@ const FLOW_CONFIGS = {
     phase2: {
       name: 'optimization',
       provider: 'deepseek',
-      flowType: 'steps', // Use steps flow model (deepseek-reasoner with 240s timeout)
+      flowType: 'steps', // Thinking mode (deep reasoning, 240s timeout)
       sessionKey: 'deepseek-steps-optimization',
       header: '', // No header - added via separator
-      logMessage: 'Phase 2: Optimization with Phase 1 solution (deepseek-reasoner, sequential)...',
+      logMessage: 'Phase 2: Optimization with Phase 1 solution (thinking, sequential)...',
       promptGetter: (interviewType) => MODEL_PROMPTS.getStepsPrompt('optimization', interviewType),
       promptLogMessage: 'Added steps OPTIMIZATION prompt for step-by-step improvement',
       parameters: {
@@ -569,6 +575,10 @@ class SimpleAIManager {
       options.onChunk(phaseConfig.header);
     }
 
+    // Tracks the session the user message was appended to, so a failed request
+    // can roll it back instead of leaving a question with no answer in history
+    let userMessageSession = null;
+
     try {
       const aiConfig = require('./ai-config');
       const simpleAI = require('./simple-ai');
@@ -584,9 +594,14 @@ class SimpleAIManager {
 
       console.log(`[SimpleAIManager] Using ${model} for ${phaseConfig.name} phase (interview type: ${this.currentInterviewType})`);
 
-      // Log reasoner timeout if specified
+      // Log reasoner timeout if specified (resolved for this flow + interview type,
+      // not the generic default - those differ by up to 6x)
       if (phaseConfig.logReasonerTimeout) {
-        const reasonerTimeout = aiConfig.getProviderConfig(phaseConfig.provider).reasonerTimeout;
+        const reasonerTimeout = aiConfig.getReasonerTimeout(
+          phaseConfig.provider,
+          phaseConfig.flowType,
+          this.currentInterviewType
+        );
         console.log(
           `[SimpleAIManager] Reasoner timeout: ${reasonerTimeout}ms (configurable via DEEPSEEK_REASONER_TIMEOUT)`
         );
@@ -614,6 +629,7 @@ class SimpleAIManager {
 
       // Add user question
       session.messages.push({ role: 'user', content: question });
+      userMessageSession = session;
 
       // Execute AI completion with streaming
       const response = await simpleAI.chatCompletion({
@@ -633,6 +649,18 @@ class SimpleAIManager {
 
       const content = this._extractContent(response);
 
+      // Reject unusable content before it reaches session history, so the caller's
+      // fallback retries against a clean session instead of one containing a
+      // question paired with an empty/thinking-only answer.
+      if (options.validateContent) {
+        if (!content || content.trim().length === 0) {
+          throw new Error('Empty response from primary model');
+        }
+        if (content.includes(REASONING_ONLY_MARKER)) {
+          throw new Error('Reasoner provided only thinking process without final answer');
+        }
+      }
+
       // Add assistant response to session for context
       session.messages.push({
         role: 'assistant',
@@ -642,6 +670,16 @@ class SimpleAIManager {
       console.log(`[SimpleAIManager] ${phaseConfig.name} phase completed`);
       return content;
     } catch (error) {
+      // Roll back the unanswered user message. Without this the retry/fallback
+      // path re-enters the same session and sends two consecutive user turns,
+      // and the dangling question leaks into every later phase as context.
+      if (userMessageSession) {
+        const last = userMessageSession.messages[userMessageSession.messages.length - 1];
+        if (last && last.role === 'user') {
+          userMessageSession.messages.pop();
+        }
+      }
+
       // Log error without full stack trace for cleaner output
       console.error(`[SimpleAIManager] ${phaseConfig.name} phase failed: ${error.message}`);
       throw error;
@@ -649,29 +687,18 @@ class SimpleAIManager {
   }
 
   /**
-   * Execute phase with automatic fallback to deepseek-chat on failure
+   * Execute phase with automatic fallback to non-thinking mode on failure
    * Used for Phase 2 optimization/verification to ensure user always gets content
    * @private
    */
   async _executePhaseWithFallback(question, phaseConfig, options) {
     try {
-      // Try primary model (e.g., deepseek-reasoner)
-      const content = await this._executePhase(question, phaseConfig, options);
-
-      // Check if content is empty, just whitespace, or the reasoning-only fallback message
-      // The reasoning-only fallback is created by simple-ai.js when deepseek-reasoner
-      // returns only <think> tags without a final answer
-      const isEmptyResponse = !content || content.trim().length === 0;
-      const isReasoningOnlyFallback = content && content.includes('**🧠 Reasoning Process** (no final answer provided)');
-
-      if (isEmptyResponse || isReasoningOnlyFallback) {
-        const errorMsg = isReasoningOnlyFallback
-          ? 'Reasoner provided only thinking process without final answer'
-          : 'Empty response from primary model';
-        throw new Error(errorMsg);
-      }
-
-      return content;
+      // Try thinking mode first; _executePhase rejects empty/thinking-only content
+      // and rolls the failed exchange out of session history
+      return await this._executePhase(question, phaseConfig, {
+        ...options,
+        validateContent: true,
+      });
     } catch (primaryError) {
       // Check if error is timeout, network-related, or reasoning-only response
       const isTimeout = primaryError.message.includes('timeout') ||
@@ -686,7 +713,9 @@ class SimpleAIManager {
       }
 
       // Log fallback attempt
-      console.warn(`[SimpleAIManager] ${phaseConfig.name} phase failed (${primaryError.message}), attempting fallback to deepseek-chat...`);
+      console.warn(`[SimpleAIManager] ${phaseConfig.name} phase failed (${primaryError.message}), attempting fallback to non-thinking mode...`);
+
+      const aiConfig = require('./ai-config');
 
       // Notify user via UI with appropriate message
       if (options.onChunk) {
@@ -694,7 +723,15 @@ class SimpleAIManager {
         if (isReasoningOnly) {
           warningMsg = `\n\n⚠️ **Note**: Deep reasoner provided only thinking process without final answer, using fast model for optimization...\n\n`;
         } else if (isTimeout) {
-          const timeoutSecs = Math.floor(require('./ai-config').getProviderConfig('deepseek').reasonerTimeout / 1000);
+          // Report the timeout that actually applied to this flow + interview type,
+          // not the generic default (they differ by up to 6x)
+          const timeoutSecs = Math.floor(
+            aiConfig.getReasonerTimeout(
+              phaseConfig.provider,
+              phaseConfig.flowType,
+              this.currentInterviewType
+            ) / 1000
+          );
           warningMsg = `\n\n⚠️ **Note**: Deep reasoning timed out (${timeoutSecs}s limit), using fast model for optimization...\n\n`;
         } else {
           warningMsg = `\n\n⚠️ **Note**: Deep reasoning failed, using fast model for optimization...\n\n`;
@@ -702,12 +739,11 @@ class SimpleAIManager {
         options.onChunk(warningMsg);
       }
 
-      // Create fallback phase config with deepseek-chat
-      const aiConfig = require('./ai-config');
+      // Retry the same model in non-thinking mode (V4 selects the mode per request)
       const fallbackConfig = {
         ...phaseConfig,
-        flowType: 'cloud', // Use cloud flow model (deepseek-chat)
-        logMessage: `${phaseConfig.logMessage.replace('deepseek-reasoner', 'deepseek-chat')} [FALLBACK]`,
+        flowType: 'cloud', // Cloud flow is mapped to non-thinking mode
+        logMessage: `${phaseConfig.logMessage} [FALLBACK: non-thinking]`,
         logReasonerTimeout: false, // Don't log timeout for fallback
       };
 
@@ -718,7 +754,7 @@ class SimpleAIManager {
           // Don't duplicate the warning message when streaming fallback content
         });
 
-        console.log(`[SimpleAIManager] ${phaseConfig.name} phase completed via fallback (deepseek-chat)`);
+        console.log(`[SimpleAIManager] ${phaseConfig.name} phase completed via fallback (non-thinking)`);
         return fallbackContent;
       } catch (fallbackError) {
         // Both primary and fallback failed - throw original error
@@ -808,7 +844,7 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
       console.log(`[SimpleAIManager] Phase 2 query constructed (${phase2Query.length} chars total: ${question.length} question + ${phase1Response.length} phase1 response)`);
 
       // Use fallback for Phase 2 to ensure user always gets optimization/verification
-      // If deepseek-reasoner times out, automatically retry with deepseek-chat
+      // If thinking mode times out, automatically retry in non-thinking mode
       const phase2Response = await this._executePhaseWithFallback(phase2Query, flowConfig.phase2, {
         ...options,
         onChunk: options.onChunk, // Stream Phase 2 directly to UI
@@ -836,9 +872,9 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
 
   /**
    * Execute cloud flow with three-phase sequential execution
-   * Phase 0 (deepseek-chat) clarifies problem and creates pseudo-code
-   * Phase 1 (deepseek-chat) provides fast correct answer
-   * Phase 2 (deepseek-reasoner) verifies and suggests improvements
+   * Phase 0 (non-thinking) clarifies problem and creates pseudo-code
+   * Phase 1 (non-thinking) provides fast correct answer
+   * Phase 2 (thinking mode) verifies and suggests improvements
    * Total time = clarification_time + answer_time + verification_time
    * User sees each phase immediately as it completes
    * @private
@@ -849,9 +885,9 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
 
   /**
    * Execute hybrid flow with three-phase sequential execution
-   * Phase 0 (deepseek-chat) clarifies problem and creates pseudo-code
+   * Phase 0 (non-thinking) clarifies problem and creates pseudo-code
    * Phase 1 (Ollama) provides brute-force solution
-   * Phase 2 (deepseek-reasoner) optimizes the solution
+   * Phase 2 (thinking mode) optimizes the solution
    * Total time = clarification_time + local_time + cloud_time
    * User sees each phase immediately as it completes
    * @private
@@ -862,9 +898,9 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
 
   /**
    * Execute steps flow with three-phase sequential execution
-   * Phase 0 (deepseek-chat) clarifies problem with Q&A format
-   * Phase 1 (deepseek-chat) provides brute-force algorithm/pseudocode
-   * Phase 2 (deepseek-reasoner) optimizes Phase 1's solution with 240s timeout
+   * Phase 0 (non-thinking) clarifies problem with Q&A format
+   * Phase 1 (non-thinking) provides brute-force algorithm/pseudocode
+   * Phase 2 (thinking mode) optimizes Phase 1's solution with 240s timeout
    * Total time = clarification_time + bruteforce_time + optimization_time
    * User sees each phase immediately as it completes
    * @private

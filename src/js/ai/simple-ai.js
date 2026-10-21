@@ -369,7 +369,11 @@ async function handleOpenAINonStreaming(config, requestBody, headers, signal = n
 }
 
 /**
- * Handle DeepSeek requests (V3.1 with think mode support)
+ * Handle DeepSeek requests (V4 with thinking mode support)
+ *
+ * On V4, thinking vs non-thinking is a per-request switch (`thinking` field) rather
+ * than a separate model id, so the mode is derived from the flow type instead of
+ * from `config.model`.
  */
 async function handleDeepSeek(config, messages, parameters, stream = false, onChunk = null, includeReasoning = false, signal = null, flowType = null, interviewType = null) {
   if (!config.apiKey) {
@@ -382,7 +386,9 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
     baseUrl = baseUrl.replace(/\/$/, '') + '/v1';
   }
 
-  // Build request body for V3.1
+  const thinkingEnabled = aiConfig.isThinkingFlow('deepseek', flowType);
+
+  // Build request body for V4
   const requestBody = {
     model: config.model,
     messages: messages,
@@ -393,22 +399,39 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
     ...parameters,
   };
 
+  // V4 thinking mode is on by default, so non-thinking phases must opt out explicitly.
+  requestBody.thinking = thinkingEnabled
+    ? { type: 'enabled', reasoning_effort: aiConfig.getReasoningEffort('deepseek') }
+    : { type: 'disabled' };
+
+  // Sampling parameters have no effect in thinking mode - drop them so the
+  // request reflects what the model will actually honour.
+  if (thinkingEnabled) {
+    delete requestBody.temperature;
+    delete requestBody.top_p;
+    delete requestBody.presence_penalty;
+    delete requestBody.frequency_penalty;
+  }
+
+  // Thinking-mode requests get the longer, interview-type-aware reasoner timeout
+  let timeoutMs = config.timeout;
+  if (thinkingEnabled) {
+    if (interviewType) {
+      timeoutMs = aiConfig.getReasonerTimeout('deepseek', flowType, interviewType);
+    } else if (flowType === 'steps' && config.stepsReasonerTimeout) {
+      // Fallback to flow-specific timeout if interview type not provided
+      timeoutMs = config.stepsReasonerTimeout;
+    } else if (config.reasonerTimeout) {
+      timeoutMs = config.reasonerTimeout;
+    }
+  }
+
+  console.log(
+    `[DeepSeek] Using timeout: ${timeoutMs}ms for model: ${config.model} (thinking: ${thinkingEnabled ? 'enabled' : 'disabled'})`
+  );
+
   try {
     if (stream && onChunk) {
-      // Use interview-type-specific timeout if model is deepseek-reasoner
-      let timeoutMs = config.timeout;
-      if (config.model === 'deepseek-reasoner' && flowType && interviewType) {
-        const AIConfig = require('./ai-config');
-        timeoutMs = AIConfig.getReasonerTimeout('deepseek', flowType, interviewType);
-      } else if (config.model === 'deepseek-reasoner') {
-        // Fallback to flow-specific timeout if interview type not provided
-        if (flowType === 'steps' && config.stepsReasonerTimeout) {
-          timeoutMs = config.stepsReasonerTimeout;
-        } else if (config.reasonerTimeout) {
-          timeoutMs = config.reasonerTimeout;
-        }
-      }
-
       // Streaming response with connection pooling and timeout
       const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
         timeout: timeoutMs,
@@ -421,8 +444,6 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         httpsAgent: getHttpAgent(baseUrl),
         signal: signal,
       });
-
-      console.log(`[DeepSeek] Using timeout: ${timeoutMs}ms for model: ${config.model}`);
 
       let fullContent = '';
       let fullReasoningContent = ''; // Track reasoning/thinking text
@@ -465,7 +486,7 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
                   ],
                   provider: 'deepseek',
                   model: config.model,
-                  version: '3.1',
+                  version: '4',
                 });
                 return;
               }
@@ -523,27 +544,11 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
             ],
             provider: 'deepseek',
             model: config.model,
-            version: '3.1',
+            version: '4',
           });
         });
       });
     } else {
-      // Use interview-type-specific timeout if model is deepseek-reasoner
-      let timeoutMs = config.timeout;
-      if (config.model === 'deepseek-reasoner' && flowType && interviewType) {
-        const AIConfig = require('./ai-config');
-        timeoutMs = AIConfig.getReasonerTimeout('deepseek', flowType, interviewType);
-      } else if (config.model === 'deepseek-reasoner') {
-        // Fallback to flow-specific timeout if interview type not provided
-        if (flowType === 'steps' && config.stepsReasonerTimeout) {
-          timeoutMs = config.stepsReasonerTimeout;
-        } else if (config.reasonerTimeout) {
-          timeoutMs = config.reasonerTimeout;
-        }
-      }
-
-      console.log(`[DeepSeek] Using timeout: ${timeoutMs}ms for model: ${config.model}`);
-
       // Non-streaming response with connection pooling and timeout
       const response = await axios.post(`${baseUrl}/chat/completions`, requestBody, {
         timeout: timeoutMs,
@@ -560,7 +565,7 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         ...response.data,
         provider: 'deepseek',
         model: config.model,
-        version: '3.1',
+        version: '4',
       };
     }
   } catch (error) {

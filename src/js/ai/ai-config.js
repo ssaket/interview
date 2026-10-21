@@ -86,38 +86,48 @@ class AIConfig {
         },
         deepseek: {
           name: 'deepseek',
-          model: 'deepseek-chat',
+          model: 'deepseek-v4-pro',
           baseUrl: 'https://api.deepseek.com',
           timeout: 120000,
-          reasonerTimeout: 100000, // Timeout for deepseek-reasoner (100s default to limit thinking)
-          stepsReasonerTimeout: 240000, // Timeout for deepseek-reasoner in STEPS flow (240s = 4 minutes)
+          reasoningEffort: 'high', // V4 thinking effort: 'high' or 'max'
+          reasonerTimeout: 100000, // Timeout for thinking-mode requests (100s default to limit thinking)
+          stepsReasonerTimeout: 240000, // Timeout for thinking mode in STEPS flow (240s = 4 minutes)
           reasonerTimeoutByType: {
-            // Interview-type-specific timeouts for deepseek-reasoner in CLOUD/HYBRID flows
+            // Interview-type-specific timeouts for thinking mode in CLOUD/HYBRID flows
             dsa: 100000, // 100s for DSA (default)
             systemDesign: 180000, // 180s (3 minutes) for System Design
             lld: 180000, // 180s (3 minutes) for Low-Level Design
           },
           stepsReasonerTimeoutByType: {
-            // Interview-type-specific timeouts for deepseek-reasoner in STEPS flow
+            // Interview-type-specific timeouts for thinking mode in STEPS flow
             dsa: 240000, // 240s (4 minutes) for DSA (default)
             systemDesign: 360000, // 360s (6 minutes) for System Design
             lld: 360000, // 360s (6 minutes) for Low-Level Design
           },
           models: {
-            chat: ['deepseek-chat'],
-            primary: 'deepseek-chat',
-            reasoning: ['deepseek-reasoner'],
-            coding: ['deepseek-chat'],
-            cloud: 'deepseek-chat', // For CLOUD flow - fast, no extended reasoning
-            hybrid: 'deepseek-reasoner', // For HYBRID flow - deep reasoning to optimize local solution
-            steps: 'deepseek-reasoner', // For STEPS flow optimization phase - deep reasoning with 240s timeout
+            chat: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+            primary: 'deepseek-v4-pro',
+            reasoning: ['deepseek-v4-pro'],
+            coding: ['deepseek-v4-pro'],
+            cloud: 'deepseek-v4-pro', // For CLOUD flow - non-thinking mode, fast
+            hybrid: 'deepseek-v4-pro', // For HYBRID flow - thinking mode, optimizes local solution
+            steps: 'deepseek-v4-pro', // For STEPS flow optimization phase - thinking mode with 240s timeout
+          },
+          // DeepSeek V4 selects thinking vs non-thinking PER REQUEST (`thinking` field),
+          // not by model name the way V3.1's deepseek-chat/deepseek-reasoner split did.
+          // This maps each flow to the mode its phase needs.
+          thinkingByFlow: {
+            local: false,
+            cloud: false, // Clarification / fast-answer / brute-force phases
+            hybrid: true, // Deep-reasoning optimization & verification phases
+            steps: true, // Deep-reasoning optimization phase
           },
           parameters: {
             temperature: 0.3,
             top_p: 0.9,
             max_tokens: 2048,
           },
-          version: '3.1',
+          version: '4',
         },
       },
     };
@@ -170,6 +180,8 @@ class AIConfig {
           timeout: process.env.DEEPSEEK_TIMEOUT
             ? parseInt(process.env.DEEPSEEK_TIMEOUT)
             : defaults.providers.deepseek.timeout,
+          reasoningEffort:
+            process.env.DEEPSEEK_REASONING_EFFORT || defaults.providers.deepseek.reasoningEffort,
           reasonerTimeout: process.env.DEEPSEEK_REASONER_TIMEOUT
             ? parseInt(process.env.DEEPSEEK_REASONER_TIMEOUT)
             : defaults.providers.deepseek.reasonerTimeout,
@@ -378,7 +390,7 @@ class AIConfig {
         }
         break;
       case 'steps':
-        // For STEPS flow: Use steps model (deepseek-reasoner for optimization phase)
+        // For STEPS flow: Use steps model (thinking mode for optimization phase)
         model = config.models?.steps || config.models?.hybrid || config.models?.primary || config.model;
         break;
       case 'local':
@@ -448,6 +460,33 @@ class AIConfig {
   isProviderConfigured(providerName) {
     const validation = this.validateProvider(providerName);
     return validation.valid;
+  }
+
+  /**
+   * Check whether a flow should run in thinking (deep reasoning) mode.
+   * On DeepSeek V4 this is a per-request switch rather than a separate model,
+   * so it is what drives both the `thinking` request field and the longer
+   * reasoner timeouts.
+   * @param {string} providerName - Provider name
+   * @param {string} flowType - Flow type ('local', 'cloud', 'hybrid', 'steps')
+   * @returns {boolean} True if the request should enable thinking mode
+   */
+  isThinkingFlow(providerName, flowType) {
+    const config = this.getProviderConfig(providerName);
+    if (!config.thinkingByFlow || !flowType) {
+      return false;
+    }
+    return config.thinkingByFlow[flowType] === true;
+  }
+
+  /**
+   * Get the configured thinking effort level for a provider
+   * @param {string} providerName - Provider name
+   * @returns {string} Reasoning effort ('high' or 'max')
+   */
+  getReasoningEffort(providerName) {
+    const config = this.getProviderConfig(providerName);
+    return config.reasoningEffort || 'high';
   }
 
   /**

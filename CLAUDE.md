@@ -38,14 +38,14 @@ The AI system supports four distinct processing flows for different use cases:
 - **AIConfig** (`src/js/ai/ai-config.js`) - Centralized configuration management
 - **AI Flows**:
   - **LOCAL** - Ollama local models only (fast, private, single-phase)
-  - **CLOUD** - Two-phase parallel: `deepseek-chat` fast answer → `deepseek-reasoner` verification
-  - **HYBRID** - Two-phase parallel: Ollama brute-force → `deepseek-reasoner` optimization
+  - **CLOUD** - Two-phase parallel: `deepseek-v4-pro` non-thinking fast answer → thinking-mode verification
+  - **HYBRID** - Two-phase parallel: Ollama brute-force → `deepseek-v4-pro` thinking-mode optimization
   - **STEPS** - Three-phase sequential: Problem clarification → Brute-force approach → Optimized solution (human-like problem solving)
 - **Supported Providers**:
   - Ollama - Local AI models with hybrid model support (`OLLAMA_HYBRID_MODEL`)
   - OpenAI - GPT models via API
   - HuggingFace - Inference API
-  - DeepSeek V3.1 - With think mode support for enhanced reasoning
+  - DeepSeek V4 - Single model with per-request thinking/non-thinking mode
 
 ### Interview Types System
 The application supports three types of FAANG technical interviews:
@@ -137,28 +137,29 @@ HF_TOKEN=your_huggingface_token
 HF_PROVIDER=hyperbolic
 HF_MODEL=deepseek-ai/DeepSeek-R1-0528
 
-# DeepSeek Configuration (V3.1 with Think Mode) - Required for CLOUD, HYBRID, and STEPS AI flows
+# DeepSeek Configuration (V4 with Thinking Mode) - Required for CLOUD, HYBRID, and STEPS AI flows
 DEEPSEEK_API_KEY=your_deepseek_api_key
-DEEPSEEK_MODEL=deepseek-chat  # Default model (optional, defaults to deepseek-chat)
+DEEPSEEK_MODEL=deepseek-v4-pro  # Default model (optional, defaults to deepseek-v4-pro)
 
 # Optional: Override flow-specific DeepSeek models
-# DEEPSEEK_CLOUD_MODEL=deepseek-chat     # Fast responses without extended reasoning (for CLOUD flow)
-# DEEPSEEK_HYBRID_MODEL=deepseek-reasoner # Deep reasoning to optimize local solution (for HYBRID flow)
-# DEEPSEEK_STEPS_MODEL=deepseek-reasoner  # Deep reasoning for STEPS flow optimization phase (default: deepseek-reasoner)
+# DEEPSEEK_CLOUD_MODEL=deepseek-v4-flash  # Model for non-thinking phases (CLOUD flow)
+# DEEPSEEK_HYBRID_MODEL=deepseek-v4-pro   # Model for thinking-mode optimization (HYBRID flow)
+# DEEPSEEK_STEPS_MODEL=deepseek-v4-pro    # Model for STEPS flow optimization phase (default: deepseek-v4-pro)
+# DEEPSEEK_REASONING_EFFORT=high          # Thinking effort: high or max (default: high)
 
 # Optional: Timeout configuration
 # DEEPSEEK_TIMEOUT=120000                 # General timeout in ms (default: 120000 = 2 minutes)
 
-# Global timeouts for deepseek-reasoner (applies to all interview types unless overridden)
-# DEEPSEEK_REASONER_TIMEOUT=100000        # Timeout for deepseek-reasoner in CLOUD/HYBRID flows (default: 100000 = 100 seconds)
-# DEEPSEEK_STEPS_TIMEOUT=240000           # Timeout for deepseek-reasoner in STEPS flow optimization (default: 240000 = 4 minutes)
+# Global timeouts for thinking mode (applies to all interview types unless overridden)
+# DEEPSEEK_REASONER_TIMEOUT=100000        # Timeout for thinking mode in CLOUD/HYBRID flows (default: 100000 = 100 seconds)
+# DEEPSEEK_STEPS_TIMEOUT=240000           # Timeout for thinking mode in STEPS flow optimization (default: 240000 = 4 minutes)
 
-# Optional: Interview-type-specific timeouts for deepseek-reasoner in CLOUD/HYBRID flows
+# Optional: Interview-type-specific timeouts for thinking mode in CLOUD/HYBRID flows
 # DEEPSEEK_REASONER_TIMEOUT_DSA=100000            # DSA interviews (default: 100 seconds)
 # DEEPSEEK_REASONER_TIMEOUT_SYSTEM_DESIGN=180000  # System Design interviews (default: 180 seconds = 3 minutes)
 # DEEPSEEK_REASONER_TIMEOUT_LLD=180000            # Low-Level Design interviews (default: 180 seconds = 3 minutes)
 
-# Optional: Interview-type-specific timeouts for deepseek-reasoner in STEPS flow
+# Optional: Interview-type-specific timeouts for thinking mode in STEPS flow
 # DEEPSEEK_STEPS_TIMEOUT_DSA=240000               # DSA interviews (default: 240 seconds = 4 minutes)
 # DEEPSEEK_STEPS_TIMEOUT_SYSTEM_DESIGN=360000     # System Design interviews (default: 360 seconds = 6 minutes)
 # DEEPSEEK_STEPS_TIMEOUT_LLD=360000               # Low-Level Design interviews (default: 360 seconds = 6 minutes)
@@ -177,25 +178,36 @@ The system now uses simple functions instead of classes:
 2. Implement handler function in `simple-ai.js` (follow existing patterns)
 3. Most providers use OpenAI-compatible APIs for easy integration
 
-### DeepSeek V3.1
-DeepSeek V3.1 supports two models optimized for different use cases:
-- **`deepseek-chat`**: Fast responses without extended reasoning
-  - Used in CLOUD flow (Phase 1: Answer)
-  - No `<think>` tags or reasoning loops
-  - Optimized for speed and cost-effectiveness
-  - Best for quick, correct solutions
-- **`deepseek-reasoner`**: Deep reasoning with think mode
-  - Used in CLOUD flow (Phase 2: Verification) and HYBRID flow (Phase 2: Optimization)
-  - Uses `<think>` tags for step-by-step reasoning (up to 32K tokens)
-  - **Timeout Protection**: 100-second timeout by default to prevent endless thinking
-  - Streams reasoning content in real-time for transparency
-  - Optimized parameters: Lower temperature (0.1) and higher token limits (4096)
-  - Best for verification, optimization, and deep analysis
-- **Configuration**: Flow-specific models and timeouts can be overridden via environment variables
-- **Version**: Automatically uses V3.1 API features
+### DeepSeek V4
+The app uses **`deepseek-v4-pro`** (1M context). `deepseek-v4-flash` is the cheaper
+alternative and can be swapped in per flow via environment variables.
+
+**Important:** V4 replaced the V3.1 model split. `deepseek-chat` and `deepseek-reasoner`
+were retired on 2026-07-24 and no longer resolve. Thinking mode is now a **per-request
+switch on a single model**, not a separate model id:
+
+```json
+{ "model": "deepseek-v4-pro", "thinking": { "type": "enabled", "reasoning_effort": "high" } }
+```
+
+- **Non-thinking mode** (`{"type": "disabled"}`): fast responses, no reasoning loop.
+  Used for clarification, fast-answer, and brute-force phases.
+  Honours `temperature` / `top_p`.
+- **Thinking mode** (`{"type": "enabled"}`): deep step-by-step reasoning, streamed via
+  `reasoning_content` deltas. Used for verification and optimization phases.
+  - **Timeout Protection**: 100s default (up to 360s) to prevent endless thinking
+  - Sampling parameters (`temperature`, `top_p`, `presence_penalty`, `frequency_penalty`)
+    have **no effect** in thinking mode and are stripped from the request
+  - `reasoning_effort` is `high` by default; `max` for deeper analysis
+    (`low`/`medium` map to `high`, `xhigh` maps to `max`)
+- **Mode selection**: driven by flow type, not model name — see `thinkingByFlow` in
+  `ai-config.js` and `AIConfig.isThinkingFlow()`. CLOUD flow → non-thinking,
+  HYBRID/STEPS flows → thinking.
+- **Fallback**: if a thinking request times out or returns reasoning without a final
+  answer, the phase automatically retries the same model in non-thinking mode.
 
 ### Timeout Configuration
-To prevent `deepseek-reasoner` from thinking too long:
+To prevent thinking mode from running too long:
 
 **CLOUD/HYBRID Flows:**
 - **Default Timeouts by Interview Type**:
@@ -221,7 +233,7 @@ To prevent `deepseek-reasoner` from thinking too long:
   - `DEEPSEEK_STEPS_TIMEOUT=300000` - 5 minutes for all interview types
   - `DEEPSEEK_STEPS_TIMEOUT_SYSTEM_DESIGN=420000` - 7 minutes for System Design only
 - **Purpose**: STEPS flow Phase 2 (optimization) benefits from extended thinking time, especially for design problems
-- **Behavior**: If timeout is hit, automatic fallback to `deepseek-chat` for faster optimization
+- **Behavior**: If timeout is hit, automatic fallback to non-thinking mode for faster optimization
 
 **Why Different Timeouts?**
 - System Design and LLD problems typically require more reasoning time than DSA problems
@@ -236,8 +248,8 @@ To prevent `deepseek-reasoner` from thinking too long:
 - **Use Case**: Quick responses, privacy-focused, offline
 
 #### CLOUD Flow (Two-Phase Sequential)
-- **Phase 1 - Fast Answer**: `deepseek-chat` provides correct, efficient solution (streams immediately to UI)
-- **Phase 2 - Verification**: `deepseek-reasoner` receives Phase 1's answer and validates/suggests improvements
+- **Phase 1 - Fast Answer**: `deepseek-v4-pro` in non-thinking mode provides correct, efficient solution (streams immediately to UI)
+- **Phase 2 - Verification**: `deepseek-v4-pro` in thinking mode receives Phase 1's answer and validates/suggests improvements
 - **Sequential Execution**: Phase 2 starts after Phase 1 completes with Phase 1's solution as context
 - **Total Time**: answer_time + verification_time
 - **Perceived Latency**: answer_time (user sees Phase 1 results immediately)
@@ -245,7 +257,7 @@ To prevent `deepseek-reasoner` from thinking too long:
 
 #### HYBRID Flow (Two-Phase Sequential)
 - **Phase 1 - Brute Force**: Ollama provides working solution quickly (streams immediately to UI)
-- **Phase 2 - Optimization**: `deepseek-reasoner` receives Phase 1's solution and optimizes it
+- **Phase 2 - Optimization**: `deepseek-v4-pro` in thinking mode receives Phase 1's solution and optimizes it
 - **Sequential Execution**: Phase 2 starts after Phase 1 completes with Phase 1's solution as context
 - **Total Time**: local_time + cloud_time
 - **Perceived Latency**: local_time (user sees Phase 1 results immediately)
@@ -260,9 +272,9 @@ To prevent `deepseek-reasoner` from thinking too long:
 #### STEPS Flow (Three-Phase Sequential)
 Human-like problem-solving approach with systematic step-by-step reasoning:
 
-- **Phase 0 - Clarification**: `deepseek-chat` generates clarifying questions and immediately answers them with reasonable assumptions (auto-Q&A format, no code)
-- **Phase 1 - Brute Force**: `deepseek-chat` provides simple brute-force algorithm/pseudocode with step-by-step breakdown
-- **Phase 2 - Optimization**: `deepseek-reasoner` receives Phase 1's solution and optimizes it (4-minute timeout for deep reasoning)
+- **Phase 0 - Clarification**: `deepseek-v4-pro` in non-thinking mode generates clarifying questions and immediately answers them with reasonable assumptions (auto-Q&A format, no code)
+- **Phase 1 - Brute Force**: `deepseek-v4-pro` in non-thinking mode provides simple brute-force algorithm/pseudocode with step-by-step breakdown
+- **Phase 2 - Optimization**: `deepseek-v4-pro` in thinking mode receives Phase 1's solution and optimizes it (4-minute timeout for deep reasoning)
 - **Sequential Execution**: Each phase builds on the previous phase's output as context
 - **Total Time**: clarification_time + bruteforce_time + optimization_time
 - **Perceived Latency**: clarification_time (user sees each phase immediately as it completes)

@@ -506,7 +506,7 @@ Use exactly the following markdown structure and no other sections:
      Used when AI flow is set to CLOUD mode for complete problem analysis
      ═══════════════════════════════════════════════════════════════════ */
   cloud: {
-    // Clarification phase: Brute-force pseudo-code generation (deepseek-reasoner)
+    // Clarification phase: Brute-force pseudo-code generation (thinking mode)
     clarification: {
       dsa: `You are a coding interview assistant focused on generating BRUTE-FORCE solutions. The input may contain OCR noise—ignore irrelevant fragments.
 
@@ -597,7 +597,7 @@ Structure (use exactly these sections):
 Remember: This is the FIRST PASS. Just get it working. Elegance doesn't matter!`,
     },
 
-    // Answer phase: Fast solution (deepseek-chat)
+    // Answer phase: Fast solution (non-thinking mode)
     answer: {
       dsa: `You are a coding assistant providing fast, correct solutions. The input may contain OCR noise—ignore irrelevant fragments.
 
@@ -679,7 +679,7 @@ Structure (use exactly these sections):
 Be clear and well-structured - verification comes next!`,
     },
 
-    // Verification phase: Quick validation (deepseek-reasoner)
+    // Verification phase: Quick validation (thinking mode)
     verification: {
       dsa: `You are a coding assistant performing quick verification. The input may contain OCR noise—ignore irrelevant fragments.
 
@@ -756,7 +756,7 @@ If the design is clean and follows basic OOP principles, just say it looks good!
      Used when AI flow is set to HYBRID mode for complete problem analysis
      ═══════════════════════════════════════════════════════════════════ */
   hybrid: {
-    // Clarification phase: Problem analysis, assumptions, pseudo-code (deepseek-chat)
+    // Clarification phase: Problem analysis, assumptions, pseudo-code (non-thinking mode)
     clarification: {
       dsa: `You are a coding interview assistant helping with problem analysis. The input may contain OCR noise—ignore irrelevant fragments.
 
@@ -1003,7 +1003,7 @@ If the basic design is already clean and follows SOLID, just confirm it!`,
      Used for systematic human-like problem solving with minimal, step-by-step answers
      ═══════════════════════════════════════════════════════════════════ */
   steps: {
-    // Clarification phase: Auto-generate Q&A about problem statement (deepseek-chat)
+    // Clarification phase: Auto-generate Q&A about problem statement (non-thinking mode)
     clarification: {
       dsa: `You are a coding interview assistant helping clarify the problem. The input may contain OCR noise—ignore irrelevant fragments.
 
@@ -1070,7 +1070,7 @@ Structure (use exactly these sections):
 Keep it concise - just requirements clarification, no design yet!`,
     },
 
-    // Brute-force phase: Simple algorithm/pseudocode (deepseek-chat)
+    // Brute-force phase: Simple algorithm/pseudocode (non-thinking mode)
     bruteforce: {
       dsa: `You are a coding interview assistant providing brute-force solutions. The input may contain OCR noise—ignore irrelevant fragments.
 
@@ -1156,7 +1156,7 @@ Structure (use exactly these sections):
 Keep it minimal - patterns come next!`,
     },
 
-    // Optimization phase: Optimize brute-force solution (deepseek-reasoner with 240s timeout)
+    // Optimization phase: Optimize brute-force solution (thinking mode, 240s timeout)
     optimization: {
       dsa: `You are a coding interview assistant optimizing solutions. The input may contain OCR noise—ignore irrelevant fragments.
 

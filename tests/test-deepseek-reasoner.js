@@ -1,7 +1,7 @@
 /**
  * DeepSeek Reasoner Test
  *
- * Tests the deepseek-reasoner model to verify:
+ * Tests DeepSeek V4 thinking mode to verify:
  * 1. API connection works
  * 2. Response format and structure
  * 3. Thinking block handling
@@ -13,7 +13,7 @@ const simpleAI = require('../src/js/ai/simple-ai');
 const aiConfig = require('../src/js/ai/ai-config');
 const InterviewCodeFormatter = require('../src/js/formatter');
 
-console.log('🧪 Testing DeepSeek Reasoner Model');
+console.log('🧪 Testing DeepSeek V4 Thinking Mode');
 console.log('===================================\n');
 
 // Test configuration
@@ -68,8 +68,9 @@ async function runTests() {
     process.exit(1);
   }
 
-  // Test 3: Test deepseek-reasoner model with thinking
-  console.log('3. Testing deepseek-reasoner model response...');
+  // Test 3: Test V4 thinking mode. On V4 the mode is a per-request switch derived
+  // from flowType, so this must pass a thinking flow ('steps') to exercise it.
+  console.log('3. Testing V4 thinking mode response...');
   console.log(`   Query: "${TEST_QUERY}"\n`);
 
   try {
@@ -77,9 +78,10 @@ async function runTests() {
     const response = await simpleAI.chatCompletion({
       provider: 'deepseek',
       messages: [{ role: 'user', content: TEST_QUERY }],
+      flowType: 'steps',
+      interviewType: 'dsa',
       parameters: {
-        max_tokens: 2000,
-        temperature: 0.1
+        max_tokens: 2000
       }
     });
     const elapsed = Date.now() - startTime;
@@ -211,7 +213,7 @@ The answer is: 2 + 2 = 4`;
   console.log('✅ All tests completed!');
   console.log('\n🔍 KEY FINDINGS:');
   console.log('   1. DeepSeek API connection: Working');
-  console.log('   2. deepseek-reasoner model: Responding');
+  console.log('   2. V4 thinking mode: Responding');
   console.log('   3. Check the response analysis above for thinking tags');
   console.log('   4. If formatter removes thinking blocks, that\'s the issue!');
   console.log('\n💡 NEXT STEPS:');
