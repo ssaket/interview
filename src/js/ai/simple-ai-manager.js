@@ -283,6 +283,18 @@ class SimpleAIManager {
   }
 
   /**
+   * Point the manager at a provider without the availability ping switchProvider() sends
+   * Flows change provider once or twice per request; pinging each time added a full round
+   * trip before the first token (and could load an Ollama model just to answer "ping").
+   * A misconfigured provider still fails on the real request, with a more specific error.
+   * @private
+   */
+  _useProvider(providerName) {
+    this.currentProvider = providerName;
+    this.currentModel = this._getDefaultModelForProvider(providerName);
+  }
+
+  /**
    * Cycle through available providers
    */
   async cycleProvider() {
@@ -515,6 +527,23 @@ class SimpleAIManager {
   }
 
   /**
+   * Whether a flow sends the question to a local Ollama model in any phase
+   * Derived from FLOW_CONFIGS so new or changed flows stay correct
+   * @param {string} flow - Flow name (local, cloud, hybrid, steps, practice)
+   * @returns {boolean} True for unknown flows, so callers keep their default behavior
+   */
+  flowUsesLocalModel(flow) {
+    if (flow === 'local') return true;
+
+    const flowConfig = FLOW_CONFIGS[flow];
+    if (!flowConfig) return true;
+
+    return [flowConfig.phase0, flowConfig.phase1, flowConfig.phase2, flowConfig.phase].some(
+      (phase) => phase && phase.provider === 'ollama'
+    );
+  }
+
+  /**
    * Unified flow execution handler
    * @private
    */
@@ -558,7 +587,7 @@ class SimpleAIManager {
     const needsProviderSwitch = this.currentProvider !== provider;
 
     if (needsProviderSwitch) {
-      await this.switchProvider(provider, true);
+      this._useProvider(provider);
     }
 
     // For LOCAL flow: Preserve user's active model if already on correct provider
@@ -611,7 +640,7 @@ class SimpleAIManager {
 
       // Switch to appropriate provider
       if (this.currentProvider !== phaseConfig.provider) {
-        await this.switchProvider(phaseConfig.provider, true);
+        this._useProvider(phaseConfig.provider);
       }
 
       // Get flow-specific model (pass interview type for hybrid flow)
@@ -998,7 +1027,7 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
     try {
       // Always restore both provider and model
       if (state.provider !== this.currentProvider) {
-        await this.switchProvider(state.provider, true);
+        this._useProvider(state.provider);
       }
 
       // Always restore model, even if provider didn't change

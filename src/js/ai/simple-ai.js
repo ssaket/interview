@@ -1,6 +1,7 @@
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
+const { StringDecoder } = require('string_decoder');
 const aiConfig = require('./ai-config');
 
 /**
@@ -35,6 +36,27 @@ const httpsAgent = new https.Agent({
  */
 function getHttpAgent(url) {
   return url.startsWith('https:') ? httpsAgent : httpAgent;
+}
+
+/**
+ * Reassemble newline-delimited stream lines across network chunks
+ * A chunk can end mid-line (and mid-UTF-8 character). Parsing it as-is silently drops
+ * that token and garbles multi-byte text, so the partial tail is held for the next chunk.
+ * Every format parsed here (SSE, Ollama NDJSON) newline-terminates each line, so nothing
+ * is left over at end of stream.
+ * @returns {{push: (chunk: Buffer) => string[]}} push() returns the complete, non-blank lines
+ */
+function createLineBuffer() {
+  const decoder = new StringDecoder('utf8');
+  let pending = '';
+  return {
+    push(chunk) {
+      pending += decoder.write(chunk);
+      const lines = pending.split('\n');
+      pending = lines.pop();
+      return lines.filter((line) => line.trim());
+    },
+  };
 }
 
 /**
@@ -132,12 +154,11 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
 
       let fullContent = '';
 
+      const lineBuffer = createLineBuffer();
+
       return new Promise((resolve, reject) => {
         response.data.on('data', (chunk) => {
-          const lines = chunk
-            .toString()
-            .split('\n')
-            .filter((line) => line.trim());
+          const lines = lineBuffer.push(chunk);
 
           for (const line of lines) {
             try {
@@ -282,12 +303,11 @@ async function handleOpenAIStreaming(config, requestBody, headers, onChunk, sign
 
   let fullContent = '';
 
+  const lineBuffer = createLineBuffer();
+
   return new Promise((resolve, reject) => {
     response.data.on('data', (chunk) => {
-      const lines = chunk
-        .toString()
-        .split('\n')
-        .filter((line) => line.trim());
+      const lines = lineBuffer.push(chunk);
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
@@ -448,6 +468,7 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
       let fullContent = '';
       let fullReasoningContent = ''; // Track reasoning/thinking text
       let resolved = false;
+      const lineBuffer = createLineBuffer();
 
       return new Promise((resolve, reject) => {
         const resolveOnce = (result) => {
@@ -458,10 +479,7 @@ async function handleDeepSeek(config, messages, parameters, stream = false, onCh
         };
 
         response.data.on('data', (chunk) => {
-          const lines = chunk
-            .toString()
-            .split('\n')
-            .filter((line) => line.trim());
+          const lines = lineBuffer.push(chunk);
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {

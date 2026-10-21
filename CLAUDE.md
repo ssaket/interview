@@ -83,6 +83,10 @@ The application supports three types of FAANG technical interviews:
 
 ### OCR and Text Processing
 - **LLMFriendlyOCRCleaner** (`src/js/llm-friendly-ocr-cleaner.js`) - Simple text cleaning to remove obvious UI junk while preserving useful content
+  - The optional AI pass (restructures text with a local Ollama model) only runs for flows that
+    use a local model in some phase (LOCAL, HYBRID) - see `SimpleAIManager.flowUsesLocalModel()`.
+    CLOUD, STEPS and PRACTICE skip it: DeepSeek handles OCR noise, and the pass blocked the question
+    until the local model finished
 - Region selection capability to reduce OCR noise
 
 ### AI Response Logging & Analysis

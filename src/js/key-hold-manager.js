@@ -243,11 +243,13 @@ class KeyHoldManager {
     // Check if left mouse button (button 1)
     if (event.button !== 1) return;
 
-    // Check if Cmd/Ctrl key is pressed
-    const keys = Array.from(this.pressedKeys);
-    const hasModifier = keys.some(
-      (k) => k === 'MetaLeft' || k === 'MetaRight' || k === 'ControlLeft' || k === 'ControlRight'
-    );
+    // Check if Cmd/Ctrl key is pressed (Set lookups - this runs on every global mouse event)
+    const keys = this.pressedKeys;
+    const hasModifier =
+      keys.has('MetaLeft') ||
+      keys.has('MetaRight') ||
+      keys.has('ControlLeft') ||
+      keys.has('ControlRight');
 
     if (!hasModifier) {
       // Reset click time if modifier not pressed
@@ -285,11 +287,13 @@ class KeyHoldManager {
    * Implements Cmd/Ctrl + mouse move to follow cursor and move window
    */
   handleMouseMove(event) {
-    // Check if Cmd/Ctrl key is pressed
-    const keys = Array.from(this.pressedKeys);
-    const hasModifier = keys.some(
-      (k) => k === 'MetaLeft' || k === 'MetaRight' || k === 'ControlLeft' || k === 'ControlRight'
-    );
+    // Check if Cmd/Ctrl key is pressed (Set lookups - this runs on every global mouse event)
+    const keys = this.pressedKeys;
+    const hasModifier =
+      keys.has('MetaLeft') ||
+      keys.has('MetaRight') ||
+      keys.has('ControlLeft') ||
+      keys.has('ControlRight');
 
     if (!hasModifier) {
       // Modifier key not pressed, stop following and clear saved size
