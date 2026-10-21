@@ -253,6 +253,7 @@ class StreamlinedTextInterface {
     addListener('toggle-syntax-highlighting', () => this.toggleSyntaxMode());
     addListener('cycle-ai-flow', () => this.cycleAIFlow());
     addListener('trigger-flow-toggle', () => this.cycleAIFlow()); // Triggered by Opt+Cmd / Alt+Ctrl
+    addListener('practice-request', (event, text) => this.sendPracticeRequest(text));
     addListener('increase-transparency', () => this.increaseTransparency());
     addListener('decrease-transparency', () => this.decreaseTransparency());
 
@@ -594,7 +595,7 @@ class StreamlinedTextInterface {
   }
 
   cycleAIFlow() {
-    const flows = ['LOCAL', 'CLOUD', 'HYBRID', 'STEPS'];
+    const flows = ['LOCAL', 'CLOUD', 'HYBRID', 'STEPS', 'PRACTICE'];
     const currentIndex = flows.indexOf(this.aiFlow);
     const nextIndex = (currentIndex + 1) % flows.length;
     this.aiFlow = flows[nextIndex];
@@ -602,6 +603,27 @@ class StreamlinedTextInterface {
     this.status.ai = this.aiFlow;
     this.throttledUpdateStatus();
     this.showMessage(`🔄 AI Flow: ${this.aiFlow}`, 3000);
+  }
+
+  async sendPracticeRequest(text) {
+    if (this.aiFlow !== 'PRACTICE') {
+      this.showMessage('🎓 Hints only work in PRACTICE flow', 3000);
+      return;
+    }
+
+    // Sent mid-OCR or mid-stream, the hint would interleave with that request in the
+    // same practice session and both answers would stream into the editor at once
+    const ocrBusy = this.status.ocr === 'Capturing' || this.status.ocr === 'Processing';
+    if (ocrBusy || this.status.ai.endsWith('Processing')) {
+      this.showMessage('⏳ Wait for the current response to finish', 2500);
+      return;
+    }
+
+    try {
+      await this.queryAI(text);
+    } catch (error) {
+      this.showMessage(`❌ Practice request failed: ${error.message}`, 5000);
+    }
   }
 
   resetSession() {
@@ -650,7 +672,7 @@ ${mod}+2 - Process screenshot stack
 ${mod}+3 - Clear screenshot stack
 
 ### AI Controls
-Opt+${mod} - Cycle AI flows (LOCAL → CLOUD → HYBRID → STEPS)
+Opt+${mod} - Cycle AI flows (LOCAL → CLOUD → HYBRID → STEPS → PRACTICE)
 ${mod}+Shift+R - Master Reset (recover from any error)
 ${mod}+Shift+O - Toggle OCR filtering
 ${mod}+Shift+T - Cycle interview type (DSA → System Design → LLD)
@@ -676,6 +698,12 @@ Alt/Opt+X - Scroll page down
 ${mod}+Shift+M - Switch Ollama model
 ${mod}+Shift+Y - Toggle system prompts
 ${mod}+Shift+W - Warmup Ollama model
+
+### Practice Flow (guided hints)
+Screenshot a problem → Hint 1 + skeleton with TODO gaps
+Screenshot your own code → review that points at the bug without fixing it
+${mod}+Shift+H - Next hint
+${mod}+Shift+S - Reveal full solution
 
 ### Math Formula Support
 - LaTeX formulas supported: $O(n)$, $O(log n)$, $$T(n) = 2T(n/2) + O(n)$$

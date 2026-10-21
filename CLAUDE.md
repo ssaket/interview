@@ -13,6 +13,7 @@ This is an Electron-based DeepSeek Overlay Helper application that captures scre
 - `npm run test:cleaner` - Test OCR text cleaning functionality
 - `npm run test:markdown` - Test markdown section processing
 - `npm run test:session` - Test session management
+- `npm run test:practice` - Test PRACTICE flow routing, prompts, and token caps (offline)
 
 ### AI Response Analysis
 - `npm run analyze:responses` - Analyze AI response logs from last 7 days (default)
@@ -41,6 +42,7 @@ The AI system supports four distinct processing flows for different use cases:
   - **CLOUD** - Two-phase parallel: `deepseek-v4-pro` non-thinking fast answer → thinking-mode verification
   - **HYBRID** - Two-phase parallel: Ollama brute-force → `deepseek-v4-pro` thinking-mode optimization
   - **STEPS** - Three-phase sequential: Problem clarification → Brute-force approach → Optimized solution (human-like problem solving)
+  - **PRACTICE** - Single-phase coaching: hint ladder with TODO skeletons, code review, full solution only on request
 - **Supported Providers**:
   - Ollama - Local AI models with hybrid model support (`OLLAMA_HYBRID_MODEL`)
   - OpenAI - GPT models via API
@@ -285,6 +287,26 @@ Human-like problem-solving approach with systematic step-by-step reasoning:
   - If optimization isn't possible within timeout, AI explicitly states "already optimal"
 - **Use Case**: Systematic interview-style problem solving, mimicking human thought process with clarification → simple solution → optimization
 
+#### PRACTICE Flow (Single-Phase, Guided Hints)
+Coaching mode for solo practice: the model guides instead of answering.
+
+- **Model**: the CLOUD-flow model (`DEEPSEEK_CLOUD_MODEL`, default `deepseek-v4-pro`) in non-thinking
+  mode, one session (`deepseek-practice-coach`) per problem
+- **Busy guard**: the renderer drops hint/reveal presses while OCR or a response is in progress, so
+  requests never interleave in the practice session
+- **Prompts**: `MODEL_PROMPTS.practice[interviewType]` via `getPracticePrompt()` in `model-prompts.js`
+- **Hint ladder** (DSA; System Design and LLD follow the same shape):
+  - Screenshot a problem → Hint 1: restatement, edge cases, a nudge, and a skeleton with `# TODO:` gaps
+  - `Cmd/Ctrl+Shift+H` → next hint (Hint 2 names the approach; later hints fill one TODO each)
+  - Screenshot your own code → review that points at the first bug without writing the fix
+  - `Cmd/Ctrl+Shift+S` → full solution
+- **Shortcut phrases**: the shortcuts send `PRACTICE_REQUESTS.hint` / `.reveal` ("NEXT HINT" /
+  "REVEAL SOLUTION"); the prompts key off these exact strings, so change both together
+- **Token caps**: 1024 for hints (keeps them from growing into solutions), 4096 for reveal
+- **Limitation**: "don't reveal" is enforced by the prompt only - check `flowType: practice`
+  entries with `npm run analyze:responses` if hints start leaking full solutions
+- **Tests**: `npm run test:practice` (offline, stubs the provider call)
+
 ### Session Management
 - Sessions are maintained per provider-model combination
 - History limited to last 20 messages to prevent context overflow
@@ -327,7 +349,9 @@ Human-like problem-solving approach with systematic step-by-step reasoning:
 **Grouped by function with memorable mnemonics:**
 - `Cmd/Ctrl+Shift+0` - Toggle small window / fullscreen
 - `Cmd/Ctrl+Shift+R` - **R**eset AI session
-- `Opt+Cmd` / `Alt+Ctrl` - AI flow toggle (LOCAL→CLOUD→HYBRID→STEPS)
+- `Opt+Cmd` / `Alt+Ctrl` - AI flow toggle (LOCAL→CLOUD→HYBRID→STEPS→PRACTICE)
+- `Cmd/Ctrl+Shift+H` - Next **H**int (PRACTICE flow)
+- `Cmd/Ctrl+Shift+S` - Reveal full **S**olution (PRACTICE flow)
 - `Cmd/Ctrl+Shift+O` - **O**CR filter toggle (shows status message)
 - `Cmd/Ctrl+Shift+D` - **D**ark/light theme toggle
 - `Cmd/Ctrl+Shift+V` - **V**iew conversation history in browser

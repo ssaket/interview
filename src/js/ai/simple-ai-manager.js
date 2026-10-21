@@ -12,6 +12,7 @@ const REASONING_ONLY_MARKER = '**🧠 Reasoning Process** (no final answer provi
  * Flow configurations for three-phase sequential execution
  * Phase 0 analyzes the problem, Phase 1 provides solution, Phase 2 verifies/optimizes
  * Defines provider, model, prompt, and parameters for each phase of Cloud and Hybrid flows
+ * Practice is the exception: a single coaching phase that gives hints instead of answers
  */
 const FLOW_CONFIGS = {
   cloud: {
@@ -184,6 +185,29 @@ const FLOW_CONFIGS = {
     phase1CompletionLog: 'Brute-force phase completed',
     phase2CompletionLog: 'Optimization phase completed',
     errorPrefix: 'Steps Flow Error',
+  },
+  practice: {
+    name: 'practice',
+    displayName: 'Practice',
+    // Single phase: one session spans the problem, hints, and code reviews,
+    // so each NEXT HINT builds on what was already revealed
+    phase: {
+      name: 'practice',
+      provider: 'deepseek',
+      flowType: 'cloud', // Non-thinking mode (fast)
+      sessionKey: 'deepseek-practice-coach',
+      header: '', // Prompt makes the model open with its own "### Hint N" heading
+      logMessage: 'Practice phase: guided hint (non-thinking)...',
+      promptGetter: (interviewType) => MODEL_PROMPTS.getPracticePrompt(interviewType),
+      promptLogMessage: 'Added PRACTICE prompt for guided hints',
+      parameters: {
+        temperature: 0.3,
+        max_tokens: 1024, // Tight cap keeps hints from growing into full solutions
+      },
+      includeReasoning: undefined,
+    },
+    revealMaxTokens: 4096, // REVEAL SOLUTION needs room for a complete answer
+    errorPrefix: 'Practice Flow Error',
   },
 };
 
@@ -481,7 +505,7 @@ class SimpleAIManager {
     const flow = options.flow;
 
     // Handle special flows with streaming
-    if (flow && ['local', 'cloud', 'hybrid', 'steps'].includes(flow)) {
+    if (flow && ['local', 'cloud', 'hybrid', 'steps', 'practice'].includes(flow)) {
       return await this._executeFlow(question, options, flow);
     }
 
@@ -504,6 +528,8 @@ class SimpleAIManager {
         return await this._executeHybridFlow(question, options);
       } else if (flow === 'steps') {
         return await this._executeStepsFlow(question, options);
+      } else if (flow === 'practice') {
+        return await this._executePracticeFlow(question, options);
       } else {
         return await this._executeSingleProviderFlow(question, options, flow);
       }
@@ -910,6 +936,30 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
   }
 
   /**
+   * Execute practice flow with a single non-thinking phase
+   * The model coaches with a hint ladder instead of answering; screenshots of the
+   * user's own code get a review, and REVEAL SOLUTION unlocks the full answer
+   * @private
+   */
+  async _executePracticeFlow(question, options) {
+    const flowConfig = FLOW_CONFIGS.practice;
+    const isReveal = question.trim() === MODEL_PROMPTS.PRACTICE_REQUESTS.reveal;
+
+    try {
+      return await this._executePhase(question, flowConfig.phase, {
+        ...options,
+        parameters: {
+          ...options.parameters,
+          ...(isReveal ? { max_tokens: flowConfig.revealMaxTokens } : {}),
+        },
+      });
+    } catch (error) {
+      console.error(`[SimpleAIManager] ${flowConfig.displayName} flow failed: ${error.message}`);
+      return this._handleFlowError(flowConfig.errorPrefix, error, '', options.onChunk);
+    }
+  }
+
+  /**
    * Unified error handler for flow execution
    * @private
    */
@@ -983,12 +1033,17 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
    * @returns {Object} Session object with history
    */
   getSession() {
-    // Check if there are any phase sessions (CLOUD, HYBRID, STEPS flows)
+    // Check if there are any phase sessions (CLOUD, HYBRID, STEPS, PRACTICE flows)
     const phaseSessions = [];
 
     for (const [key, session] of this.sessions.entries()) {
       // Identify phase sessions by their key patterns
-      if (key.includes('-cloud-') || key.includes('-hybrid-') || key.includes('-steps-')) {
+      if (
+        key.includes('-cloud-') ||
+        key.includes('-hybrid-') ||
+        key.includes('-steps-') ||
+        key.includes('-practice-')
+      ) {
         phaseSessions.push({ key, session });
       }
     }

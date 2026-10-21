@@ -1,5 +1,6 @@
 const { globalShortcut, screen, app } = require('electron');
 const windowControlsConfig = require('./window-controls-config');
+const { PRACTICE_REQUESTS } = require('./model-prompts');
 
 class ShortcutManager {
   /**
@@ -279,6 +280,10 @@ class ShortcutManager {
     globalShortcut.register(`${secondary}+L`, () => {
       this.toggleSyntaxCodeOnly();
     });
+
+    // Practice Mode - next hint / reveal solution (only acts in PRACTICE flow)
+    globalShortcut.register(`${secondary}+H`, () => this.sendPracticeRequest('hint'));
+    globalShortcut.register(`${secondary}+S`, () => this.sendPracticeRequest('reveal'));
   }
 
   /** Unregister all shortcuts except toggle */
@@ -335,6 +340,10 @@ class ShortcutManager {
     globalShortcut.unregister(`${secondary}+T`);
     globalShortcut.unregister(`${secondary}+W`);
     globalShortcut.unregister(`${secondary}+L`);
+
+    // Practice mode
+    globalShortcut.unregister(`${secondary}+H`);
+    globalShortcut.unregister(`${secondary}+S`);
   }
 
   unregisterAll() {
@@ -381,6 +390,9 @@ class ShortcutManager {
     console.log(`  ${mod}+Shift+W           - Warmup Ollama model`);
     console.log(`  ${mod}+Shift+L           - Toggle code-only view`);
     console.log(`  ${mod}+Shift+I           - Developer tools`);
+    console.log('\nPRACTICE FLOW:');
+    console.log(`  ${mod}+Shift+H           - Next hint`);
+    console.log(`  ${mod}+Shift+S           - Reveal full solution`);
     console.log('=====================================\n');
   }
 
@@ -722,6 +734,16 @@ class ShortcutManager {
       message: `System prompts ${enabled ? 'enabled' : 'disabled'}`,
     });
     console.log(`[Shortcut] System prompts ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Ask the practice coach for the next hint or the full solution
+   * The renderer only forwards it to the AI when the PRACTICE flow is active and
+   * no OCR or AI request is in progress
+   * @param {'hint'|'reveal'} action
+   */
+  sendPracticeRequest(action) {
+    this.windowManager.send('practice-request', PRACTICE_REQUESTS[action]);
   }
 
   /**
