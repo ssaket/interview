@@ -707,7 +707,7 @@ ${mod}+Shift+T - Cycle interview type (DSA → System Design → LLD)
 
 ### Interface Controls
 ${mod}+Shift+D - Toggle dark/light theme
-${mod}+Shift+L - Toggle code-only view (extract Python code)
+${mod}+Shift+L - Toggle code-only view (extract Go code)
 ${mod}+Shift+I - Developer tools
 ${mod}+Shift+/ - Toggle window size (default ⟷ fullscreen)
 F1 - Toggle this help guide
@@ -730,7 +730,7 @@ ${mod}+Shift+W - Warmup Ollama model
 ### Practice Flow (guided hints)
 Screenshot a problem → Hint 1 + skeleton with TODO gaps
 Screenshot your own code → review that points at the bug without fixing it
-${mod}+Shift+H - Next hint
+${mod}+Shift+H - Next hint (3 hints, then the full solution)
 ${mod}+Shift+S - Reveal full solution
 
 ### Math Formula Support
@@ -937,11 +937,11 @@ Activity log:
     this.isCodeOnlyMode = true;
 
     try {
-      // Extract Python code using formatter
+      // Extract Go code using formatter
       const codeResult = this.formatter.formatResponse(currentContent, true, true);
 
       if (!codeResult.hasCode || !codeResult.text || !codeResult.text.trim()) {
-        this.showMessage('⚠️ No Python code blocks found', 3000);
+        this.showMessage('⚠️ No Go code blocks found', 3000);
         // Restore state
         this.isCodeOnlyMode = false;
         this.originalContent = null;

@@ -42,7 +42,7 @@ The AI system supports four distinct processing flows for different use cases:
   - **CLOUD** - Two-phase parallel: `deepseek-v4-pro` non-thinking fast answer → thinking-mode verification
   - **HYBRID** - Two-phase parallel: Ollama brute-force → `deepseek-v4-pro` thinking-mode optimization
   - **STEPS** - Three-phase sequential: Problem clarification → Brute-force approach → Optimized solution (human-like problem solving)
-  - **PRACTICE** - Single-phase coaching: hint ladder with TODO skeletons, code review, full solution only on request
+  - **PRACTICE** - Single-phase coaching: 3 hints with TODO skeletons, then the full solution; code review
 - **Supported Providers**:
   - Ollama - Local AI models with hybrid model support (`OLLAMA_HYBRID_MODEL`)
   - OpenAI - GPT models via API
@@ -70,6 +70,10 @@ The application supports three types of FAANG technical interviews:
 - Switch types with `Cmd/Ctrl+Shift+T` (cycles through DSA → System Design → LLD)
 - System prompts are automatically tailored for each interview type
 - Session is cleared when switching types to apply new prompts
+
+**Code language:** all prompts in `model-prompts.js` ask for Go code. LLD prompts that ask for code
+add `GO_OOP_GUIDE` (structs, interfaces and composition, because Go has no classes or inheritance).
+The code-only view (`formatter.js`) extracts ` ```go ` blocks and also accepts ` ```python ` blocks.
 
 ### Application Structure
 - **AppController** (`src/js/app-controller.js`) - Main application controller
@@ -299,14 +303,18 @@ Coaching mode for solo practice: the model guides instead of answering.
 - **Busy guard**: the renderer drops hint/reveal presses while OCR or a response is in progress, so
   requests never interleave in the practice session
 - **Prompts**: `MODEL_PROMPTS.practice[interviewType]` via `getPracticePrompt()` in `model-prompts.js`
-- **Hint ladder** (DSA; System Design and LLD follow the same shape):
-  - Screenshot a problem → Hint 1: restatement, edge cases, a nudge, and a skeleton with `# TODO:` gaps
-  - `Cmd/Ctrl+Shift+H` → next hint (Hint 2 names the approach; later hints fill one TODO each)
-  - Screenshot your own code → review that points at the first bug without writing the fix
-  - `Cmd/Ctrl+Shift+S` → full solution
+- **Hint ladder** (DSA; System Design and LLD follow the same shape): 3 hints, then the solution,
+  so the full answer comes by the 4th response at the latest
+  - Screenshot a problem → Hint 1: restatement, edge cases, a nudge, and a Go skeleton with `// TODO:` gaps
+  - `Cmd/Ctrl+Shift+H` → Hint 2 names the approach and fills the setup; Hint 3 fills all but the
+    key step; the next press gives the full solution
+  - Screenshot your own code → review that points at the first bug without writing the fix (the
+    review does not change the hint level)
+  - `Cmd/Ctrl+Shift+S` → full solution at any time
 - **Shortcut phrases**: the shortcuts send `PRACTICE_REQUESTS.hint` / `.reveal` ("NEXT HINT" /
   "REVEAL SOLUTION"); the prompts key off these exact strings, so change both together
-- **Token caps**: 1024 for hints (keeps them from growing into solutions), 4096 for reveal
+- **Token caps**: 1024 for Hint 1 and code reviews; 4096 (`solutionMaxTokens`) for NEXT HINT and
+  REVEAL SOLUTION, because a NEXT HINT can be the full solution
 - **Limitation**: "don't reveal" is enforced by the prompt only - check `flowType: practice`
   entries with `npm run analyze:responses` if hints start leaking full solutions
 - **Tests**: `npm run test:practice` (offline, stubs the provider call)

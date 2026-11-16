@@ -202,11 +202,13 @@ const FLOW_CONFIGS = {
       promptLogMessage: 'Added PRACTICE prompt for guided hints',
       parameters: {
         temperature: 0.3,
-        max_tokens: 1024, // Tight cap keeps hints from growing into full solutions
+        max_tokens: 1024, // Hint 1 and code reviews: a tight cap keeps them short
       },
       includeReasoning: undefined,
     },
-    revealMaxTokens: 4096, // REVEAL SOLUTION needs room for a complete answer
+    // NEXT HINT and REVEAL SOLUTION get this cap. The ladder is 3 hints, then the
+    // solution, so a NEXT HINT can be the full solution
+    solutionMaxTokens: 4096,
     errorPrefix: 'Practice Flow Error',
   },
 };
@@ -966,20 +968,21 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
 
   /**
    * Execute practice flow with a single non-thinking phase
-   * The model coaches with a hint ladder instead of answering; screenshots of the
-   * user's own code get a review, and REVEAL SOLUTION unlocks the full answer
+   * The model coaches with a hint ladder (3 hints, then the solution) instead of answering;
+   * screenshots of the user's own code get a review, and REVEAL SOLUTION skips to the answer
    * @private
    */
   async _executePracticeFlow(question, options) {
     const flowConfig = FLOW_CONFIGS.practice;
-    const isReveal = question.trim() === MODEL_PROMPTS.PRACTICE_REQUESTS.reveal;
+    const { hint, reveal } = MODEL_PROMPTS.PRACTICE_REQUESTS;
+    const mayBeSolution = [hint, reveal].includes(question.trim());
 
     try {
       return await this._executePhase(question, flowConfig.phase, {
         ...options,
         parameters: {
           ...options.parameters,
-          ...(isReveal ? { max_tokens: flowConfig.revealMaxTokens } : {}),
+          ...(mayBeSolution ? { max_tokens: flowConfig.solutionMaxTokens } : {}),
         },
       });
     } catch (error) {

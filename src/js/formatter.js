@@ -1,7 +1,8 @@
 class InterviewCodeFormatter {
   constructor() {
-    // Python code block patterns (strict)
-    this.pythonCodeRegex = /```(?:python|py)\n([\s\S]*?)```/g;
+    // Code block patterns (strict). The prompts ask for Go; Python blocks are still accepted
+    this.codeBlockRegex = /```(go|golang|python|py)\n([\s\S]*?)```/g;
+    this.languageAliases = { golang: 'go', py: 'python' };
 
     // Interview section patterns
     this.optimizedSectionRegex = /###?\s*(?:Optimized?|Optimal)\s*(?:solution|approach|algorithm)[\s\S]*?(?=###|$)/i;
@@ -212,11 +213,11 @@ class InterviewCodeFormatter {
   }
 
   /**
-   * Extract Python code with interview-aware prioritization
+   * Extract Go (or Python) code with interview-aware prioritization
    * @param {string} raw - Raw AI response
    * @param {boolean} formatterEnabled - Enable/disable formatting
    * @param {boolean} codeOnly - Show only code blocks
-   * @returns {Object} Formatted result with prioritized Python code
+   * @returns {Object} Formatted result with prioritized code
    */
   formatResponse(raw, formatterEnabled = true, codeOnly = true) {
     if (!raw || typeof raw !== 'string') {
@@ -236,15 +237,15 @@ class InterviewCodeFormatter {
     // Extract interview sections
     const sections = this.extractInterviewSections(raw);
 
-    // Extract and prioritize Python code blocks
-    const codeBlocks = this.extractPythonCode(raw, sections);
+    // Extract and prioritize code blocks
+    const codeBlocks = this.extractCode(raw, sections);
 
     if (!codeOnly) {
       // Return full formatted content with LaTeX support
       return this.formatFullResponse(raw, codeBlocks);
     }
 
-    // Code-only mode: return prioritized Python algorithms and markdown tables
+    // Code-only mode: return prioritized algorithms and markdown tables
     const markdownTables = this.extractMarkdownTables(raw);
     return this.formatCodeOnly(codeBlocks, markdownTables);
   }
@@ -274,17 +275,18 @@ class InterviewCodeFormatter {
   }
 
   /**
-   * Extract Python code blocks with smart prioritization
+   * Extract Go and Python code blocks with smart prioritization
    */
-  extractPythonCode(text, sections) {
+  extractCode(text, sections) {
     const codeBlocks = [];
     let match;
 
     // Reset regex
-    this.pythonCodeRegex.lastIndex = 0;
+    this.codeBlockRegex.lastIndex = 0;
 
-    while ((match = this.pythonCodeRegex.exec(text)) !== null) {
-      const code = match[1].trim();
+    while ((match = this.codeBlockRegex.exec(text)) !== null) {
+      const language = this.languageAliases[match[1]] || match[1];
+      const code = match[2].trim();
 
       // Filter out tiny snippets (likely not main algorithms)
       if (code.length < this.minCodeLength) {
@@ -336,6 +338,7 @@ class InterviewCodeFormatter {
 
       codeBlocks.push({
         code,
+        language,
         section,
         priority,
         length: code.length,
@@ -351,11 +354,13 @@ class InterviewCodeFormatter {
    * Check if code looks like a main algorithm (not just examples)
    */
   isAlgorithmCode(code) {
-    // Look for function definitions
+    // Look for function definitions (Python def, Go func and methods)
     if (/def\s+\w+\s*\(/m.test(code)) return true;
+    if (/func\s+(?:\([^)]*\)\s*)?\w+\s*\(/m.test(code)) return true;
 
-    // Look for class definitions
+    // Look for class definitions (Python class, Go struct and interface types)
     if (/class\s+\w+/m.test(code)) return true;
+    if (/type\s+\w+\s+(?:struct|interface)\b/m.test(code)) return true;
 
     // Look for common algorithm patterns
     if (/(?:for|while).*:[\s\S]*(?:return|yield)/m.test(code)) return true;
@@ -370,13 +375,13 @@ class InterviewCodeFormatter {
   }
 
   /**
-   * Format for code-only mode - show prioritized Python algorithms and markdown tables
+   * Format for code-only mode - show prioritized algorithms and markdown tables
    */
   formatCodeOnly(codeBlocks, markdownTables = []) {
     if (codeBlocks.length === 0 && markdownTables.length === 0) {
       return {
-        text: '## No Code or Tables Found\n\nThe response does not contain any substantial Python code blocks or markdown tables.',
-        html: '<div class="no-code">No Python algorithms or markdown tables found in the response.</div>',
+        text: '## No Code or Tables Found\n\nThe response does not contain any substantial Go code blocks or markdown tables.',
+        html: '<div class="no-code">No Go algorithms or markdown tables found in the response.</div>',
         hasCode: false
       };
     }
@@ -391,12 +396,12 @@ class InterviewCodeFormatter {
       const sectionLabel = this.getSectionLabel(block.section);
       const title = `## ${sectionLabel}${topBlocks.length > 1 ? ` (${index + 1})` : ''}`;
 
-      plain.push(`${title}\n\`\`\`python\n${block.code}\n\`\`\`\n`);
+      plain.push(`${title}\n\`\`\`${block.language}\n${block.code}\n\`\`\`\n`);
 
       html.push(`
         <div class="code-section">
           <div class="code-language">${sectionLabel}</div>
-          <pre class="code-block"><code class="python">${this.highlightPython(this.escapeHtml(block.code))}</code></pre>
+          <pre class="code-block"><code class="${block.language}">${this.highlightCode(block.code, block.language)}</code></pre>
         </div>
       `);
     });
@@ -430,9 +435,9 @@ class InterviewCodeFormatter {
       optimized: 'Optimized Solution',
       bruteForce: 'Brute-force Solution',
       examples: 'Example Code',
-      unknown: 'Python Algorithm'
+      unknown: 'Algorithm'
     };
-    return labels[section] || 'Python Code';
+    return labels[section] || 'Code';
   }
 
   /**
@@ -450,7 +455,7 @@ class InterviewCodeFormatter {
 
     // Basic markdown formatting (focused on structure, not inline code)
     processed = processed
-      .replace(/```python\n[\s\S]*?```/g, '[PYTHON_CODE_BLOCK]') // Placeholder for code blocks
+      .replace(/```(?:go|golang|python|py)\n[\s\S]*?```/g, '[CODE_BLOCK]') // Placeholder for code blocks
       .replace(/```\w*\n[\s\S]*?```/g, '<pre><code>$&</code></pre>') // Other code blocks
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
@@ -458,14 +463,14 @@ class InterviewCodeFormatter {
       .replace(/^## (.*)$/gm, '<h2>$1</h2>')
       .replace(/^# (.*)$/gm, '<h1>$1</h1>');
 
-    // Replace Python code block placeholders
+    // Replace code block placeholders
     let codeIndex = 0;
-    processed = processed.replace(/\[PYTHON_CODE_BLOCK\]/g, () => {
+    processed = processed.replace(/\[CODE_BLOCK\]/g, () => {
       if (codeIndex < codeBlocks.length) {
         const block = codeBlocks[codeIndex++];
         return `<div class="code-section">
           <div class="code-language">${this.getSectionLabel(block.section)}</div>
-          <pre class="code-block"><code class="python">${this.highlightPython(this.escapeHtml(block.code))}</code></pre>
+          <pre class="code-block"><code class="${block.language}">${this.highlightCode(block.code, block.language)}</code></pre>
         </div>`;
       }
       return '';
@@ -484,6 +489,48 @@ class InterviewCodeFormatter {
   processMathFormulas(text) {
     // LaTeX formulas are preserved as-is for browser-side KaTeX rendering
     return text;
+  }
+
+  /**
+   * Highlight raw (unescaped) code for its language
+   * @param {string} code - Raw code
+   * @param {string} language - 'go' or 'python'
+   * @returns {string} Escaped HTML with highlight spans
+   */
+  highlightCode(code, language) {
+    return language === 'go' ? this.highlightGo(code) : this.highlightPython(this.escapeHtml(code));
+  }
+
+  /**
+   * Simple Go syntax highlighting. One pass over the raw code: each token gets one span,
+   * so a later rule cannot match text inside an earlier span
+   * @param {string} code - Raw (unescaped) Go code
+   * @returns {string} Escaped HTML with highlight spans
+   */
+  highlightGo(code) {
+    const tokenRegex = new RegExp(
+      [
+        '(\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/)', // 1: comments
+        '("(?:[^"\\\\\\n]|\\\\.)*"|`[^`]*`|\'(?:[^\'\\\\\\n]|\\\\.)*\')', // 2: strings, runes
+        '\\b(break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go|goto|if|' +
+          'import|interface|map|package|range|return|select|struct|switch|type|var|nil|true|' +
+          'false|iota)\\b', // 3: keywords
+        '\\b(\\d+(?:\\.\\d+)?)\\b', // 4: numbers
+      ].join('|'),
+      'g'
+    );
+    const classes = ['comment', 'string', 'keyword', 'number'];
+
+    let html = '';
+    let last = 0;
+    let match;
+    while ((match = tokenRegex.exec(code)) !== null) {
+      const cls = classes[match.slice(1).findIndex((group) => group !== undefined)];
+      html += this.escapeHtml(code.slice(last, match.index));
+      html += `<span class="${cls}">${this.escapeHtml(match[0])}</span>`;
+      last = tokenRegex.lastIndex;
+    }
+    return html + this.escapeHtml(code.slice(last));
   }
 
   /**

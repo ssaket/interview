@@ -4,7 +4,7 @@
  * Verifies the guided-practice flow without calling any AI provider:
  * 1. Practice prompts exist for every interview type and reference the shortcut phrases
  * 2. ask({ flow: 'practice' }) runs one non-thinking DeepSeek phase in its own session
- * 3. REVEAL SOLUTION raises the token cap; hints keep the tight cap
+ * 3. NEXT HINT and REVEAL SOLUTION get the solution token cap; a new problem keeps the tight cap
  * 4. Practice sessions show up in getSession() for the history viewer
  * 5. Provider failures are returned as an inline error, not thrown
  */
@@ -104,13 +104,39 @@ async function run() {
     );
   });
 
-  await test('hints keep the tight token cap', async () => {
+  await test('practice prompts cap the ladder at 3 hints, then the solution', () => {
+    for (const type of Object.values(INTERVIEW_TYPES)) {
+      const prompt = MODEL_PROMPTS.getPracticePrompt(type);
+      assert(prompt.includes('Hint 3 (last hint)'), `${type} prompt has no last hint`);
+      assert(!prompt.includes('Hint 4'), `${type} prompt has more than 3 hints`);
+      assert(prompt.includes('4th response'), `${type} prompt does not cap the turn count`);
+    }
+  });
+
+  await test('practice prompts ask for Go, not Python', () => {
+    for (const type of [INTERVIEW_TYPES.DSA, INTERVIEW_TYPES.LLD]) {
+      const prompt = MODEL_PROMPTS.getPracticePrompt(type);
+      assert(prompt.includes('Go'), `${type} prompt does not ask for Go`);
+      assert(!/python|# TODO/i.test(prompt), `${type} prompt still asks for Python`);
+    }
+  });
+
+  await test('a new problem (Hint 1) keeps the tight token cap', async () => {
+    const manager = createManager();
+    await manager.ask('Two Sum: find indices adding to target', { flow: 'practice' });
+
+    const { phaseConfig, options } = manager.calls[0];
+    const maxTokens = { ...phaseConfig.parameters, ...options.parameters }.max_tokens;
+    assert(maxTokens === 1024, `Hint 1 max_tokens was ${maxTokens}`);
+  });
+
+  await test('NEXT HINT gets the solution cap (the 4th response is the solution)', async () => {
     const manager = createManager();
     await manager.ask(PRACTICE_REQUESTS.hint, { flow: 'practice' });
 
     const { phaseConfig, options } = manager.calls[0];
     const maxTokens = { ...phaseConfig.parameters, ...options.parameters }.max_tokens;
-    assert(maxTokens === 1024, `hint max_tokens was ${maxTokens}`);
+    assert(maxTokens === 4096, `hint max_tokens was ${maxTokens}`);
   });
 
   await test('REVEAL SOLUTION raises the token cap', async () => {
