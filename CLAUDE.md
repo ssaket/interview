@@ -15,6 +15,7 @@ This is an Electron-based DeepSeek Overlay Helper application that captures scre
 - `npm run test:session` - Test session management
 - `npm run test:practice` - Test PRACTICE flow routing, prompts, and token caps (offline)
 - `npm run test:capture` - Test the screenshot crop math for multi-display and high-DPI setups (offline)
+- `npm run test:formatter` - Test Go and Python code extraction for the code-only view (offline)
 
 ### AI Response Analysis
 - `npm run analyze:responses` - Analyze AI response logs from last 7 days (default)
@@ -304,8 +305,10 @@ Coaching mode for solo practice: the model guides instead of answering.
 - **Busy guard**: the renderer drops hint/reveal presses while OCR or a response is in progress, so
   requests never interleave in the practice session
 - **Prompts**: `MODEL_PROMPTS.practice[interviewType]` via `getPracticePrompt()` in `model-prompts.js`
-- **Hint ladder** (DSA; System Design and LLD follow the same shape): 3 hints, then the solution,
-  so the full answer comes by the 4th response at the latest
+- **Hint ladder** (DSA; System Design and LLD follow the same shape): 3 hints, then the solution.
+  The third `Cmd/Ctrl+Shift+H` press gives the full solution; there is no Hint 4. The prompts
+  name the ladder levels and do not count responses, because a review or a new problem can come
+  between hints
   - Screenshot a problem → Hint 1: restatement, edge cases, a nudge, and a Go skeleton with `// TODO:` gaps
   - `Cmd/Ctrl+Shift+H` → Hint 2 names the approach and fills the setup; Hint 3 fills all but the
     key step; the next press gives the full solution
@@ -314,8 +317,9 @@ Coaching mode for solo practice: the model guides instead of answering.
   - `Cmd/Ctrl+Shift+S` → full solution at any time
 - **Shortcut phrases**: the shortcuts send `PRACTICE_REQUESTS.hint` / `.reveal` ("NEXT HINT" /
   "REVEAL SOLUTION"); the prompts key off these exact strings, so change both together
-- **Token caps**: 1024 for Hint 1 and code reviews; 4096 (`solutionMaxTokens`) for NEXT HINT and
-  REVEAL SOLUTION, because a NEXT HINT can be the full solution
+- **Token caps**: 2048 for Hint 1 and code reviews (a Go LLD skeleton can pass 1024); 4096
+  (`solutionMaxTokens`) for NEXT HINT and REVEAL SOLUTION, because a NEXT HINT can be the full
+  solution
 - **Limitation**: "don't reveal" is enforced by the prompt only - check `flowType: practice`
   entries with `npm run analyze:responses` if hints start leaking full solutions
 - **Tests**: `npm run test:practice` (offline, stubs the provider call)

@@ -30,6 +30,8 @@ class StreamlinedTextInterface {
     // Streamed AI text waiting for the next animation frame (see streamAIChunk)
     this.pendingChunks = '';
     this.chunkFrame = null;
+    // True while the streamed text is inside a ``` code block (see preprocessChunk)
+    this.inCodeFence = false;
 
     // Theme management
     this.isDark = false;
@@ -424,9 +426,28 @@ class StreamlinedTextInterface {
     }
   }
 
+  /**
+   * Clean streamed text before it goes into the editor. Text in ``` code blocks stays as is:
+   * in Go, "\n" in a string or rune is code, not a line break. The fence state continues
+   * from one batch to the next, and startAIResponse() resets it
+   */
   preprocessChunk(chunk) {
+    return chunk
+      .split('```')
+      .map((part, index) => {
+        if (index > 0) this.inCodeFence = !this.inCodeFence;
+        return this.inCodeFence ? part : this.preprocessProse(part);
+      })
+      .join('```');
+  }
+
+  /**
+   * Clean text outside code blocks. Models sometimes write a literal \n, <br> or an HTML
+   * entity in markdown table cells
+   */
+  preprocessProse(text) {
     // Convert literal \n to actual newlines
-    let processed = chunk.replace(/\\n/g, '\n');
+    let processed = text.replace(/\\n/g, '\n');
 
     // Convert <br> tags to newlines
     processed = processed.replace(/<br\s*\/?>/gi, '\n');
@@ -456,6 +477,7 @@ class StreamlinedTextInterface {
     // Clear code-only mode when starting new AI response
     this.isCodeOnlyMode = false;
     this.originalContent = null;
+    this.inCodeFence = false; // A new response starts outside a code block
 
     const currentDoc = this.getContent();
     const lines = currentDoc.split('\n');

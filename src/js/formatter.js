@@ -1,6 +1,6 @@
 class InterviewCodeFormatter {
   constructor() {
-    // Code block patterns (strict). The prompts ask for Go; Python blocks are still accepted
+    // Code block patterns (strict). The prompts ask for Go. The formatter also accepts Python
     this.codeBlockRegex = /```(go|golang|python|py)\n([\s\S]*?)```/g;
     this.languageAliases = { golang: 'go', py: 'python' };
 

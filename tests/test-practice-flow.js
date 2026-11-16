@@ -4,7 +4,7 @@
  * Verifies the guided-practice flow without calling any AI provider:
  * 1. Practice prompts exist for every interview type and reference the shortcut phrases
  * 2. ask({ flow: 'practice' }) runs one non-thinking DeepSeek phase in its own session
- * 3. NEXT HINT and REVEAL SOLUTION get the solution token cap; a new problem keeps the tight cap
+ * 3. NEXT HINT and REVEAL SOLUTION get the solution token cap; a new problem keeps the tighter cap
  * 4. Practice sessions show up in getSession() for the history viewer
  * 5. Provider failures are returned as an inline error, not thrown
  */
@@ -108,8 +108,11 @@ async function run() {
     for (const type of Object.values(INTERVIEW_TYPES)) {
       const prompt = MODEL_PROMPTS.getPracticePrompt(type);
       assert(prompt.includes('Hint 3 (last hint)'), `${type} prompt has no last hint`);
-      assert(!prompt.includes('Hint 4'), `${type} prompt has more than 3 hints`);
-      assert(prompt.includes('4th response'), `${type} prompt does not cap the turn count`);
+      assert(prompt.includes('There is no Hint 4'), `${type} prompt does not cap the ladder`);
+      assert(!/^Hint 4/m.test(prompt), `${type} prompt has a Hint 4 step`);
+      // Counting responses breaks when a review or a new problem comes between hints
+      assert(!/\d(st|nd|rd|th) response/.test(prompt), `${type} prompt counts responses`);
+      assert(prompt.includes('a review is not a hint'), `${type} prompt counts reviews as hints`);
     }
   });
 
@@ -121,13 +124,13 @@ async function run() {
     }
   });
 
-  await test('a new problem (Hint 1) keeps the tight token cap', async () => {
+  await test('a new problem (Hint 1) keeps the tighter token cap', async () => {
     const manager = createManager();
     await manager.ask('Two Sum: find indices adding to target', { flow: 'practice' });
 
     const { phaseConfig, options } = manager.calls[0];
     const maxTokens = { ...phaseConfig.parameters, ...options.parameters }.max_tokens;
-    assert(maxTokens === 1024, `Hint 1 max_tokens was ${maxTokens}`);
+    assert(maxTokens === 2048, `Hint 1 max_tokens was ${maxTokens}`);
   });
 
   await test('NEXT HINT gets the solution cap (the 4th response is the solution)', async () => {

@@ -45,7 +45,7 @@ const FLOW_CONFIGS = {
       promptLogMessage: 'Added cloud ANSWER prompt for fast solution',
       parameters: {
         temperature: 0.3,
-        max_tokens: 2048,
+        max_tokens: 4096, // A complete Go LLD solution with a main() demo can pass 2048
       },
       includeReasoning: undefined,
     },
@@ -202,7 +202,9 @@ const FLOW_CONFIGS = {
       promptLogMessage: 'Added PRACTICE prompt for guided hints',
       parameters: {
         temperature: 0.3,
-        max_tokens: 1024, // Hint 1 and code reviews: a tight cap keeps them short
+        // Hint 1 and code reviews. The cap keeps them short, but a Go LLD skeleton (structs,
+        // interfaces and method stubs) can pass 1024 tokens
+        max_tokens: 2048,
       },
       includeReasoning: undefined,
     },
