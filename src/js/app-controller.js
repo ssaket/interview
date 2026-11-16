@@ -5,6 +5,7 @@ const ShortcutManager = require('./shortcut-manager');
 const KeyHoldManager = require('./key-hold-manager');
 const ConversationWebSocketServer = require('./conversation-websocket-server');
 const AIResponseLogger = require('./ai-response-logger');
+const { pickSourceForDisplay, computeCropRegion } = require('./screen-capture');
 
 class AppController {
   constructor() {
@@ -91,7 +92,12 @@ class AppController {
   getOcrWorker() {
     if (!this.ocrWorkerPromise) {
       const Tesseract = require('tesseract.js');
-      this.ocrWorkerPromise = Tesseract.createWorker('eng').catch((error) => {
+      this.ocrWorkerPromise = Tesseract.createWorker('eng', Tesseract.OEM.LSTM_ONLY, {
+        // Without an errorHandler, tesseract.js throws a failed job's error from its message
+        // listener. That throw is an uncaughtException, and the handler for it quits the app.
+        // The job promise still rejects, so perform-ocr gets the error and reports it
+        errorHandler: (error) => console.error('[OCR] Tesseract job failed:', error),
+      }).catch((error) => {
         this.ocrWorkerPromise = null; // Let the next screenshot retry
         throw error;
       });
@@ -132,55 +138,10 @@ class AppController {
 
     /* ------------ Screen Capture (Region Only) ------------ */
     ipcMain.handle('capture-screen-region', async () => {
-      const { mainWindow } = this.windowManager;
-      mainWindow.webContents.send('hide-ui');
-      await new Promise((r) => setTimeout(r, 100));
-
-      const [windowX, windowY] = mainWindow.getPosition();
-      const [windowWidth, windowHeight] = mainWindow.getSize();
-
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const { bounds, scaleFactor } = primaryDisplay;
-
-      // Use physical pixels for high-DPI displays to ensure full resolution capture
-      const physicalWidth = Math.round(bounds.width * scaleFactor);
-      const physicalHeight = Math.round(bounds.height * scaleFactor);
-
-      console.log(
-        `[Screenshot] Display: ${bounds.width}x${bounds.height} logical, ${physicalWidth}x${physicalHeight} physical (${scaleFactor}x scale)`
-      );
-
-      const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: { width: physicalWidth, height: physicalHeight },
-      });
-
-      mainWindow.webContents.send('show-ui');
-
-      // Scale region coordinates to match physical pixels
-      const region = {
-        x: Math.round(windowX * scaleFactor),
-        y: Math.round(windowY * scaleFactor),
-        width: Math.round(windowWidth * scaleFactor),
-        height: Math.round(windowHeight * scaleFactor),
-      };
-
-      try {
-        // Crop the captured NativeImage directly - round-tripping the full screen through a
-        // PNG data URL first cost ~300ms per screenshot on a Retina display
-        const croppedDataUrl = sources[0].thumbnail.crop(region).toDataURL();
-
-        // Store screenshot data for potential vision processing
-        this.lastScreenshotDataUrl = croppedDataUrl;
-        console.log(`[Screenshot] Cropped region: ${region.width}x${region.height} pixels, stored for vision processing`);
-
-        return croppedDataUrl;
-      } catch (err) {
-        console.error('Error cropping image:', err);
-        const fallbackDataUrl = sources[0].thumbnail.toDataURL();
-        this.lastScreenshotDataUrl = fallbackDataUrl;
-        return fallbackDataUrl;
-      }
+      const dataUrl = await this.captureScreenRegion();
+      // Store screenshot data for potential vision processing
+      this.lastScreenshotDataUrl = dataUrl;
+      return dataUrl;
     });
 
     /* ------------ OCR (Tesseract) ------------ */
@@ -672,38 +633,47 @@ class AppController {
     mainWindow.webContents.send('hide-ui');
     await new Promise((r) => setTimeout(r, 100));
 
-    const [windowX, windowY] = mainWindow.getPosition();
-    const [windowWidth, windowHeight] = mainWindow.getSize();
-
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { bounds, scaleFactor } = primaryDisplay;
+    // Capture the display that holds the window. It is not always the primary display
+    const windowBounds = mainWindow.getBounds();
+    const display = screen.getDisplayMatching(windowBounds);
+    const { bounds, scaleFactor } = display;
 
     // Use physical pixels for high-DPI displays to ensure full resolution capture
     const physicalWidth = Math.round(bounds.width * scaleFactor);
     const physicalHeight = Math.round(bounds.height * scaleFactor);
 
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: physicalWidth, height: physicalHeight },
-    });
-
-    mainWindow.webContents.send('show-ui');
-
-    // Scale region coordinates to match physical pixels
-    const region = {
-      x: Math.round(windowX * scaleFactor),
-      y: Math.round(windowY * scaleFactor),
-      width: Math.round(windowWidth * scaleFactor),
-      height: Math.round(windowHeight * scaleFactor),
-    };
-
+    let sources;
     try {
-      // Crop directly - see the capture-screen-region handler
-      return sources[0].thumbnail.crop(region).toDataURL();
-    } catch (err) {
-      console.error('Error cropping image:', err);
-      return sources[0].thumbnail.toDataURL();
+      sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: physicalWidth, height: physicalHeight },
+      });
+    } finally {
+      mainWindow.webContents.send('show-ui');
     }
+
+    const source = pickSourceForDisplay(sources, display);
+    if (!source || source.thumbnail.isEmpty()) {
+      throw new Error('Screen capture returned no image - check the Screen Recording permission');
+    }
+
+    const image = source.thumbnail;
+    const imageSize = image.getSize();
+    console.log(
+      `[Screenshot] Display ${display.id}: ${bounds.width}x${bounds.height} logical at ` +
+        `(${bounds.x}, ${bounds.y}), ${scaleFactor}x scale; captured ${imageSize.width}x${imageSize.height}`
+    );
+
+    // Crop the captured NativeImage directly - round-tripping the full screen through a
+    // PNG data URL first cost ~300ms per screenshot on a Retina display
+    const region = computeCropRegion(windowBounds, bounds, imageSize);
+    if (!region) {
+      console.warn('[Screenshot] Window is not on the captured display - using the full screen');
+      return image.toDataURL();
+    }
+
+    console.log(`[Screenshot] Cropped region: ${region.width}x${region.height} pixels`);
+    return image.crop(region).toDataURL();
   }
 
   /**

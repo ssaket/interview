@@ -14,6 +14,7 @@ This is an Electron-based DeepSeek Overlay Helper application that captures scre
 - `npm run test:markdown` - Test markdown section processing
 - `npm run test:session` - Test session management
 - `npm run test:practice` - Test PRACTICE flow routing, prompts, and token caps (offline)
+- `npm run test:capture` - Test the screenshot crop math for multi-display and high-DPI setups (offline)
 
 ### AI Response Analysis
 - `npm run analyze:responses` - Analyze AI response logs from last 7 days (default)
