@@ -6,13 +6,24 @@
 /**
  * Find the desktopCapturer source for a display.
  * desktopCapturer does not promise an order, so sources[0] is not always the display that
- * holds the window. Some platforms leave display_id empty; then use the first source.
- * @param {Array<{display_id: string}>} sources - desktopCapturer.getSources() result
- * @param {{id: number}} display - Electron Display
+ * holds the window. Match by display id first. Some platforms leave display_id empty, and the
+ * id format can differ from Display.id. Then match by aspect ratio: each thumbnail keeps the
+ * aspect ratio of its screen. Use sources[0] only when nothing matches.
+ * @param {Array<{display_id: string, thumbnail: {getSize: Function}}>} sources -
+ *   desktopCapturer.getSources() result
+ * @param {{id: number, bounds: {width: number, height: number}}} display - Electron Display
  * @returns {Object|undefined} The matching source
  */
 function pickSourceForDisplay(sources, display) {
-  return sources.find((source) => source.display_id === String(display.id)) || sources[0];
+  const byId = sources.find((source) => source.display_id === String(display.id));
+  if (byId || sources.length <= 1) return byId || sources[0];
+
+  const ratio = display.bounds.width / display.bounds.height;
+  const byAspect = sources.find((source) => {
+    const { width, height } = source.thumbnail.getSize();
+    return height > 0 && Math.abs(width / height - ratio) < 0.01;
+  });
+  return byAspect || sources[0];
 }
 
 /**

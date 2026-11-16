@@ -65,7 +65,7 @@ test('scale comes from the real thumbnail size, not the requested size', () => {
   });
 });
 
-test('window partly off the display is clamped to the image', () => {
+test('crop clamps a window that goes past the right and bottom edges', () => {
   const window = { x: 1000, y: 2200, width: 700, height: 680 };
   assertRegion(computeCropRegion(window, portrait, portraitImage), {
     x: 2000,
@@ -75,19 +75,49 @@ test('window partly off the display is clamped to the image', () => {
   });
 });
 
+test('crop clamps a window that starts left of and above the display', () => {
+  const window = { x: -100, y: -50, width: 700, height: 680 };
+  assertRegion(computeCropRegion(window, portrait, portraitImage), {
+    x: 0,
+    y: 0,
+    width: 1200,
+    height: 1260,
+  });
+});
+
 test('window fully off the display gives null (caller uses the full screen)', () => {
   const window = { x: 2000, y: 100, width: 700, height: 680 };
   assertRegion(computeCropRegion(window, portrait, portraitImage), null);
 });
 
-test('source is matched by display id, not taken from sources[0]', () => {
-  const sources = [{ display_id: '1' }, { display_id: '2' }];
-  assertRegion(pickSourceForDisplay(sources, { id: 2 }), { display_id: '2' });
+/** Fake desktopCapturer source with a thumbnail of the given size */
+function fakeSource(name, displayId, width, height) {
+  return { name, display_id: displayId, thumbnail: { getSize: () => ({ width, height }) } };
+}
+
+const portraitDisplay = { id: 2, bounds: portrait };
+
+test('picker matches the source by display id, not by position in the list', () => {
+  const sources = [fakeSource('laptop', '1', 2880, 1870), fakeSource('portrait', '2', 2880, 5120)];
+  assertRegion(pickSourceForDisplay(sources, portraitDisplay).name, 'portrait');
 });
 
-test('source falls back to sources[0] when display ids are empty', () => {
-  const sources = [{ display_id: '' }, { display_id: '' }];
-  assertRegion(pickSourceForDisplay(sources, { id: 2 }), { display_id: '' });
+test('picker matches by aspect ratio when the ids are empty', () => {
+  const sources = [fakeSource('laptop', '', 2880, 1870), fakeSource('portrait', '', 2880, 5120)];
+  assertRegion(pickSourceForDisplay(sources, portraitDisplay).name, 'portrait');
+});
+
+test('picker matches by aspect ratio when the ids have a different format', () => {
+  const sources = [
+    fakeSource('laptop', '69733632', 2880, 1870),
+    fakeSource('portrait', '69733633', 2880, 5120),
+  ];
+  assertRegion(pickSourceForDisplay(sources, portraitDisplay).name, 'portrait');
+});
+
+test('picker uses sources[0] when no id or aspect ratio matches', () => {
+  const sources = [fakeSource('first', '', 1000, 1000), fakeSource('second', '', 1600, 900)];
+  assertRegion(pickSourceForDisplay(sources, portraitDisplay).name, 'first');
 });
 
 console.log('');

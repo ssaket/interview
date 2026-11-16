@@ -92,17 +92,47 @@ class AppController {
   getOcrWorker() {
     if (!this.ocrWorkerPromise) {
       const Tesseract = require('tesseract.js');
-      this.ocrWorkerPromise = Tesseract.createWorker('eng', Tesseract.OEM.LSTM_ONLY, {
+
+      // tesseract.js rejects createWorker() only when its 'load' step fails. When the language
+      // load or the API init fails, that promise never settles and only the errorHandler gets
+      // the error. Thus the errorHandler also rejects initFailed, so OCR fails and does not hang
+      let rejectInit;
+      const initFailed = new Promise((_resolve, reject) => {
+        rejectInit = reject;
+      });
+      const worker = Tesseract.createWorker('eng', Tesseract.OEM.LSTM_ONLY, {
         // Without an errorHandler, tesseract.js throws a failed job's error from its message
-        // listener. That throw is an uncaughtException, and the handler for it quits the app.
-        // The job promise still rejects, so perform-ocr gets the error and reports it
-        errorHandler: (error) => console.error('[OCR] Tesseract job failed:', error),
-      }).catch((error) => {
-        this.ocrWorkerPromise = null; // Let the next screenshot retry
+        // listener, which makes an uncaughtException. A failed recognize job also rejects its
+        // own promise, so perform-ocr gets the error
+        errorHandler: (error) => {
+          console.error('[OCR] Tesseract job failed:', error);
+          rejectInit(new Error(`OCR engine error: ${error}`));
+        },
+      });
+
+      const workerPromise = Promise.race([worker, initFailed]).catch((error) => {
+        if (this.ocrWorkerPromise === workerPromise) {
+          this.ocrWorkerPromise = null; // Let the next screenshot retry
+        }
         throw error;
       });
+      this.ocrWorkerPromise = workerPromise;
     }
     return this.ocrWorkerPromise;
+  }
+
+  /**
+   * Drop the shared Tesseract worker and terminate it. The next OCR creates a new worker.
+   * A failed job can leave the worker broken (for example after a WASM abort), so call this
+   * after an OCR error. Do not call it while a job runs: terminate() does not reject the
+   * jobs in progress, so they never finish
+   */
+  resetOcrWorker() {
+    const workerPromise = this.ocrWorkerPromise;
+    this.ocrWorkerPromise = null;
+    if (workerPromise) {
+      workerPromise.then((worker) => worker.terminate()).catch(() => {});
+    }
   }
 
   /* ---------- Syntax Toggle Management ---------- */
@@ -213,7 +243,9 @@ class AppController {
           return '';
         }
         console.error('[OCR] Text extraction failed:', error);
-        throw error;
+        this.resetOcrWorker();
+        // tesseract.js rejects a failed job with a string, not an Error
+        throw error instanceof Error ? error : new Error(String(error));
       }
     });
 
@@ -654,26 +686,39 @@ class AppController {
 
     const source = pickSourceForDisplay(sources, display);
     if (!source || source.thumbnail.isEmpty()) {
-      throw new Error('Screen capture returned no image - check the Screen Recording permission');
+      const hint =
+        process.platform === 'darwin'
+          ? ' - check the Screen Recording permission in System Settings > Privacy & Security'
+          : '';
+      throw new Error(`Screen capture returned no image${hint}`);
+    }
+    if (sources.length > 1 && source.display_id !== String(display.id)) {
+      console.warn(
+        `[Screenshot] No capture source has display id ${display.id}; ` +
+          `the app uses source "${source.name}", which can be a different display`
+      );
     }
 
     const image = source.thumbnail;
     const imageSize = image.getSize();
     console.log(
       `[Screenshot] Display ${display.id}: ${bounds.width}x${bounds.height} logical at ` +
-        `(${bounds.x}, ${bounds.y}), ${scaleFactor}x scale; captured ${imageSize.width}x${imageSize.height}`
+        `(${bounds.x}, ${bounds.y}), ${scaleFactor}x scale; ` +
+        `captured ${imageSize.width}x${imageSize.height}`
     );
 
-    // Crop the captured NativeImage directly - round-tripping the full screen through a
-    // PNG data URL first cost ~300ms per screenshot on a Retina display
+    // Crop the captured NativeImage directly. A round trip of the full screen through a PNG
+    // data URL cost ~300ms per screenshot on a Retina display
     const region = computeCropRegion(windowBounds, bounds, imageSize);
-    if (!region) {
-      console.warn('[Screenshot] Window is not on the captured display - using the full screen');
+    const cropped = region ? image.crop(region) : null;
+    if (!cropped || cropped.isEmpty()) {
+      // crop() returns an empty image and does not throw, so check the result
+      console.warn('[Screenshot] The crop of the window area is empty - the app uses the full screen');
       return image.toDataURL();
     }
 
     console.log(`[Screenshot] Cropped region: ${region.width}x${region.height} pixels`);
-    return image.crop(region).toDataURL();
+    return cropped.toDataURL();
   }
 
   /**
@@ -686,6 +731,7 @@ class AppController {
 
     let combinedText = '';
     const ocrResults = [];
+    let ocrFailed = false;
 
     for (let i = 0; i < this.screenshotStack.length; i++) {
       // Check if stack processing was cancelled
@@ -736,9 +782,16 @@ class AppController {
           return '';
         }
         console.error(`[Stack] OCR failed for screenshot ${i + 1}:`, error);
-        combinedText += `--- Screenshot ${i + 1} (${screenshot.type}) - OCR FAILED ---\nError: ${error.message}\n\n`;
+        ocrFailed = true;
+        // tesseract.js rejects a failed job with a string, not an Error
+        const message = error instanceof Error ? error.message : String(error);
+        combinedText +=
+          `--- Screenshot ${i + 1} (${screenshot.type}) - OCR FAILED ---\n` + `Error: ${message}\n\n`;
       }
     }
+
+    // Replace the worker after the loop, not in it: the loop still uses this worker
+    if (ocrFailed) this.resetOcrWorker();
 
     // Apply AI enhancement to the complete merged text (flows that use a local model only)
     if (
@@ -874,10 +927,21 @@ class AppController {
       this.cleanup();
       process.exit(0);
     });
+    // Do not quit on an uncaught exception. One failed part (for example a throw from a
+    // library event listener, such as the tesseract.js init failure) must not close the
+    // overlay during an interview. Log the error, tell the user, and continue, as the
+    // unhandledRejection handler does. Master reset recovers from a bad state
     process.on('uncaughtException', (error) => {
-      console.error('Uncaught exception, cleaning up:', error);
-      this.cleanup();
-      process.exit(1);
+      console.error('[AppController] ⚠️ Uncaught exception:', error);
+      try {
+        this.windowManager.send(
+          'show-status-message',
+          '⚠️ Error occurred - Press Cmd+Shift+R to reset',
+          5000
+        );
+      } catch (e) {
+        // The window is not ready yet - ignore
+      }
     });
 
     // Handle unhandled promise rejections (prevent app crashes)

@@ -329,6 +329,10 @@ Coaching mode for solo practice: the model guides instead of answering.
 - All AI operations should handle provider failures gracefully
 - Use warmup checks before making requests
 - Implement fallback providers when possible
+- The main process does not quit on an uncaught exception or an unhandled rejection: it logs the
+  error and shows a status message (see `AppController.start()`). Master reset recovers
+- OCR: tesseract.js rejects a failed job with a string, not an Error. After a failed job,
+  `resetOcrWorker()` drops the shared worker so the next OCR gets a new one
 
 ### Code Style
 - Prettier configuration in `.prettierrc`
