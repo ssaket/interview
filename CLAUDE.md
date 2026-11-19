@@ -14,6 +14,9 @@ This is an Electron-based DeepSeek Overlay Helper application that captures scre
 - `npm run test:markdown` - Test markdown section processing
 - `npm run test:session` - Test session management
 - `npm run test:practice` - Test PRACTICE flow routing, prompts, and token caps (offline)
+- `npm run test:interview` - Test INTERVIEW flow routing, prompts and model selection (offline)
+- `npm run test:openai` - Test the OpenAI provider (official `openai` SDK) against a local mock
+  server (offline)
 - `npm run test:capture` - Test the screenshot crop math for multi-display and high-DPI setups (offline)
 - `npm run test:formatter` - Test Go and Python code extraction for the code-only view (offline)
 
@@ -45,9 +48,12 @@ The AI system supports four distinct processing flows for different use cases:
   - **HYBRID** - Two-phase parallel: Ollama brute-force → `deepseek-v4-pro` thinking-mode optimization
   - **STEPS** - Three-phase sequential: Problem clarification → Brute-force approach → Optimized solution (human-like problem solving)
   - **PRACTICE** - Single-phase coaching: 3 hints with TODO skeletons, then the full solution; code review
+  - **INTERVIEW** - Single-phase interviewer co-pilot on OpenAI: you are the interviewer, and each
+    screenshot of the candidate's work gives follow-up questions with the reason to ask each one
 - **Supported Providers**:
   - Ollama - Local AI models with hybrid model support (`OLLAMA_HYBRID_MODEL`)
-  - OpenAI - GPT models via API
+  - OpenAI - GPT models via the official `openai` SDK (`handleOpenAI` in `simple-ai.js`).
+    The INTERVIEW flow uses it
   - HuggingFace - Inference API
   - DeepSeek V4 - Single model with per-request thinking/non-thinking mode
 
@@ -91,8 +97,8 @@ The code-only view (`formatter.js`) extracts ` ```go ` blocks and also accepts `
 - **LLMFriendlyOCRCleaner** (`src/js/llm-friendly-ocr-cleaner.js`) - Simple text cleaning to remove obvious UI junk while preserving useful content
   - The optional AI pass (restructures text with a local Ollama model) only runs for flows that
     use a local model in some phase (LOCAL, HYBRID) - see `SimpleAIManager.flowUsesLocalModel()`.
-    CLOUD, STEPS and PRACTICE skip it: DeepSeek handles OCR noise, and the pass blocked the question
-    until the local model finished
+    CLOUD, STEPS, PRACTICE and INTERVIEW skip it: the cloud model handles OCR noise, and the pass
+    blocked the question until the local model finished
 - Region selection capability to reduce OCR noise
 
 ### AI Response Logging & Analysis
@@ -140,9 +146,12 @@ OLLAMA_HYBRID_MODEL=qwen3:4b-instruct-2507-fp16  # Global fallback for all inter
 # OLLAMA_HYBRID_MODEL_SYSTEM_DESIGN=magistral                   # For System Design interviews
 # OLLAMA_HYBRID_MODEL_LLD=magistral                             # For Low-Level Design interviews
 
-# OpenAI Configuration
+# OpenAI Configuration (official openai SDK) - Required for the INTERVIEW AI flow
 OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-3.5-turbo
+OPENAI_MODEL=gpt-6.1-terra                  # Default OpenAI model (gpt-3.5 and gpt-4 are retired)
+# OPENAI_INTERVIEW_MODEL=gpt-6.1-terra      # INTERVIEW flow model (falls back to OPENAI_MODEL)
+# OPENAI_BASE_URL=https://api.openai.com/v1 # Change for an office proxy or gateway
+# OPENAI_REASONING_EFFORT=low               # Reasoning models only (o-series, gpt-5+): none/low/medium/high
 
 # HuggingFace Configuration
 HF_TOKEN=your_huggingface_token
@@ -324,6 +333,34 @@ Coaching mode for solo practice: the model guides instead of answering.
   entries with `npm run analyze:responses` if hints start leaking full solutions
 - **Tests**: `npm run test:practice` (offline, stubs the provider call)
 
+#### INTERVIEW Flow (Single-Phase, Interviewer Co-Pilot)
+You are the interviewer. The model gives you follow-up questions to ask the candidate about the
+work they write. It does not solve the problem for the candidate.
+
+- **Model**: OpenAI through the official `openai` SDK, not DeepSeek. The model is
+  `OPENAI_INTERVIEW_MODEL`, then `OPENAI_MODEL`, then `gpt-6.1-terra` (`AIConfig.getFlowModel()`, case
+  `'interview'`). One session (`openai-interview-followups`) for each problem
+- **Prompts**: `MODEL_PROMPTS.interview[interviewType]` via `getInterviewPrompt()` in `model-prompts.js`
+- **Usage**:
+  - Screenshot the candidate's code, notes or design → `### Follow-ups`: a status line, the bugs or
+    gaps to watch for (for you only), then 3-5 questions. Each question has **Ask** (words to say),
+    **Why** (what it checks), **Strong answer** and an optional **Red flag**
+  - Screenshot only the problem statement → `### Problem Brief`: the expected approach, common
+    mistakes and the clarifying questions a strong candidate asks
+  - Screenshot the updated work → new questions about what changed, with no repeats
+  - `Cmd/Ctrl+Shift+H` → 3 more, deeper questions on the same work
+- **Shortcut phrase**: `Cmd/Ctrl+Shift+H` sends `INTERVIEW_REQUESTS.more` ("MORE FOLLOW-UPS"). The
+  renderer selects the phrase for the active flow (`FLOW_REQUESTS` in `text-interface.js`); the
+  prompts key off the exact string, so change both together
+- **Request body** (`buildOpenAIRequestBody()` in `simple-ai.js`): the token cap goes out as
+  `max_completion_tokens` (4096 for this flow). Reasoning models (o-series, `gpt-5` and later, not
+  `-chat`) get no `temperature`, `top_p` or penalties, and get `reasoning_effort`
+  (`OPENAI_REASONING_EFFORT`, default `low` for speed)
+- **Errors**: a missing `OPENAI_API_KEY`, an unknown model (404) or an empty answer at the token cap
+  shows as an inline `Interview Flow Error`. A cancel (`Cmd/Ctrl+R`) stops the stream
+- **Tests**: `npm run test:interview` (offline, stubs the provider call) and `npm run test:openai`
+  (the real SDK against a local mock server)
+
 ### Session Management
 - Sessions are maintained per provider-model combination
 - History limited to last 20 messages to prevent context overflow
@@ -370,8 +407,8 @@ Coaching mode for solo practice: the model guides instead of answering.
 **Grouped by function with memorable mnemonics:**
 - `Cmd/Ctrl+Shift+0` - Toggle small window / fullscreen
 - `Cmd/Ctrl+Shift+R` - **R**eset AI session
-- `Opt+Cmd` / `Alt+Ctrl` - AI flow toggle (LOCAL→CLOUD→HYBRID→STEPS→PRACTICE)
-- `Cmd/Ctrl+Shift+H` - Next **H**int (PRACTICE flow)
+- `Opt+Cmd` / `Alt+Ctrl` - AI flow toggle (LOCAL→CLOUD→HYBRID→STEPS→PRACTICE→INTERVIEW)
+- `Cmd/Ctrl+Shift+H` - Next **H**int (PRACTICE flow) / more follow-up questions (INTERVIEW flow)
 - `Cmd/Ctrl+Shift+S` - Reveal full **S**olution (PRACTICE flow)
 - `Cmd/Ctrl+Shift+O` - **O**CR filter toggle (shows status message)
 - `Cmd/Ctrl+Shift+D` - **D**ark/light theme toggle

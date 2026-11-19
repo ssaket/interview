@@ -3,6 +3,13 @@ const http = require('http');
 const https = require('https');
 const { StringDecoder } = require('string_decoder');
 const aiConfig = require('./ai-config');
+const {
+  OpenAI,
+  APIError,
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIUserAbortError,
+} = require('openai');
 
 /**
  * Simplified AI Module
@@ -239,153 +246,179 @@ async function handleOllama(config, messages, parameters, stream = false, onChun
 }
 
 /**
- * Handle OpenAI requests
+ * OpenAI clients from the official `openai` SDK, one per API key, base URL and timeout
+ * A client keeps its connection pool, so requests reuse it
+ */
+const openAIClients = new Map();
+
+function getOpenAIClient(config) {
+  const key = `${config.baseUrl}|${config.timeout}|${config.apiKey}`;
+  if (!openAIClients.has(key)) {
+    openAIClients.set(
+      key,
+      new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl, timeout: config.timeout })
+    );
+  }
+  return openAIClients.get(key);
+}
+
+/**
+ * Whether an OpenAI model is a reasoning model (o-series, gpt-5 and later)
+ * Reasoning models reject temperature, top_p and the penalties, and accept reasoning_effort.
+ * The "-chat" variants (for example gpt-5-chat-latest) are not reasoning models
+ * @param {string} model - Model name
+ * @returns {boolean} True for a reasoning model
+ */
+function isOpenAIReasoningModel(model = '') {
+  const name = model.toLowerCase();
+  return /^(o\d|gpt-[5-9])/.test(name) && !name.includes('-chat');
+}
+
+/**
+ * Handle OpenAI requests with the official `openai` SDK
  */
 async function handleOpenAI(config, messages, parameters, stream = false, onChunk = null, signal = null) {
   if (!config.apiKey) {
-    throw new Error('OpenAI API key is required');
+    throw new Error('OpenAI API key is required. Set OPENAI_API_KEY in .env');
   }
 
-  const requestBody = buildOpenAIRequestBody(config, messages, parameters, stream);
-  const headers = buildOpenAIHeaders(config.apiKey);
+  const client = getOpenAIClient(config);
+  const streaming = Boolean(stream && onChunk);
+  const requestBody = buildOpenAIRequestBody(config, messages, parameters, streaming);
+  const requestOptions = signal ? { signal } : undefined;
 
   try {
-    if (stream && onChunk) {
-      return await handleOpenAIStreaming(config, requestBody, headers, onChunk, signal);
-    } else {
-      return await handleOpenAINonStreaming(config, requestBody, headers, signal);
+    if (streaming) {
+      return await handleOpenAIStreaming(client, config, requestBody, onChunk, requestOptions);
     }
+
+    const completion = await client.chat.completions.create(requestBody, requestOptions);
+    return {
+      ...completion,
+      provider: 'openai',
+      model: config.model,
+    };
   } catch (error) {
-    throw formatError('openai', error);
+    throw formatOpenAIError(error, config.model);
   }
 }
 
 /**
  * Build OpenAI request body
+ * max_tokens is deprecated on Chat Completions and reasoning models reject it, so the cap
+ * goes out as max_completion_tokens. Callers can still pass max_tokens, as for other providers
  * @private
  */
 function buildOpenAIRequestBody(config, messages, parameters, stream) {
-  return {
+  // images is an Ollama option; OpenAI rejects unknown fields
+  // eslint-disable-next-line no-unused-vars
+  const { max_tokens, max_completion_tokens, images, ...overrides } = parameters;
+
+  const body = {
     model: config.model,
     messages: messages,
-    temperature: parameters.temperature ?? config.parameters.temperature,
-    top_p: parameters.top_p ?? config.parameters.top_p,
-    max_tokens: parameters.max_tokens ?? config.parameters.max_tokens,
+    temperature: config.parameters.temperature,
+    top_p: config.parameters.top_p,
+    ...overrides,
+    max_completion_tokens: max_completion_tokens ?? max_tokens ?? config.parameters.max_tokens,
     stream: stream,
-    ...parameters,
   };
+
+  if (isOpenAIReasoningModel(config.model)) {
+    delete body.temperature;
+    delete body.top_p;
+    delete body.presence_penalty;
+    delete body.frequency_penalty;
+    if (config.reasoningEffort && body.reasoning_effort === undefined) {
+      body.reasoning_effort = config.reasoningEffort;
+    }
+  }
+
+  return body;
 }
 
 /**
- * Build OpenAI headers
+ * Handle OpenAI streaming response
  * @private
  */
-function buildOpenAIHeaders(apiKey) {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
-  };
-}
-
-/**
- * Handle OpenAI streaming response with connection pooling
- * @private
- */
-async function handleOpenAIStreaming(config, requestBody, headers, onChunk, signal = null) {
-  const response = await axios.post(`${config.baseUrl}/chat/completions`, requestBody, {
-    timeout: config.timeout,
-    headers,
-    responseType: 'stream',
-    httpAgent: getHttpAgent(config.baseUrl),
-    httpsAgent: getHttpAgent(config.baseUrl),
-    signal: signal,
-  });
+async function handleOpenAIStreaming(client, config, requestBody, onChunk, requestOptions) {
+  const stream = await client.chat.completions.create(requestBody, requestOptions);
 
   let fullContent = '';
+  let finishReason = null;
 
-  const lineBuffer = createLineBuffer();
+  for await (const chunk of stream) {
+    const choice = chunk.choices?.[0];
+    if (!choice) continue;
 
-  return new Promise((resolve, reject) => {
-    response.data.on('data', (chunk) => {
-      const lines = lineBuffer.push(chunk);
+    const content = choice.delta?.content;
+    if (content) {
+      fullContent += content;
+      onChunk(content);
+    }
+    if (choice.finish_reason) {
+      finishReason = choice.finish_reason;
+    }
+  }
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
+  // The SDK ends the stream without an error when the request is aborted
+  if (requestOptions?.signal?.aborted) {
+    throw new Error('openai request was canceled');
+  }
 
-          if (data === '[DONE]') {
-            resolve({
-              choices: [
-                {
-                  message: {
-                    role: 'assistant',
-                    content: fullContent,
-                  },
-                },
-              ],
-              provider: 'openai',
-              model: config.model,
-            });
-            return;
-          }
-
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.choices?.[0]?.delta?.content) {
-              const content = parsed.choices[0].delta.content;
-              fullContent += content;
-              if (onChunk) {
-                onChunk(content);
-              }
-            }
-          } catch (parseError) {
-            // Ignore parsing errors for partial chunks
-          }
-        }
-      }
-    });
-
-    response.data.on('error', (error) => {
-      reject(formatError('openai', error));
-    });
-
-    response.data.on('end', () => {
-      if (fullContent) {
-        resolve({
-          choices: [
-            {
-              message: {
-                role: 'assistant',
-                content: fullContent,
-              },
-            },
-          ],
-          provider: 'openai',
-          model: config.model,
-        });
-      }
-    });
-  });
-}
-
-/**
- * Handle OpenAI non-streaming response with connection pooling
- * @private
- */
-async function handleOpenAINonStreaming(config, requestBody, headers, signal = null) {
-  const response = await axios.post(`${config.baseUrl}/chat/completions`, requestBody, {
-    timeout: config.timeout,
-    headers,
-    httpAgent: getHttpAgent(config.baseUrl),
-    httpsAgent: getHttpAgent(config.baseUrl),
-    signal: signal,
-  });
+  // A reasoning model can use all of the token cap on reasoning and write no answer
+  if (!fullContent && finishReason === 'length') {
+    throw new Error(
+      `openai returned no answer before the token limit (${requestBody.max_completion_tokens}). ` +
+        'Lower OPENAI_REASONING_EFFORT or use a model that is not a reasoning model.'
+    );
+  }
 
   return {
-    ...response.data,
+    choices: [
+      {
+        message: {
+          role: 'assistant',
+          content: fullContent,
+        },
+        finish_reason: finishReason,
+      },
+    ],
     provider: 'openai',
     model: config.model,
   };
+}
+
+/**
+ * Convert an `openai` SDK error to the messages the other providers use
+ * @private
+ */
+function formatOpenAIError(error, model) {
+  // Subclasses first: APIConnectionTimeoutError extends APIConnectionError extends APIError
+  if (error instanceof APIUserAbortError) {
+    return new Error('openai request was canceled');
+  }
+  if (error instanceof APIConnectionTimeoutError) {
+    return new Error('openai API request timeout. Please try again.');
+  }
+  if (error instanceof APIConnectionError) {
+    return new Error(
+      'Unable to connect to openai API. Please check your connection and OPENAI_BASE_URL.'
+    );
+  }
+  if (error instanceof APIError && error.status) {
+    if (error.status === 404) {
+      return new Error(
+        `openai model "${model}" not found or not accessible. Check OPENAI_INTERVIEW_MODEL and OPENAI_MODEL.`
+      );
+    }
+    // formatError reads the axios error shape. error.error is the "error" object of the body
+    return formatError('openai', {
+      message: error.message,
+      response: { status: error.status, data: { error: error.error } },
+    });
+  }
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 /**

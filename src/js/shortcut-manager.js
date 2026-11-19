@@ -1,6 +1,5 @@
 const { globalShortcut, screen, app } = require('electron');
 const windowControlsConfig = require('./window-controls-config');
-const { PRACTICE_REQUESTS } = require('./model-prompts');
 
 class ShortcutManager {
   /**
@@ -281,9 +280,9 @@ class ShortcutManager {
       this.toggleSyntaxCodeOnly();
     });
 
-    // Practice Mode - next hint / reveal solution (only acts in PRACTICE flow)
-    globalShortcut.register(`${secondary}+H`, () => this.sendPracticeRequest('hint'));
-    globalShortcut.register(`${secondary}+S`, () => this.sendPracticeRequest('reveal'));
+    // Next hint (PRACTICE) or more follow-up questions (INTERVIEW); reveal solution (PRACTICE)
+    globalShortcut.register(`${secondary}+H`, () => this.sendFlowRequest('hint'));
+    globalShortcut.register(`${secondary}+S`, () => this.sendFlowRequest('reveal'));
   }
 
   /** Unregister all shortcuts except toggle */
@@ -341,7 +340,7 @@ class ShortcutManager {
     globalShortcut.unregister(`${secondary}+W`);
     globalShortcut.unregister(`${secondary}+L`);
 
-    // Practice mode
+    // Practice and interview flows
     globalShortcut.unregister(`${secondary}+H`);
     globalShortcut.unregister(`${secondary}+S`);
   }
@@ -376,6 +375,7 @@ class ShortcutManager {
     console.log(`  ${mod}+Shift+/           - Toggle small window / fullscreen`);
     console.log(`  ${mod}+Shift+R           - Master Reset (recover from any error)`);
     console.log(`  Opt+${mod}               - Toggle AI flow (Alt+Ctrl on Windows/Linux)`);
+    console.log('                           LOCAL → CLOUD → HYBRID → STEPS → PRACTICE → INTERVIEW');
     console.log(`  ${mod}+Shift+O           - Toggle OCR filtering`);
     console.log(`  ${mod}+Shift+T           - Cycle interview type`);
     console.log(`  ${mod}+Shift+D           - Toggle theme`);
@@ -393,6 +393,9 @@ class ShortcutManager {
     console.log('\nPRACTICE FLOW:');
     console.log(`  ${mod}+Shift+H           - Next hint`);
     console.log(`  ${mod}+Shift+S           - Reveal full solution`);
+    console.log('\nINTERVIEW FLOW (you are the interviewer, OpenAI):');
+    console.log(`  ${mod}+0                 - Screenshot candidate's work → follow-up questions`);
+    console.log(`  ${mod}+Shift+H           - More follow-up questions on the same work`);
     console.log('=====================================\n');
   }
 
@@ -737,13 +740,14 @@ class ShortcutManager {
   }
 
   /**
-   * Ask the practice coach for the next hint or the full solution
-   * The renderer only forwards it to the AI when the PRACTICE flow is active and
-   * no OCR or AI request is in progress
+   * Send a flow follow-up: the next hint or the solution (PRACTICE), or more follow-up
+   * questions (INTERVIEW, 'hint' only). The flow lives in the renderer, so the renderer
+   * selects the phrase. It forwards the phrase to the AI only when no OCR or AI request
+   * is in progress
    * @param {'hint'|'reveal'} action
    */
-  sendPracticeRequest(action) {
-    this.windowManager.send('practice-request', PRACTICE_REQUESTS[action]);
+  sendFlowRequest(action) {
+    this.windowManager.send('flow-request', action);
   }
 
   /**

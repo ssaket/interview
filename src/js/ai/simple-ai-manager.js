@@ -12,7 +12,8 @@ const REASONING_ONLY_MARKER = '**🧠 Reasoning Process** (no final answer provi
  * Flow configurations for three-phase sequential execution
  * Phase 0 analyzes the problem, Phase 1 provides solution, Phase 2 verifies/optimizes
  * Defines provider, model, prompt, and parameters for each phase of Cloud and Hybrid flows
- * Practice is the exception: a single coaching phase that gives hints instead of answers
+ * Practice and Interview are the exceptions: each is a single phase. Practice gives hints
+ * instead of answers; Interview gives the interviewer follow-up questions (on OpenAI)
  */
 const FLOW_CONFIGS = {
   cloud: {
@@ -212,6 +213,29 @@ const FLOW_CONFIGS = {
     // solution, so a NEXT HINT can be the full solution
     solutionMaxTokens: 4096,
     errorPrefix: 'Practice Flow Error',
+  },
+  interview: {
+    name: 'interview',
+    displayName: 'Interview',
+    // Single phase on OpenAI: I am the interviewer, and each screenshot of the candidate's
+    // work gets follow-up questions. One session per problem, so questions do not repeat
+    phase: {
+      name: 'interview',
+      provider: 'openai',
+      flowType: 'interview', // Selects OPENAI_INTERVIEW_MODEL in AIConfig.getFlowModel()
+      sessionKey: 'openai-interview-followups',
+      header: '', // Prompt makes the model open with its own "### Follow-ups" heading
+      logMessage: 'Interview phase: follow-up questions for the candidate (OpenAI)...',
+      promptGetter: (interviewType) => MODEL_PROMPTS.getInterviewPrompt(interviewType),
+      promptLogMessage: 'Added INTERVIEW prompt for follow-up questions',
+      parameters: {
+        temperature: 0.4, // Dropped for reasoning models - see buildOpenAIRequestBody()
+        // A reasoning model counts its reasoning in this cap, so leave space for the answer
+        max_tokens: 4096,
+      },
+      includeReasoning: undefined,
+    },
+    errorPrefix: 'Interview Flow Error',
   },
 };
 
@@ -521,7 +545,7 @@ class SimpleAIManager {
     const flow = options.flow;
 
     // Handle special flows with streaming
-    if (flow && ['local', 'cloud', 'hybrid', 'steps', 'practice'].includes(flow)) {
+    if (flow && ['local', 'cloud', 'hybrid', 'steps', 'practice', 'interview'].includes(flow)) {
       return await this._executeFlow(question, options, flow);
     }
 
@@ -533,7 +557,7 @@ class SimpleAIManager {
   /**
    * Whether a flow sends the question to a local Ollama model in any phase
    * Derived from FLOW_CONFIGS so new or changed flows stay correct
-   * @param {string} flow - Flow name (local, cloud, hybrid, steps, practice)
+   * @param {string} flow - Flow name (local, cloud, hybrid, steps, practice, interview)
    * @returns {boolean} True for unknown flows, so callers keep their default behavior
    */
   flowUsesLocalModel(flow) {
@@ -563,6 +587,8 @@ class SimpleAIManager {
         return await this._executeStepsFlow(question, options);
       } else if (flow === 'practice') {
         return await this._executePracticeFlow(question, options);
+      } else if (flow === 'interview') {
+        return await this._executeSinglePhaseFlow(question, options, FLOW_CONFIGS.interview);
       } else {
         return await this._executeSingleProviderFlow(question, options, flow);
       }
@@ -979,12 +1005,27 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
     const { hint, reveal } = MODEL_PROMPTS.PRACTICE_REQUESTS;
     const mayBeSolution = [hint, reveal].includes(question.trim());
 
+    return await this._executeSinglePhaseFlow(
+      question,
+      options,
+      flowConfig,
+      mayBeSolution ? { max_tokens: flowConfig.solutionMaxTokens } : {}
+    );
+  }
+
+  /**
+   * Execute a flow that has one phase (PRACTICE, INTERVIEW)
+   * A provider failure is streamed and returned as an inline error, not thrown
+   * @param {Object} parameters - Request parameters that override the phase and caller values
+   * @private
+   */
+  async _executeSinglePhaseFlow(question, options, flowConfig, parameters = {}) {
     try {
       return await this._executePhase(question, flowConfig.phase, {
         ...options,
         parameters: {
           ...options.parameters,
-          ...(mayBeSolution ? { max_tokens: flowConfig.solutionMaxTokens } : {}),
+          ...parameters,
         },
       });
     } catch (error) {
@@ -1067,7 +1108,7 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
    * @returns {Object} Session object with history
    */
   getSession() {
-    // Check if there are any phase sessions (CLOUD, HYBRID, STEPS, PRACTICE flows)
+    // Check if there are any phase sessions (CLOUD, HYBRID, STEPS, PRACTICE, INTERVIEW flows)
     const phaseSessions = [];
 
     for (const [key, session] of this.sessions.entries()) {
@@ -1076,7 +1117,8 @@ Please ${flowConfig.name === 'hybrid' ? 'optimize' : 'verify'} this solution.`;
         key.includes('-cloud-') ||
         key.includes('-hybrid-') ||
         key.includes('-steps-') ||
-        key.includes('-practice-')
+        key.includes('-practice-') ||
+        key.includes('-interview-')
       ) {
         phaseSessions.push({ key, session });
       }

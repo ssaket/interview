@@ -41,16 +41,22 @@ class AIConfig {
             num_predict: -1,
           },
         },
+        // Requests go through the official `openai` SDK (see handleOpenAI in simple-ai.js).
+        // gpt-3.5 and gpt-4 are retired. The default is GPT-6.1 Terra, a reasoning model
         openai: {
           name: 'openai',
-          model: 'gpt-3.5-turbo',
+          model: 'gpt-6.1-terra',
           baseUrl: 'https://api.openai.com/v1',
           timeout: 120000,
+          // Sent only to reasoning models (o-series, gpt-5 and later). 'low' keeps the
+          // INTERVIEW flow fast enough to read during a live interview
+          reasoningEffort: 'low',
           models: {
-            chat: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo'],
-            primary: 'gpt-3.5-turbo',
-            reasoning: ['gpt-4', 'gpt-4-turbo'],
-            coding: ['gpt-4', 'gpt-3.5-turbo'],
+            chat: ['gpt-6.1-terra', 'gpt-5-mini', 'gpt-4.1'],
+            primary: 'gpt-6.1-terra',
+            reasoning: ['gpt-6.1-terra', 'gpt-5-mini'],
+            coding: ['gpt-6.1-terra', 'gpt-5-mini'],
+            interview: 'gpt-6.1-terra', // INTERVIEW flow - follow-up questions for the candidate
           },
           parameters: {
             temperature: 0.3,
@@ -161,6 +167,15 @@ class AIConfig {
           timeout: process.env.OPENAI_TIMEOUT
             ? parseInt(process.env.OPENAI_TIMEOUT)
             : defaults.providers.openai.timeout,
+          reasoningEffort:
+            process.env.OPENAI_REASONING_EFFORT || defaults.providers.openai.reasoningEffort,
+          models: {
+            ...defaults.providers.openai.models,
+            interview:
+              process.env.OPENAI_INTERVIEW_MODEL ||
+              process.env.OPENAI_MODEL ||
+              defaults.providers.openai.models.interview,
+          },
         },
         huggingface: {
           ...defaults.providers.huggingface,
@@ -369,7 +384,7 @@ class AIConfig {
   /**
    * Get model for specific flow type
    * @param {string} providerName - Provider name
-   * @param {string} flowType - Flow type ('local', 'cloud', 'hybrid')
+   * @param {string} flowType - Flow type ('local', 'cloud', 'hybrid', 'steps', 'interview')
    * @param {string} interviewType - Optional interview type for hybrid flow (dsa, systemDesign, lld)
    * @returns {string} Model name for the flow
    */
@@ -392,6 +407,10 @@ class AIConfig {
       case 'steps':
         // For STEPS flow: Use steps model (thinking mode for optimization phase)
         model = config.models?.steps || config.models?.hybrid || config.models?.primary || config.model;
+        break;
+      case 'interview':
+        // For INTERVIEW flow: OPENAI_INTERVIEW_MODEL, then OPENAI_MODEL (resolved at load time)
+        model = config.models?.interview || config.model;
         break;
       case 'local':
         model = config.models?.local || config.models?.primary || config.model;

@@ -12,6 +12,19 @@ const path = require('path');
 
 // Import formatter for code processing
 const InterviewCodeFormatter = require(path.join(__dirname, 'src', 'js', 'formatter'));
+const { PRACTICE_REQUESTS, INTERVIEW_REQUESTS } = require(
+  path.join(__dirname, 'src', 'js', 'model-prompts')
+);
+
+// AI flows in Opt+Cmd / Alt+Ctrl cycle order
+const AI_FLOWS = ['LOCAL', 'CLOUD', 'HYBRID', 'STEPS', 'PRACTICE', 'INTERVIEW'];
+
+// Phrases that Cmd/Ctrl+Shift+H ('hint') and Cmd/Ctrl+Shift+S ('reveal') send, by flow.
+// The prompts react to these exact strings
+const FLOW_REQUESTS = {
+  PRACTICE: { hint: PRACTICE_REQUESTS.hint, reveal: PRACTICE_REQUESTS.reveal },
+  INTERVIEW: { hint: INTERVIEW_REQUESTS.more },
+};
 
 class StreamlinedTextInterface {
   constructor(container) {
@@ -259,7 +272,7 @@ class StreamlinedTextInterface {
     addListener('toggle-syntax-highlighting', () => this.toggleSyntaxMode());
     addListener('cycle-ai-flow', () => this.cycleAIFlow());
     addListener('trigger-flow-toggle', () => this.cycleAIFlow()); // Triggered by Opt+Cmd / Alt+Ctrl
-    addListener('practice-request', (event, text) => this.sendPracticeRequest(text));
+    addListener('flow-request', (event, action) => this.sendFlowRequest(action));
     addListener('increase-transparency', () => this.increaseTransparency());
     addListener('decrease-transparency', () => this.decreaseTransparency());
 
@@ -645,24 +658,35 @@ class StreamlinedTextInterface {
   }
 
   cycleAIFlow() {
-    const flows = ['LOCAL', 'CLOUD', 'HYBRID', 'STEPS', 'PRACTICE'];
-    const currentIndex = flows.indexOf(this.aiFlow);
-    const nextIndex = (currentIndex + 1) % flows.length;
-    this.aiFlow = flows[nextIndex];
+    const currentIndex = AI_FLOWS.indexOf(this.aiFlow);
+    const nextIndex = (currentIndex + 1) % AI_FLOWS.length;
+    this.aiFlow = AI_FLOWS[nextIndex];
 
     this.status.ai = this.aiFlow;
     this.throttledUpdateStatus();
-    this.showMessage(`🔄 AI Flow: ${this.aiFlow}`, 3000);
+    const detail = this.aiFlow === 'INTERVIEW' ? ' (follow-up questions, OpenAI)' : '';
+    this.showMessage(`🔄 AI Flow: ${this.aiFlow}${detail}`, 3000);
   }
 
-  async sendPracticeRequest(text) {
-    if (this.aiFlow !== 'PRACTICE') {
-      this.showMessage('🎓 Hints only work in PRACTICE flow', 3000);
+  /**
+   * Send the phrase for a flow shortcut: the next hint or the solution (PRACTICE), or more
+   * follow-up questions (INTERVIEW)
+   * @param {'hint'|'reveal'} action
+   */
+  async sendFlowRequest(action) {
+    const text = FLOW_REQUESTS[this.aiFlow]?.[action];
+    if (!text) {
+      this.showMessage(
+        action === 'hint'
+          ? '🎓 This shortcut works only in PRACTICE and INTERVIEW flows'
+          : '🎓 Reveal works only in PRACTICE flow',
+        3000
+      );
       return;
     }
 
-    // Sent mid-OCR or mid-stream, the hint would interleave with that request in the
-    // same practice session and both answers would stream into the editor at once
+    // Sent mid-OCR or mid-stream, the request would interleave with that request in the
+    // same flow session and both answers would stream into the editor at once
     const ocrBusy = this.status.ocr === 'Capturing' || this.status.ocr === 'Processing';
     if (ocrBusy || this.status.ai.endsWith('Processing')) {
       this.showMessage('⏳ Wait for the current response to finish', 2500);
@@ -672,7 +696,7 @@ class StreamlinedTextInterface {
     try {
       await this.queryAI(text);
     } catch (error) {
-      this.showMessage(`❌ Practice request failed: ${error.message}`, 5000);
+      this.showMessage(`❌ ${this.aiFlow} request failed: ${error.message}`, 5000);
     }
   }
 
@@ -722,7 +746,7 @@ ${mod}+2 - Process screenshot stack
 ${mod}+3 - Clear screenshot stack
 
 ### AI Controls
-Opt+${mod} - Cycle AI flows (LOCAL → CLOUD → HYBRID → STEPS → PRACTICE)
+Opt+${mod} - Cycle AI flows (${AI_FLOWS.join(' → ')})
 ${mod}+Shift+R - Master Reset (recover from any error)
 ${mod}+Shift+O - Toggle OCR filtering
 ${mod}+Shift+T - Cycle interview type (DSA → System Design → LLD)
@@ -754,6 +778,11 @@ Screenshot a problem → Hint 1 + skeleton with TODO gaps
 Screenshot your own code → review that points at the bug without fixing it
 ${mod}+Shift+H - Next hint (3 hints, then the full solution)
 ${mod}+Shift+S - Reveal full solution
+
+### Interview Flow (you are the interviewer, OpenAI)
+Screenshot the candidate's work → follow-up questions, why to ask them, what a strong answer covers
+Screenshot only the problem → brief: expected approach, common mistakes
+${mod}+Shift+H - More follow-up questions on the same work
 
 ### Math Formula Support
 - LaTeX formulas supported: $O(n)$, $O(log n)$, $$T(n) = 2T(n/2) + O(n)$$
